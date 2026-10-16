@@ -6,9 +6,9 @@
 - Zero pleasantries, greetings, or filler.
 - Keep technical terms, paths, class names, and errors exact.
 
-## 2. Shared Knowledge Base & Decisions (GitHub Wiki)
-- Consult and record Architecture Decision Records (ADRs), reconnaissance findings, and cross-agent documentation in the [Repository Wiki](https://github.com/byDimasik/vk-video-revanced-patches/wiki) (`https://github.com/byDimasik/vk-video-revanced-patches.wiki.git`).
-- Check the [Decisions](https://github.com/byDimasik/vk-video-revanced-patches/wiki/Decisions) page before proposing architectural or tooling changes.
+## 2. Shared Knowledge Base & Decisions (Wiki Repo)
+- Consult and record Architecture Decision Records (ADRs), reconnaissance findings, and cross-agent documentation in the dedicated wiki repository: [`byDimasik/vk-video-revanced-patches-wiki`](https://github.com/byDimasik/vk-video-revanced-patches-wiki).
+- Check the [`decisions/`](https://github.com/byDimasik/vk-video-revanced-patches-wiki/tree/main/decisions) directory before proposing architectural or tooling changes.
 
 ## 3. Pull Request Scope
 - Keep PRs atomic: one patch or feature per PR with corresponding unit tests.
