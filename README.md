@@ -8,6 +8,12 @@ This repository provides bytecode patches, resource patches, and extensions for 
 
 Target distribution is ReVanced Patch Bundle (`.rvp`) format for use in ReVanced Manager.
 
+## Documentation & Wiki
+
+* [Project Wiki](wiki/Home.md)
+  * [Architecture Decision Records (ADRs)](wiki/Decisions.md)
+  * [ADR-001: Project Bootstrap, Team Topology, and Tooling](wiki/decisions/ADR-001-project-bootstrap.md)
+
 ## Features (In Development)
 
 * Video player ad blocking (pre-roll, mid-roll short-circuiting)
