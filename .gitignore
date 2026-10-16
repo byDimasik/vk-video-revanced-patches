@@ -1,0 +1,43 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Kotlin & JVM
+*.class
+*.kexe
+*.klib
+
+# Android & Bytecode Binaries
+*.apk
+*.ap_
+*.aab
+*.dex
+*.rvp
+*.keystore
+*.jks
+*.key
+
+# Decompilation & Recon Output
+decompiled/
+**/decompiled/
+apktool/
+jadx/
+*.smali
+out/
+
+# IDE & Editor Configs
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Secrets & Local Properties
+local.properties
+*.env
