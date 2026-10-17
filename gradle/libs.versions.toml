@@ -1,0 +1,15 @@
+[versions]
+kotlin = "1.9.22"
+revanced-patcher = "22.0.1"
+smali = "3.0.3"
+junit = "5.10.1"
+
+[libraries]
+revanced-patcher = { group = "app.revanced", name = "revanced-patcher", version.ref = "revanced-patcher" }
+smali-dexlib2 = { group = "com.android.tools.smali", name = "smali-dexlib2", version.ref = "smali" }
+smali = { group = "com.android.tools.smali", name = "smali", version.ref = "smali" }
+junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junit" }
+junit-jupiter-engine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junit" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
