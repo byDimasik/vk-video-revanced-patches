@@ -1,5 +1,5 @@
 [versions]
-kotlin = "1.9.22"
+kotlin = "2.0.21"
 revanced-patcher = "22.0.1"
 smali = "3.0.3"
 junit = "5.10.1"
