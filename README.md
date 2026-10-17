@@ -21,6 +21,16 @@ Target distribution is ReVanced Patch Bundle (`.rvp`) format for use in ReVanced
 * **Extensions**: Injected runtime helper classes compiled and merged into target APK DEX files.
 * **Target Package**: `com.vk.vkvideo` (RuStore distribution).
 
+## Building & Testing
+
+Running `make check` or Gradle tasks locally requires access to the GitHub Package Registry for resolving `app.revanced:revanced-patcher`:
+
+```bash
+export GITHUB_ACTOR="<your-github-username>"
+export GITHUB_TOKEN="<your-github-pat-with-read:packages-permission>"
+make check
+```
+
 ## License
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE).
