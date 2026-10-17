@@ -15,12 +15,8 @@ dependencyResolutionManagement {
         maven {
             url = uri("https://maven.pkg.github.com/revanced/revanced-patcher")
             credentials {
-                username = System.getenv("GITHUB_ACTOR")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: error("Set GITHUB_ACTOR environment variable before running Gradle")
-                password = System.getenv("GITHUB_TOKEN")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: error("Set GITHUB_TOKEN environment variable before running Gradle")
+                username = System.getenv("GITHUB_ACTOR")?.takeIf { it.isNotBlank() } ?: "user"
+                password = System.getenv("GITHUB_TOKEN")?.takeIf { it.isNotBlank() } ?: ""
             }
         }
     }
