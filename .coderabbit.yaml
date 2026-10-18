@@ -1,0 +1,11 @@
+language: "en-US"
+tone_instructions: "Be assertive, precise, and direct."
+reviews:
+  profile: "assertive"
+  path_filters:
+    - "!**/*.apk"
+    - "!**/*.dex"
+    - "!**/*.rvp"
+    - "!**/*.smali"
+    - "!**/decompiled/**"
+    - "!.cache/**"
