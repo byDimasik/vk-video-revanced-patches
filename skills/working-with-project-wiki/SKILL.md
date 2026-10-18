@@ -18,6 +18,7 @@ The project wiki repository is: `https://github.com/byDimasik/vk-video-revanced-
 ### 1. Direct Commits Only
 
 Never create pull requests for the wiki repository. Always commit and push straight to the `main` branch.
+When pushing to the repository, use the environment variables `GITHUB_ACTOR` and `GITHUB_TOKEN`, as they are always available in the Jules environment.
 
 ### 2. Respect Directory Structure
 

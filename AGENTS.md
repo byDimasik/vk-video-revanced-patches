@@ -1,18 +1,14 @@
-/caveman
+Always use the /caveman skill from skills/caveman/SKILL.md
 
 # Agent Operating Guidelines
 
-## 1. Communication Style
-- Terse communication.
-- Answer first, reason second, next step last.
-- Zero pleasantries, greetings, or filler.
-- Keep technical terms, paths, class names, and errors exact.
-
-## 2. Shared Knowledge Base & Decisions (Wiki Repo)
-- Consult and record Architecture Decision Records (ADRs), reconnaissance findings, and cross-agent documentation in the dedicated wiki repository: [`byDimasik/vk-video-revanced-patches-wiki`](https://github.com/byDimasik/vk-video-revanced-patches-wiki).
+## 1. Shared Knowledge Base & Decisions (Wiki Repo)
+- Consult and record Architecture Decision Records (ADRs), reconnaissance findings, and cross-agent documentation using the `working-with-project-wiki` skill (`skills/working-with-project-wiki/SKILL.md`).
+- Dedicated wiki repository: [`byDimasik/vk-video-revanced-patches-wiki`](https://github.com/byDimasik/vk-video-revanced-patches-wiki).
 - Check the [`decisions/`](https://github.com/byDimasik/vk-video-revanced-patches-wiki/tree/main/decisions) directory before proposing architectural or tooling changes.
 
-## 3. Pull Request Scope
+## 2. Pull Request
+- Use the `pr-lifecycle` skill (`skills/pr-lifecycle/SKILL.md`) for managing pull requests.
 - Keep PRs atomic: one patch or feature per PR with corresponding unit tests.
 - Never open multi-feature PRs.
 
