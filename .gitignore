@@ -9,6 +9,9 @@ build/
 *.kexe
 *.klib
 
+# Cache & Local Storage
+.cache/
+
 # Android & Bytecode Binaries
 *.apk
 *.ap_
