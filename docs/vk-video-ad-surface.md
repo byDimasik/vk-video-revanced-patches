@@ -34,11 +34,15 @@ VK Video uses an integrated ad execution framework combining the VK Ad Network (
      * `public setPlayPauseControl(Z)V`
 
 3. **In-Stream Ad DTOs & VAST Loaders**:
-   * **`Lcom/vk/api/generated/video/dto/VideoVideoAdsInstreamDto;`**
-   * **`Lcom/vk/api/generated/video/dto/VideoVideoAdsMobileInstreamadsDto;`**
    * **`Lcom/vk/dto/common/InstreamAd;`**
-   * **`Lcom/iab/omid/library/corpmailru/adsession/media/VastProperties;`**
+     * **Descriptor**: `Lcom/vk/dto/common/InstreamAd;`
+     * **Methods**: `public final l3(Lcom/vk/core/serialize/Serializer;)V`
    * **`Lcom/vk/api/generated/apps/dto/AppsAdsSlotsVastDto;`**
+     * **Descriptor**: `Lcom/vk/api/generated/apps/dto/AppsAdsSlotsVastDto;`
+     * **Methods**: `public final writeToParcel(Landroid/os/Parcel;I)V`
+   * **`Lcom/iab/omid/library/corpmailru/adsession/media/VastProperties;`**
+     * **Descriptor**: `Lcom/iab/omid/library/corpmailru/adsession/media/VastProperties;`
+     * **Methods**: `public static createVastPropertiesForSkippableMedia(FZLcom/iab/omid/library/corpmailru/adsession/media/Position;)Lcom/iab/omid/library/corpmailru/adsession/media/VastProperties;`
 
 ### Relevant Smali Snippet (`OneVideoAdControlsView.setAdProgress`)
 
@@ -76,10 +80,160 @@ VK Video uses an integrated ad execution framework combining the VK Ad Network (
     .line 20
     iget-object p1, p1, Lme7/c;->b:Ljava/lang/Integer;
 
-    # Updates ad progress text and progress bar
+    .line 22
+    if-nez p1, :cond_0
+
+    .line 24
+    invoke-virtual {v2}, Landroid/view/View;->getContext()Landroid/content/Context;
+
+    .line 27
+    move-result-object p1
+
+    .line 28
+    const v3, 0x7f141c63
+
+    .line 31
+    invoke-virtual {p1, v3}, Landroid/content/Context;->getString(I)Ljava/lang/String;
+
+    .line 34
+    move-result-object p1
+
+    .line 35
+    goto :goto_0
+
+    .line 36
+    :cond_0
+    invoke-virtual {p1}, Ljava/lang/Integer;->intValue()I
+
+    .line 39
+    move-result p1
+
+    .line 40
+    int-to-float p1, p1
+
+    .line 41
+    const/high16 v3, 0x447a0000    # 1000.0f
+
+    .line 43
+    div-float/2addr p1, v3
+
+    .line 44
+    invoke-static {p1}, Ld17/a;->b(F)I
+
+    .line 47
+    move-result p1
+
+    .line 48
+    if-lez p1, :cond_1
+
+    .line 49
+    invoke-static {p1}, Ljava/lang/String;->valueOf(I)Ljava/lang/String;
+
+    .line 53
+    move-result-object p1
+
+    .line 54
+    goto :goto_0
+
+    .line 55
+    :cond_1
+    invoke-virtual {v2}, Landroid/view/View;->getContext()Landroid/content/Context;
+
+    .line 58
+    move-result-object p1
+
+    .line 59
+    const v3, 0x7f141c61
+
+    .line 62
+    invoke-virtual {p1, v3}, Landroid/content/Context;->getString(I)Ljava/lang/String;
+
+    .line 65
+    move-result-object p1
+
+    .line 66
+    :goto_0
     invoke-virtual {v2, p1}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
 
+    .line 69
+    iget-object p1, v1, Lve7/a;->b:Landroid/widget/ProgressBar;
+
+    .line 71
+    invoke-virtual {p1}, Landroid/widget/ProgressBar;->getProgress()I
+
+    .line 74
+    move-result v2
+
+    .line 75
+    if-eqz v2, :cond_2
+
+    .line 77
+    invoke-virtual {p1}, Landroid/widget/ProgressBar;->getProgress()I
+
+    .line 79
+    move-result v2
+
+    .line 81
+    sub-int/2addr v2, v0
+
+    .line 82
+    invoke-static {v2}, Ljava/lang/Math;->abs(I)I
+
+    .line 85
+    move-result v2
+
+    .line 86
+    int-to-long v2, v2
+
+    .line 87
+    const-wide/16 v4, 0x64
+
+    .line 89
+    cmp-long v2, v2, v4
+
+    .line 91
+    if-lez v2, :cond_3
+
+    .line 93
+    :cond_2
+    invoke-virtual {p1, v0}, Landroid/widget/ProgressBar;->setProgress(I)V
+
+    .line 96
+    :cond_3
+    iget-object p1, v1, Lve7/a;->g:Lone/video/ad/ux/motion/view/OneVideoMotionView;
+
+    .line 98
+    const/16 v0, 0x8
+
+    .line 99
+    invoke-virtual {p1, v0}, Landroid/view/View;->setVisibility(I)V
+
+    .line 103
     return-void
+.end method
+```
+
+### Relevant VAST Property Creator Snippet (`VastProperties.createVastPropertiesForSkippableMedia`)
+
+```smali
+.method public static createVastPropertiesForSkippableMedia(FZLcom/iab/omid/library/corpmailru/adsession/media/Position;)Lcom/iab/omid/library/corpmailru/adsession/media/VastProperties;
+    .locals 3
+
+    const-string v0, "Position is null"
+
+    invoke-static {p2, v0}, Lcom/iab/omid/library/corpmailru/d/e;->a(Ljava/lang/Object;Ljava/lang/String;)V
+
+    new-instance v0, Lcom/iab/omid/library/corpmailru/adsession/media/VastProperties;
+
+    const/4 v1, 01
+
+    invoke-static {p0}, Ljava/lang/Float;->valueOf(F)Ljava/lang/Float;
+
+    move-result-object p0
+
+    invoke-direct {0, v1, p0, p1, p2}, Lcom/iab/omid/library/corpmailru/adsession/media/VastProperties;-><init>(ZLjava/lang/Float;ZLcom/iab/omid/library/corpmailru/adsession/media/Position;)V
+
+    return-object v0
 .end method
 ```
 
@@ -131,7 +285,7 @@ Promotional cards, sponsored shelves, catalog ad banners, and video player ad ov
 
 ### Top Shelf / Sponsored Shelf Layouts & Resource IDs
 * **Layouts**:
-  * `catalog_video_topshelf` (`0x7f0e026d`)
+  * `catalog_video_music_topshelf` (`0x7f0e026d`)
   * `catalog_video_topshelf` (`0x7f0e028b`)
 * **View IDs**:
   * `catalog_video_music_topshelf` (`0x7f0b05fe`)
