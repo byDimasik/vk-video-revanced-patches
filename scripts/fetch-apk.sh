@@ -210,8 +210,8 @@ for idx, url in enumerate(candidate_urls):
     os.remove(temp_apk_path)
 
     if not pkg_name:
-        print(f"Error: Could not read APK badging (aapt missing or invalid manifest)", file=sys.stderr)
-        sys.exit(1)
+        print(f"Candidate {idx+1} could not read APK badging (aapt missing or invalid manifest). Skipping...", file=sys.stderr)
+        continue
     if pkg_name != "com.vk.vkvideo":
         print(f"Candidate {idx+1} package name is '{pkg_name}', expected 'com.vk.vkvideo'. Skipping...", file=sys.stderr)
         continue
