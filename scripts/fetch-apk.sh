@@ -104,10 +104,7 @@ if not matches:
     print("Error: Could not resolve download URL from API response", file=sys.stderr)
     sys.exit(1)
 
-match_urls = [m.decode() for m in matches]
-standalone_urls = [u for u in match_urls if "/b/APK/" in u]
-xapk_urls = [u for u in match_urls if "/b/APK/" not in u]
-candidate_urls = standalone_urls + xapk_urls
+candidate_urls = [m.decode() for m in matches]
 
 download_url = candidate_urls[0]
 version_str, version_code_str = None, None
@@ -182,16 +179,20 @@ for idx, url in enumerate(candidate_urls):
         extracted_bytes = raw_payload
         print(f"Candidate {idx+1} is a standalone APK.")
     else:
-        # XAPK archive - check for split entries
-        apk_entries = [n for n in namelist if n.endswith(".apk")]
-        split_entries = [n for n in apk_entries if os.path.basename(n).startswith("config.")]
-        if split_entries or len(apk_entries) != 1:
-            print(f"Candidate {idx+1} XAPK is not a single-APK container ({apk_entries}). Rejecting...", file=sys.stderr)
-            continue
-
-        target_entry = apk_entries[0]
-        extracted_bytes = zf.read(target_entry)
-        print(f"Extracted '{target_entry}' from single-APK XAPK container.")
+        # XAPK archive - extract target main APK
+        target_entry = None
+        for name in ["com.vk.vkvideo.apk", "base.apk"]:
+            if name in namelist:
+                target_entry = name
+                break
+        if not target_entry:
+            for name in namelist:
+                if name.endswith(".apk") and not os.path.basename(name).startswith("config."):
+                    target_entry = name
+                    break
+        if target_entry:
+            extracted_bytes = zf.read(target_entry)
+            print(f"Extracted '{target_entry}' from XAPK container.")
 
     if not extracted_bytes:
         continue
@@ -222,7 +223,7 @@ for idx, url in enumerate(candidate_urls):
     break
 
 if not successful_apk_bytes or not obtained_vname or not obtained_vcode:
-    print("Error: Failed to obtain a valid single non-split com.vk.vkvideo APK from API download candidates", file=sys.stderr)
+    print("Error: Failed to obtain a valid com.vk.vkvideo APK from API download candidates", file=sys.stderr)
     sys.exit(1)
 
 target_apk_filename = f"vkvideo-{obtained_vname}.apk"
