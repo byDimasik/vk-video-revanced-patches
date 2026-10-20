@@ -104,9 +104,14 @@ if not matches:
     print("Error: Could not resolve download URL from API response", file=sys.stderr)
     sys.exit(1)
 
-download_url = matches[0].decode()
+# Sort download candidates prioritizing standalone APKs (/b/APK/) over XAPKs
+match_urls = [m.decode() for m in matches]
+standalone_urls = [u for u in match_urls if "/b/APK/" in u]
+xapk_urls = [u for u in match_urls if "/b/APK/" not in u]
+candidate_urls = standalone_urls + xapk_urls
 
-# Dynamically extract version & versionCode from API parameters
+# Parse API version metadata from first match
+download_url = candidate_urls[0]
 version_str, version_code_str = None, None
 
 parsed_url = urllib.parse.urlparse(download_url)
@@ -130,7 +135,7 @@ if not version_str:
     fn_m = re.search(r"v([0-9]+\.[0-9]+(?:\.[0-9]+)?)", fn_param)
     if fn_m: version_str = fn_m.group(1)
 
-# Check existing cached file against version.mk SHA-256
+# Check existing cached file against version.mk SHA-256 and badging
 recorded_vname, recorded_vcode, recorded_sha256 = parse_version_mk(VERSION_MK)
 
 if version_str:
@@ -143,41 +148,51 @@ if version_str:
 
         if is_valid and recorded_sha256 and cached_sha256 == recorded_sha256:
             pkg_name, badging_vname, badging_vcode = get_apk_badging(candidate_cache_path)
-            v_name = badging_vname or version_str
-            v_code = badging_vcode or version_code_str or recorded_vcode
-            if pkg_name and pkg_name != "com.vk.vkvideo":
-                print(f"Cached APK package mismatch: {pkg_name}", file=sys.stderr)
+            if pkg_name != "com.vk.vkvideo":
+                print(f"Cached APK badging package verification failed: got '{pkg_name}', expected 'com.vk.vkvideo'. Reacquiring...", file=sys.stderr)
             else:
+                v_name = badging_vname or version_str
+                v_code = badging_vcode or version_code_str or recorded_vcode
                 print(f"Cached APK found and verified at {candidate_cache_path}")
                 print(f"SHA-256: {cached_sha256}")
-                print(f"Verified idempotently against recorded checksum.")
+                print(f"Verified idempotently against recorded checksum and package identity.")
                 sys.exit(0)
 
-print(f"Downloading target package from direct CDN URL...")
-dl_req = urllib.request.Request(download_url, headers=HEADERS)
-try:
-    dl_resp = urllib.request.urlopen(dl_req)
-    raw_payload = dl_resp.read()
-except Exception as e:
-    print(f"Error downloading payload: {e}", file=sys.stderr)
-    sys.exit(1)
+# Try downloading candidates until a valid single non-split com.vk.vkvideo APK is obtained
+successful_apk_bytes = None
+obtained_vname = None
+obtained_vcode = None
 
-print(f"Downloaded payload size: {len(raw_payload)} bytes")
+for idx, url in enumerate(candidate_urls):
+    print(f"Attempting download candidate {idx+1}/{len(candidate_urls)}: {url[:80]}...")
+    dl_req = urllib.request.Request(url, headers=HEADERS)
+    try:
+        dl_resp = urllib.request.urlopen(dl_req)
+        raw_payload = dl_resp.read()
+    except Exception as e:
+        print(f"Failed download from {url[:50]}: {e}", file=sys.stderr)
+        continue
 
-# Distinguish standalone APK vs XAPK container
-apk_bytes = None
+    if not zipfile.is_zipfile(io.BytesIO(raw_payload)):
+        print(f"Candidate {idx+1} is not a valid ZIP file. Skipping...", file=sys.stderr)
+        continue
 
-if zipfile.is_zipfile(io.BytesIO(raw_payload)):
     zf = zipfile.ZipFile(io.BytesIO(raw_payload))
     namelist = zf.namelist()
 
+    extracted_bytes = None
     if "AndroidManifest.xml" in namelist and "classes.dex" in namelist:
-        # Payload is directly a standalone APK
-        apk_bytes = raw_payload
-        print("Payload verified directly as a standalone APK.")
+        # Standalone single APK
+        extracted_bytes = raw_payload
+        print(f"Candidate {idx+1} is a standalone APK.")
     else:
-        # Payload is an XAPK archive
-        print("Payload is an XAPK archive. Extracting main APK...")
+        # XAPK archive - check for split entries
+        apk_entries = [n for n in namelist if n.endswith(".apk")]
+        split_entries = [n for n in apk_entries if os.path.basename(n).startswith("config.")]
+        if split_entries:
+            print(f"Candidate {idx+1} XAPK contains split configuration APKs ({split_entries}). Rejecting split bundle...", file=sys.stderr)
+            continue
+
         target_entry = None
         for name in ["com.vk.vkvideo.apk", "base.apk"]:
             if name in namelist:
@@ -185,64 +200,60 @@ if zipfile.is_zipfile(io.BytesIO(raw_payload)):
                 break
         if not target_entry:
             for name in namelist:
-                if name.endswith(".apk") and not name.startswith("config."):
+                if name.endswith(".apk") and not os.path.basename(name).startswith("config."):
                     target_entry = name
                     break
         if target_entry:
-            extracted = zf.read(target_entry)
-            is_valid_extracted, _ = validate_apk_bytes(extracted)
-            if is_valid_extracted:
-                apk_bytes = extracted
-                print(f"Extracted main APK '{target_entry}' from XAPK container.")
+            extracted_bytes = zf.read(target_entry)
+            print(f"Extracted '{target_entry}' from XAPK container.")
 
-if not apk_bytes:
-    is_valid_raw, reason = validate_apk_bytes(raw_payload)
-    if is_valid_raw:
-        apk_bytes = raw_payload
-    else:
-        print(f"Error: Downloaded payload is not a valid APK ({reason})", file=sys.stderr)
+    if not extracted_bytes:
+        continue
+
+    is_valid, validation_err = validate_apk_bytes(extracted_bytes)
+    if not is_valid:
+        print(f"Candidate {idx+1} APK validation failed: {validation_err}", file=sys.stderr)
+        continue
+
+    # Verify package name via badging
+    temp_apk_path = os.path.join(CACHE_DIR, f"temp_{idx}.apk")
+    with open(temp_apk_path, "wb") as f:
+        f.write(extracted_bytes)
+
+    pkg_name, badging_vname, badging_vcode = get_apk_badging(temp_apk_path)
+    os.remove(temp_apk_path)
+
+    if not pkg_name:
+        print(f"Error: Could not read APK badging (aapt missing or invalid manifest)", file=sys.stderr)
         sys.exit(1)
+    if pkg_name != "com.vk.vkvideo":
+        print(f"Candidate {idx+1} package name is '{pkg_name}', expected 'com.vk.vkvideo'. Skipping...", file=sys.stderr)
+        continue
 
-# Validate APK before saving
-is_valid, validation_err = validate_apk_bytes(apk_bytes)
-if not is_valid:
-    print(f"Error: APK validation failed: {validation_err}", file=sys.stderr)
+    successful_apk_bytes = extracted_bytes
+    obtained_vname = badging_vname or version_str
+    obtained_vcode = badging_vcode or version_code_str
+    break
+
+if not successful_apk_bytes or not obtained_vname or not obtained_vcode:
+    print("Error: Failed to obtain a valid single non-split com.vk.vkvideo APK from API download candidates", file=sys.stderr)
     sys.exit(1)
 
-# Get badging details from extracted APK
-temp_apk_path = os.path.join(CACHE_DIR, "temp_download.apk")
-with open(temp_apk_path, "wb") as f:
-    f.write(apk_bytes)
-
-pkg_name, badging_vname, badging_vcode = get_apk_badging(temp_apk_path)
-
-if pkg_name and pkg_name != "com.vk.vkvideo":
-    os.remove(temp_apk_path)
-    print(f"Error: Downloaded APK package name is '{pkg_name}', expected 'com.vk.vkvideo'", file=sys.stderr)
-    sys.exit(1)
-
-final_vname = badging_vname or version_str
-final_vcode = badging_vcode or version_code_str
-
-if not final_vname or not final_vcode:
-    os.remove(temp_apk_path)
-    print("Error: Could not establish versionName or versionCode for APK", file=sys.stderr)
-    sys.exit(1)
-
-target_apk_filename = f"vkvideo-{final_vname}.apk"
+target_apk_filename = f"vkvideo-{obtained_vname}.apk"
 target_apk_path = os.path.join(CACHE_DIR, target_apk_filename)
-os.rename(temp_apk_path, target_apk_path)
+with open(target_apk_path, "wb") as f:
+    f.write(successful_apk_bytes)
 
-final_sha256 = hashlib.sha256(apk_bytes).hexdigest()
+final_sha256 = hashlib.sha256(successful_apk_bytes).hexdigest()
 
 print(f"Target APK saved: {target_apk_path}")
-print(f"APK badging: versionName={final_vname}, versionCode={final_vcode}")
+print(f"APK badging: versionName={obtained_vname}, versionCode={obtained_vcode}")
 print(f"SHA-256: {final_sha256}")
 
 with open(VERSION_MK, "w") as f:
     f.write(f"# Auto-generated by scripts/fetch-apk.sh. Do not edit manually.\n")
-    f.write(f"TARGET_VERSION := {final_vname}\n")
-    f.write(f"TARGET_VERSION_CODE := {final_vcode}\n")
+    f.write(f"TARGET_VERSION := {obtained_vname}\n")
+    f.write(f"TARGET_VERSION_CODE := {obtained_vcode}\n")
     f.write(f"TARGET_SHA256 := {final_sha256}\n")
 
 print(f"Successfully generated {VERSION_MK}")
