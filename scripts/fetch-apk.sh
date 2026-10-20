@@ -89,12 +89,12 @@ def get_apk_badging(apk_path):
         pass
     return None, None, None
 
-# Parse API response
+# Parse API response with explicit timeout
 print("Querying APKPure API for com.vk.vkvideo...")
 req = urllib.request.Request(API_URL, headers=HEADERS)
 try:
-    resp = urllib.request.urlopen(req)
-    api_data = resp.read()
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        api_data = resp.read()
 except Exception as e:
     print(f"Error querying API: {e}", file=sys.stderr)
     sys.exit(1)
@@ -104,13 +104,11 @@ if not matches:
     print("Error: Could not resolve download URL from API response", file=sys.stderr)
     sys.exit(1)
 
-# Sort download candidates prioritizing standalone APKs (/b/APK/) over XAPKs
 match_urls = [m.decode() for m in matches]
 standalone_urls = [u for u in match_urls if "/b/APK/" in u]
 xapk_urls = [u for u in match_urls if "/b/APK/" not in u]
 candidate_urls = standalone_urls + xapk_urls
 
-# Parse API version metadata from first match
 download_url = candidate_urls[0]
 version_str, version_code_str = None, None
 
@@ -135,7 +133,6 @@ if not version_str:
     fn_m = re.search(r"v([0-9]+\.[0-9]+(?:\.[0-9]+)?)", fn_param)
     if fn_m: version_str = fn_m.group(1)
 
-# Check existing cached file against version.mk SHA-256 and badging
 recorded_vname, recorded_vcode, recorded_sha256 = parse_version_mk(VERSION_MK)
 
 if version_str:
@@ -158,7 +155,6 @@ if version_str:
                 print(f"Verified idempotently against recorded checksum and package identity.")
                 sys.exit(0)
 
-# Try downloading candidates until a valid single non-split com.vk.vkvideo APK is obtained
 successful_apk_bytes = None
 obtained_vname = None
 obtained_vcode = None
@@ -167,8 +163,8 @@ for idx, url in enumerate(candidate_urls):
     print(f"Attempting download candidate {idx+1}/{len(candidate_urls)}: {url[:80]}...")
     dl_req = urllib.request.Request(url, headers=HEADERS)
     try:
-        dl_resp = urllib.request.urlopen(dl_req)
-        raw_payload = dl_resp.read()
+        with urllib.request.urlopen(dl_req, timeout=60) as dl_resp:
+            raw_payload = dl_resp.read()
     except Exception as e:
         print(f"Failed download from {url[:50]}: {e}", file=sys.stderr)
         continue
@@ -189,23 +185,13 @@ for idx, url in enumerate(candidate_urls):
         # XAPK archive - check for split entries
         apk_entries = [n for n in namelist if n.endswith(".apk")]
         split_entries = [n for n in apk_entries if os.path.basename(n).startswith("config.")]
-        if split_entries:
-            print(f"Candidate {idx+1} XAPK contains split configuration APKs ({split_entries}). Rejecting split bundle...", file=sys.stderr)
+        if split_entries or len(apk_entries) != 1:
+            print(f"Candidate {idx+1} XAPK is not a single-APK container ({apk_entries}). Rejecting...", file=sys.stderr)
             continue
 
-        target_entry = None
-        for name in ["com.vk.vkvideo.apk", "base.apk"]:
-            if name in namelist:
-                target_entry = name
-                break
-        if not target_entry:
-            for name in namelist:
-                if name.endswith(".apk") and not os.path.basename(name).startswith("config."):
-                    target_entry = name
-                    break
-        if target_entry:
-            extracted_bytes = zf.read(target_entry)
-            print(f"Extracted '{target_entry}' from XAPK container.")
+        target_entry = apk_entries[0]
+        extracted_bytes = zf.read(target_entry)
+        print(f"Extracted '{target_entry}' from single-APK XAPK container.")
 
     if not extracted_bytes:
         continue
