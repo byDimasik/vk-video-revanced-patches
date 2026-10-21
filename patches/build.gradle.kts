@@ -14,6 +14,12 @@ dependencies {
     testRuntimeOnly(libs.junit.jupiter.engine)
 }
 
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.addAll("-Xcontext-parameters", "-Xskip-prerelease-check")
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
 }
