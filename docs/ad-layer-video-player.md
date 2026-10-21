@@ -16,7 +16,7 @@ The VK Video in-stream video advertisement system relies on a multi-tiered pipel
 3. **Low-Level Ad Engine Factory / Loader** (`Lmo/p6;->f(Lmo/d5;Lmo/c1;)V`).
 4. **High-Level In-Stream Ad Controller Playback Trigger** (`Lwo/b;->c(Ljava/lang/String;)V`).
 
-Hooking or short-circuiting at lower layer entry points prevents ad payload parsing, ad loader network/s2s calls, and ad banner playback initialization, gracefully bypassing video ads without breaking main video playback streams.
+These methods are candidate interception points. The documented bodies show ad parsing, loading, and playback-entry operations.
 
 ---
 
@@ -510,7 +510,7 @@ Hooking or short-circuiting at lower layer entry points prevents ad payload pars
 
     .line 214
     .line 215
-    invoke-direct/range {v1 .. v8}, Lcom/vk/dto/common/InstreamAd;-><init>(ZLjava/util/List;Ljava/utilMap;Ljava/util/Set;IIZ)V
+    invoke-direct/range {v1 .. v8}, Lcom/vk/dto/common/InstreamAd;-><init>(ZLjava/util/List;Ljava/util/Map;Ljava/util/Set;IIZ)V
     :try_end_d9
     .catchall {:try_start_0 .. :try_end_d9} :catchall_da
 
@@ -532,7 +532,7 @@ Hooking or short-circuiting at lower layer entry points prevents ad payload pars
 `const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string`, `invoke-virtual`, `move-result`, `const/4`, `const/4`, `if-ne`
 
 ### Caller Null-Safety & Early-Return Analysis
-Returning `null` or an `InstreamAd` instance with `canPlay = false` (`f66837a = false`) skips ad section loading completely. All consumers check `instreamAd == null` or `instreamAd.a == false` before attempting to request ad slots or schedule pre-roll/mid-roll timers. Returning `null` directly triggers the `catchall_da` exception handler path, which safely returns `null` without throwing downstream.
+The parser returns `null` from its exception handler (`catchall_da`). This method body does not establish that consumers skip ad loading or continue main video playback. Returning `null` directly from a hook does not trigger `:catchall_da`.
 
 ---
 
@@ -567,7 +567,7 @@ Returning `null` or an `InstreamAd` instance with `canPlay = false` (`f66837a = 
 `iget-object`, `return-object`
 
 ### Caller Null-Safety & Early-Return Analysis
-`VideoAutoPlay` and player auto-play delegates call `videoFile.x3()` to retrieve the `InstreamAd` configuration associated with a video item. Replacing `iget-object` with `const/4 v0, 0x0` causes `x3()` to always return `null`. All caller sites (`VideoAutoPlay.smali`, `ShowcaseVideoAutoPlayViewHolder.smali`, etc.) perform explicit `if-nez` checks on the returned `InstreamAd`. When `null` is returned, the player skips ad banner initialization and proceeds straight to playing the main video stream.
+`VideoAutoPlay` and player auto-play delegates are reported as callers of `videoFile.x3()`. The report does not include their branches, so null handling and continuation to the main video remain unverified.
 
 ---
 
@@ -979,7 +979,7 @@ Returning `null` or an `InstreamAd` instance with `canPlay = false` (`f66837a = 
 `iget-object`, `if-eqz`, `iget-object`, `iget-object`, `new-instance`, `invoke-direct`, `const-string/jumbo`, `invoke-virtual`, `move-result`
 
 ### Caller Null-Safety & Early-Return Analysis
-Invoking `return-void` at line 1 of `p6.f` short-circuits ad fetching/parsing for `myTarget` instream ads. Furthermore, directly invoking `invoke-virtual {p0, p2, p1, v5}, Lmo/l6;->g(Lmo/xb;Lcom/google/gson/internal/h;Lmo/d5;)V` with a `null` banner (`p2 = 0`) triggers the completion callback with an empty ad state, letting callers transition cleanly to main video playback without waiting for ad response timeouts.
+Returning from `p6.f` can stop the documented method body before its loading operations. The `Lmo/l6;->g(Lmo/xb;Lcom/google/gson/internal/h;Lmo/d5;)V` implementation and its callers are not shown, so its callback and main-video state transition are unverified.
 
 ---
 
@@ -1113,4 +1113,4 @@ Invoking `return-void` at line 1 of `p6.f` short-circuits ad fetching/parsing fo
 `iget-object`, `if-nez`, `const-string`, `invoke-static`, `return-void`, `iget-object`, `iget-object`, `if-nez`
 
 ### Caller Null-Safety & Early-Return Analysis
-Method `wo/b.c(String section)` triggers playback for named ad sections (such as `"preroll"`, `"midroll"`, `"postroll"`). Placing `return-void` at line 1 prevents `InstreamAdEngine` from switching state from main video player to ad video player. Callers (e.g., `VideoAutoPlay.smali`) handle early returns gracefully because player event listeners treat non-started ad sections as completed or absent, continuing normal video playback uninterrupted.
+Method `wo/b.c(String section)` contains early returns for missing ad state and missing sections. The method body does not show a caller or player-event transition, so treating a non-started section as completed or absent remains unverified.
