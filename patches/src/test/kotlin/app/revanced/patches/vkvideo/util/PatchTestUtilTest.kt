@@ -9,6 +9,8 @@ import app.revanced.patches.vkvideo.util.PatchTestUtil.getInstructions
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getMethod
 import app.revanced.patches.vkvideo.util.PatchTestUtil.matchOrNull
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
@@ -44,23 +46,32 @@ class PatchTestUtilTest {
         val match = testFingerprint.matchOrNull(context)
         assertNotNull(match, "Fingerprint should match testMethod")
 
-        val method = testFingerprint.getMethod(context)
+        var mutatedMethod: app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod? = null
 
         val testPatch = bytecodePatch(
             name = "test-patch",
             description = "Test instruction mutation"
         ) {
             apply {
+                val method = testFingerprint.getMethod(this)
                 method.replaceInstruction(0, "const-string v0, \"modified\"")
                 method.addInstructions(1, "nop")
+                mutatedMethod = method
             }
         }
 
         testPatch.execute(context)
 
-        val instructions = method.getInstructions()
+        val method = mutatedMethod
+        assertNotNull(method, "Mutated method should not be null")
 
+        val instructions = method!!.getInstructions()
+
+        assertEquals(3, instructions.size)
         assertEquals(Opcode.CONST_STRING, instructions[0].opcode)
+        val stringRef = (instructions[0] as ReferenceInstruction).reference as StringReference
+        assertEquals("modified", stringRef.string)
         assertEquals(Opcode.NOP, instructions[1].opcode)
+        assertEquals(Opcode.RETURN_VOID, instructions[2].opcode)
     }
 }

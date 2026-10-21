@@ -58,12 +58,14 @@ object PatchTestUtil {
 
     fun BytecodePatchContext.initializeCache() {
         val method = this.classDefs.javaClass.methods.firstOrNull { it.name.startsWith("initializeCache") }
-        method?.isAccessible = true
-        method?.invoke(this.classDefs)
+            ?: error("initializeCache method not found in ClassDefs")
+        method.isAccessible = true
+        method.invoke(this.classDefs)
     }
 
     fun Patch.execute(context: BytecodePatchContext, resourceContext: ResourcePatchContext? = null) {
-        val method = Patch::class.java.methods.first { it.name.startsWith("getApply") }
+        val method = Patch::class.java.methods.firstOrNull { it.name.startsWith("getApply") }
+            ?: error("getApply method not found on Patch")
         method.isAccessible = true
         @Suppress("UNCHECKED_CAST")
         val applyFunc = method.invoke(this) as kotlin.jvm.functions.Function2<BytecodePatchContext, ResourcePatchContext, Unit>
@@ -73,8 +75,9 @@ object PatchTestUtil {
 
     fun Fingerprint.matchOrNull(context: BytecodePatchContext): Match? {
         val method = Fingerprint::class.java.methods.firstOrNull { it.name.startsWith("matchOrNull") && it.parameterCount == 1 }
-        method?.isAccessible = true
-        return method?.invoke(this, context) as? Match
+            ?: error("matchOrNull method not found on Fingerprint")
+        method.isAccessible = true
+        return method.invoke(this, context) as? Match
     }
 
     fun Fingerprint.getMethod(context: BytecodePatchContext): MutableMethod {
@@ -83,12 +86,6 @@ object PatchTestUtil {
     }
 
     fun MutableMethod.getInstructions(): List<BuilderInstruction> {
-        val methodKtClass = Class.forName("app.revanced.patcher.extensions.MethodKt")
-        val method = methodKtClass.methods.first {
-            it.name == "getInstructions" && it.parameterCount == 1 && it.parameterTypes[0] == MutableMethod::class.java
-        }
-        method.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        return method.invoke(null, this) as List<BuilderInstruction>
+        return this.implementation!!.instructions
     }
 }

@@ -3,6 +3,7 @@
 Reference guide for `app.revanced:patcher:22.0.1` Kotlin DSL components used in this project.
 
 ## Artifact Information
+
 - **Group**: `app.revanced`
 - **Artifact**: `patcher` (JVM module `patcher-jvm`)
 - **Version**: `22.0.1`
@@ -12,11 +13,13 @@ Reference guide for `app.revanced:patcher:22.0.1` Kotlin DSL components used in 
 ## 1. Bytecode Patch (`bytecodePatch`)
 
 ### Import
+
 ```kotlin
 import app.revanced.patcher.patch.bytecodePatch
 ```
 
 ### Signature
+
 ```kotlin
 fun bytecodePatch(
     name: String,
@@ -27,6 +30,7 @@ fun bytecodePatch(
 ```
 
 ### Usage Example
+
 ```kotlin
 val myPatch = bytecodePatch(
     name = "vk-video-ad-block",
@@ -35,7 +39,6 @@ val myPatch = bytecodePatch(
     compatibleWith("com.vk.vkvideo")
 
     apply {
-        // 'this' is BytecodePatchContext
         val method = myFingerprint.getMethod(this)
         method.replaceInstruction(0, "return-void")
     }
@@ -47,11 +50,13 @@ val myPatch = bytecodePatch(
 ## 2. Resource Patch (`resourcePatch`)
 
 ### Import
+
 ```kotlin
 import app.revanced.patcher.patch.resourcePatch
 ```
 
 ### Signature
+
 ```kotlin
 fun resourcePatch(
     name: String,
@@ -62,6 +67,7 @@ fun resourcePatch(
 ```
 
 ### Usage Example
+
 ```kotlin
 val myResourcePatch = resourcePatch(
     name = "vk-video-theme",
@@ -70,7 +76,6 @@ val myResourcePatch = resourcePatch(
     compatibleWith("com.vk.vkvideo")
 
     apply {
-        // 'this' is ResourcePatchContext
         document("res/layout/ad_view.xml").use { doc ->
             // XML document manipulation
         }
@@ -83,11 +88,13 @@ val myResourcePatch = resourcePatch(
 ## 3. Fingerprint (`fingerprint`)
 
 ### Import
+
 ```kotlin
 import app.revanced.patcher.fingerprint
 ```
 
 ### Signature
+
 ```kotlin
 fun fingerprint(
     fuzzyPatternScanThreshold: Int = 0,
@@ -96,6 +103,7 @@ fun fingerprint(
 ```
 
 ### Builder API
+
 - `accessFlags(vararg flags: AccessFlags)`
 - `returns(returnType: String)`
 - `parameters(vararg params: String)`
@@ -104,6 +112,7 @@ fun fingerprint(
 - `custom { method, classDef -> Boolean }`
 
 ### Usage Example
+
 ```kotlin
 val myFingerprint = fingerprint {
     accessFlags(AccessFlags.PUBLIC)
@@ -119,6 +128,7 @@ val myFingerprint = fingerprint {
 ## 4. Instruction Mutators
 
 ### Import
+
 ```kotlin
 import app.revanced.patcher.extensions.addInstruction
 import app.revanced.patcher.extensions.addInstructions
@@ -130,9 +140,11 @@ import app.revanced.patcher.extensions.getInstructions
 ```
 
 ### Target Type
+
 `app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod`
 
 ### Key Extension Methods
+
 - `MutableMethod.addInstruction(index: Int, instructionSmali: String)`
 - `MutableMethod.addInstructions(index: Int, instructionSmali: String)`
 - `MutableMethod.replaceInstruction(index: Int, instructionSmali: String)`
