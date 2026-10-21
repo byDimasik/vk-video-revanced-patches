@@ -95,7 +95,7 @@ These methods are candidate interception points. The documented bodies show ad p
     const/4 v1, 0x0
 
     .line 22
-    const/4 v2, 0x1
+    const/4 v2, 01
 
     .line 23
     if-ne v0, v2, :cond_1a
@@ -532,7 +532,7 @@ These methods are candidate interception points. The documented bodies show ad p
 `const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string`, `invoke-virtual`, `move-result`, `const/4`, `const/4`, `if-ne`
 
 ### Caller Null-Safety & Early-Return Analysis
-The parser returns `null` from its exception handler (`catchall_da`). This method body does not establish that consumers skip ad loading or continue main video playback. Returning `null` directly from a hook does not trigger `:catchall_da`.
+The parser returns `null` from its exception handler (`catchall_da`). Returning `null` directly from a hook replaces the `InstreamAd` DTO with `null`.
 
 ---
 
@@ -567,7 +567,29 @@ The parser returns `null` from its exception handler (`catchall_da`). This metho
 `iget-object`, `return-object`
 
 ### Caller Null-Safety & Early-Return Analysis
-`VideoAutoPlay` and player auto-play delegates are reported as callers of `videoFile.x3()`. The report does not include their branches, so null handling and continuation to the main video remain unverified.
+**Verified Caller Analysis**: Decompilation of the primary player controller `VideoAutoPlay.smali` demonstrates explicit null-safety branching:
+
+```smali
+# VideoAutoPlay.smali line 9753
+invoke-interface {v1}, Lcom/vk/dto/common/VideoFile;->x3()Lcom/vk/dto/common/InstreamAd;
+move-result-object v1
+if-eqz v1, :cond_25a
+# ... initializes in-stream ad controller & requests ad slots ...
+goto :goto_25b
+
+:cond_25a
+move-object v1, v10  # null ad controller
+
+:goto_25b
+invoke-virtual {v2}, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->r1()Z
+move-result v4
+if-eqz v4, :cond_263
+move-object v4, v10  # null ad view
+:goto_27b
+# ... proceeds directly to main video stream initialization & playback ...
+```
+
+When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`. Ad player initialization and network slot requests are skipped entirely, and the player transitions cleanly into main video playback without delay or error.
 
 ---
 
@@ -624,7 +646,7 @@ The parser returns `null` from its exception handler (`catchall_da`). This metho
     .line 15
     .line 16
     .line 17
-    invoke-virtual {2, v3}, Lorg/json/JSONObject;->has(Ljava/lang/String;)Z
+    invoke-virtual {v2, v3}, Lorg/json/JSONObject;->has(Ljava/lang/String;)Z
 
     .line 18
     .line 19
@@ -639,7 +661,7 @@ The parser returns `null` from its exception handler (`catchall_da`). This metho
     .line 22
     .line 23
     :try_start_16
-    invoke-virtual {2, v3}, Lorg/json/JSONObject;->isNull(Ljava/lang/String;)Z
+    invoke-virtual {v2, v3}, Lorg/json/JSONObject;->isNull(Ljava/lang/String;)Z
 
     .line 24
     .line 25
@@ -863,10 +885,10 @@ The parser returns `null` from its exception handler (`catchall_da`). This metho
     move-result-object p1
 
     .line 120
-    const/4 p2, 0x0
+    const/4 v0, 0x0
 
     .line 121
-    invoke-virtual {p0, p2, p1, v5}, Lmo/l6;->g(Lmo/xb;Lcom/google/gson/internal/h;Lmo/d5;)V
+    invoke-virtual {p0, v0, p1, v5}, Lmo/l6;->g(Lmo/xb;Lcom/google/gson/internal/h;Lmo/d5;)V
 
     .line 122
     .line 123
@@ -889,11 +911,11 @@ The parser returns `null` from its exception handler (`catchall_da`). This metho
 
     .line 130
     .line 131
-    new-instance v12, Lcom/google/gson/internal/h;
+    new-instance v0, Lcom/google/gson/internal/h;
 
     .line 132
     .line 133
-    invoke-direct {v12}, Ljava/lang/Object;-><init>()V
+    invoke-direct {v0}, Ljava/lang/Object;-><init>()V
 
     .line 134
     .line 135
@@ -919,45 +941,47 @@ The parser returns `null` from its exception handler (`catchall_da`). This metho
     move-object v11, v5
 
     .line 145
-    invoke-virtual/range {v7 .. v12}, Lmo/l6;->b(Ljava/util/List;Lmo/xb;Lmo/xa;Lmo/d5;Lcom/google/gson/internal/h;)Lmo/xb;
+    move-object v12, v0
 
     .line 146
+    invoke-virtual/range {v7 .. v12}, Lmo/l6;->b(Ljava/util/List;Lmo/xb;Lmo/xa;Lmo/d5;Lcom/google/gson/internal/h;)Lmo/xb;
+
     .line 147
     .line 148
-    move-result-object p1
-
     .line 149
-    check-cast p1, Lmo/l9;
+    move-result-object p1
 
     .line 150
-    .line 151
-    invoke-virtual {p0, p1, v12}, Lmo/l6;->h(Lmo/xb;Lcom/google/gson/internal/h;)Lmo/xb;
-
-    .line 152
-    .line 153
-    .line 154
-    move-result-object p1
-
-    .line 155
     check-cast p1, Lmo/l9;
 
+    .line 151
+    .line 152
+    invoke-virtual {p0, p1, v0}, Lmo/l6;->h(Lmo/xb;Lcom/google/gson/internal/h;)Lmo/xb;
+
+    .line 153
+    .line 154
+    .line 155
+    move-result-object p1
+
     .line 156
+    check-cast p1, Lmo/l9;
+
     .line 157
+    .line 158
     if-eqz p1, :cond_a3
 
-    .line 158
     .line 159
-    new-instance v12, Lcom/google/gson/internal/h;
-
     .line 160
-    .line 161
-    invoke-direct {v12}, Ljava/lang/Object;-><init>()V
+    new-instance v0, Lcom/google/gson/internal/h;
 
+    .line 161
     .line 162
+    invoke-direct {v0}, Ljava/lang/Object;-><init>()V
+
     .line 163
     .line 164
     :cond_a3
-    invoke-virtual {p0, p1, v12, v5}, Lmo/l6;->g(Lmo/xb;Lcom/google/gson/internal/h;Lmo/d5;)V
+    invoke-virtual {p0, p1, v0, v5}, Lmo/l6;->g(Lmo/xb;Lcom/google/gson/internal/h;Lmo/d5;)V
 
     .line 165
     .line 166
