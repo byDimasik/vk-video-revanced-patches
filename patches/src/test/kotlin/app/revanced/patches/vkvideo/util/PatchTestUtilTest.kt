@@ -36,25 +36,21 @@ class PatchTestUtilTest {
 
         val context = PatchTestUtil.createBytecodeContext(smali)
 
-        println("Classes in context: ${context.classDefs.map { it.type }}")
-
         val testFingerprint = fingerprint {
             opcodes(Opcode.CONST_STRING, Opcode.RETURN_VOID)
             strings("original")
         }
 
         val match = testFingerprint.matchOrNull(context)
-        println("Match result: $match")
         assertNotNull(match, "Fingerprint should match testMethod")
 
         val method = testFingerprint.getMethod(context)
-        println("Method result: $method")
 
         val testPatch = bytecodePatch(
             name = "test-patch",
             description = "Test instruction mutation"
         ) {
-            execute {
+            apply {
                 method.replaceInstruction(0, "const-string v0, \"modified\"")
                 method.addInstructions(1, "nop")
             }

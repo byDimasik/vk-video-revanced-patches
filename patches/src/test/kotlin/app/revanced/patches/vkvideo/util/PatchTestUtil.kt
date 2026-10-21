@@ -5,6 +5,7 @@ import app.revanced.patcher.Fingerprint
 import app.revanced.patcher.Match
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patcher.patch.Patch
+import app.revanced.patcher.patch.ResourcePatchContext
 import com.android.tools.smali.dexlib2.Opcodes
 import com.android.tools.smali.dexlib2.builder.BuilderInstruction
 import com.android.tools.smali.dexlib2.iface.DexFile
@@ -29,21 +30,45 @@ object PatchTestUtil {
         constructor.isAccessible = true
         val context = constructor.newInstance(tempApk, tempPatchedDir)
 
-        println("Directly after constructor, context.classDefs size=${context.classDefs.size}")
-        for (c in context.classDefs) {
-            println("ClassDef in context.classDefs: type=${c.type}, class=${c.javaClass.name}")
+        for (classDef in compiledClassDefs) {
+            context.classDefs.add(classDef)
         }
-        println("context.classDefs.get('Lcom/vk/video/TestClass;'): ${context.classDefs.get("Lcom/vk/video/TestClass;")}")
+        context.initializeCache()
 
         return context
     }
 
-    fun Patch.execute(context: BytecodePatchContext) {
+    private fun BytecodePatchContext.getApkFile(): File {
+        val method = BytecodePatchContext::class.java.methods.first { it.name.startsWith("getApkFile") }
+        method.isAccessible = true
+        return method.invoke(this) as File
+    }
+
+    private fun BytecodePatchContext.getPatchedFilesPath(): File {
+        val method = BytecodePatchContext::class.java.methods.first { it.name.startsWith("getPatchedFilesPath") }
+        method.isAccessible = true
+        return method.invoke(this) as File
+    }
+
+    private fun createDummyResourceContext(apkFile: File, patchedDir: File): ResourcePatchContext {
+        val constructor = ResourcePatchContext::class.java.declaredConstructors.first()
+        constructor.isAccessible = true
+        return constructor.newInstance(apkFile, patchedDir, patchedDir, null, null) as ResourcePatchContext
+    }
+
+    fun BytecodePatchContext.initializeCache() {
+        val method = this.classDefs.javaClass.methods.firstOrNull { it.name.startsWith("initializeCache") }
+        method?.isAccessible = true
+        method?.invoke(this.classDefs)
+    }
+
+    fun Patch.execute(context: BytecodePatchContext, resourceContext: ResourcePatchContext? = null) {
         val method = Patch::class.java.methods.first { it.name.startsWith("getApply") }
         method.isAccessible = true
         @Suppress("UNCHECKED_CAST")
-        val applyFunc = method.invoke(this) as kotlin.jvm.functions.Function2<BytecodePatchContext, Any?, Unit>
-        applyFunc.invoke(context, null)
+        val applyFunc = method.invoke(this) as kotlin.jvm.functions.Function2<BytecodePatchContext, ResourcePatchContext, Unit>
+        val resCtx = resourceContext ?: createDummyResourceContext(context.getApkFile(), context.getPatchedFilesPath())
+        applyFunc.invoke(context, resCtx)
     }
 
     fun Fingerprint.matchOrNull(context: BytecodePatchContext): Match? {
