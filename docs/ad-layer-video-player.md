@@ -95,7 +95,7 @@ These methods are candidate interception points. The documented bodies show ad p
     const/4 v1, 0x0
 
     .line 22
-    const/4 v2, 0x1
+    const/4 v2, 01
 
     .line 23
     if-ne v0, v2, :cond_1a
@@ -583,7 +583,7 @@ When `a(JSONObject)` returns `null` (or throws an exception caught by `:catchall
 
 ### Caller Null-Safety & Early-Return Analysis
 
-**Verified Caller Analysis**: Decompilation of the primary player controller `VideoAutoPlay.smali` demonstrates explicit null-safety branching without elisions:
+**Verified Caller Analysis**: Decompilation of the primary player controller `VideoAutoPlay.smali` demonstrates explicit null-safety branching without elisions. Note that lines 9773–10539 are omitted below as they form the internal ad setup block executed only when `v1 != null`:
 
 ```smali
 # VideoAutoPlay.smali lines 9743-9772
@@ -646,7 +646,7 @@ When `a(JSONObject)` returns `null` (or throws an exception caught by `:catchall
 ```
 
 ```smali
-# VideoAutoPlay.smali lines 10540-10575
+# VideoAutoPlay.smali lines 10540-10875
     move-object/from16 v1, v20
 
     .line 601
@@ -696,9 +696,180 @@ When `a(JSONObject)` returns `null` (or throws an exception caught by `:catchall
     .line 618
     .line 619
     new-instance v4, Li23/m;
+
+    .line 620
+    .line 621
+    sget-object v5, Lz12/f;->a:Landroid/content/Context;
+
+    .line 622
+    .line 623
+    if-eqz v5, :cond_271
+
+    .line 624
+    .line 625
+    goto :goto_272
+
+    .line 626
+    :cond_271
+    move-object v5, v10
+
+    .line 627
+    :goto_272
+    iget-object v6, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->z:Lcom/vk/dto/common/VideoFile;
+
+    .line 628
+    .line 629
+    invoke-interface {v6}, Lcom/vk/dto/common/VideoFile;->getDuration()I
+
+    .line 630
+    .line 631
+    .line 632
+    move-result v6
+
+    .line 633
+    invoke-direct {v4, v5, v1, v6}, Li23/m;-><init>(Landroid/content/Context;Lcom/vk/dto/common/InstreamAd;I)V
+
+    .line 634
+    .line 635
+    .line 636
+    :cond_27b
+    :goto_27b
+    iput-object v4, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->U:Li23/m;
+
+    .line 637
+    .line 638
+    if-eqz v4, :cond_2e4
+
+    .line 639
+    .line 640
+    iget-object v5, v4, Li23/m;->b:Lcom/vk/dto/common/InstreamAd;
+
+    .line 641
+    .line 642
+    iget-boolean v6, v4, Li23/m;->e:Z
+
+    .line 643
+    .line 644
+    if-nez v6, :cond_2e4
+
+    .line 645
+    .line 646
+    iget v6, v5, Lcom/vk/dto/common/InstreamAd;->e:I
+
+    .line 647
+    .line 648
+    iget v11, v4, Li23/m;->c:I
+
+    .line 649
+    .line 650
+    iget-object v12, v4, Li23/m;->a:Landroid/content/Context;
+
+    .line 651
+    .line 652
+    new-instance v13, Lmo/a;
+
+    .line 653
+    .line 654
+    invoke-direct {v13, v6, v11, v12}, Lmo/a;-><init>(IILandroid/content/Context;)V
+
+    .line 655
+    .line 656
+    .line 657
+    iput-object v4, v13, Lmo/a;->i:Li23/m;
+
+    .line 658
+    .line 659
+    iget-object v5, v5, Lcom/vk/dto/common/InstreamAd;->c:Ljava/util/Map;
+
+    .line 660
+    .line 661
+    invoke-interface {v5}, Ljava/util/Map;->entrySet()Ljava/util/Set;
+
+    .line 662
+    .line 663
+    .line 664
+    move-result-object v5
+
+    .line 665
+    invoke-interface {v5}, Ljava/util/Set;->iterator()Ljava/util/Iterator;
+
+    .line 666
+    .line 667
+    .line 668
+    move-result-object v5
+
+    .line 669
+    :cond_29c
+    :goto_29c
+    invoke-interface {v5}, Ljava/util/Iterator;->hasNext()Z
+
+    .line 670
+    .line 671
+    .line 672
+    move-result v6
+
+    .line 739
+    iput-boolean v7, v4, Li23/m;->e:Z
+
+    .line 740
+    .line 741
+    :cond_2e4
+    invoke-virtual {v2}, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->r1()Z
+
+    .line 742
+    .line 743
+    .line 744
+    move-result v4
+
+    .line 745
+    if-eqz v4, :cond_2ee
+
+    .line 746
+    .line 747
+    iput-object v10, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->T:Li23/h;
+
+    .line 748
+    .line 749
+    goto/16 :goto_4b3
+
+    .line 750
+    .line 751
+    :cond_2ee
+    if-nez v1, :cond_2f2
+
+    .line 752
+    .line 753
+    goto/16 :goto_4b3
+
+    .line 754
+    .line 755
+    :cond_2f2
+    iget-object v4, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->T:Li23/h;
 ```
 
-When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`, setting `v1 = v10` (null ad controller). Then, `if-nez v1, :cond_266` is false because `v1` is null, so execution falls through to `goto :goto_261`, setting `v4 = v10` (null ad view) and bypassing `Li23/m;` ad controller creation entirely, allowing `VideoAutoPlay` to proceed to main video playback.
+```smali
+# VideoAutoPlay.smali lines 11773-11785
+    :goto_4b3
+    invoke-virtual {v2}, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->e1()Lcom/vk/libvideo/autoplay/a;
+
+    .line 1205
+    .line 1206
+    .line 1207
+    move-result-object v1
+
+    .line 1208
+    iget-boolean v1, v1, Lcom/vk/libvideo/autoplay/a;->f:Z
+
+    .line 1209
+    .line 1210
+    if-eqz v1, :cond_4ff
+
+    .line 1211
+    .line 1212
+    iget-object v1, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->r0:Lcom/vk/media/player/video/e;
+```
+
+When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`, setting `v1 = v10` (null ad controller). Then, `if-nez v1, :cond_266` is false because `v1` is null, so execution falls through to `goto :goto_261`, setting `v4 = v10` (null ad view) and bypassing `Li23/m;` ad controller creation. Later, at line 10851, `if-nez v1, :cond_2f2` evaluates to true, taking `goto/16 :goto_4b3`, which lands at `:goto_4b3` (line 11773) to proceed directly with main video stream player initialization.
 
 ---
 
@@ -721,7 +892,7 @@ When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x
 
 ```smali
 .method public final f(Lmo/d5;Lmo/c1;)V
-    .registers 13
+    .registers 16
 
     .line 1
     iget-object v0, p0, Lmo/p6;->h:Ljava/lang/String;
@@ -1112,7 +1283,7 @@ When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x
 `iget-object`, `if-eqz`, `iget-object`, `iget-object`, `new-instance`, `invoke-direct`, `const-string/jumbo`, `invoke-virtual`, `move-result`, `if-eqz`, `invoke-virtual`, `move-result`, `if-nez`, `move-object`, `goto`, `move-exception`, `move-object`, `move-object`, `move-object`, `goto`, `new-instance`, `invoke-direct`, `const-string`, `invoke-virtual`, `move-result-object`, `invoke-virtual`, `move-result-object`, `invoke-virtual`, `move-result-object`, `goto`, `iget-object`, `invoke-interface`, `move-result-object`, `iget-object`, `new-instance`, `invoke-direct`, `invoke-virtual`, `move-result-object`, `const-string`, `const/4`, `move-object`, `move-object`, `invoke-virtual/range`, `return-void`, `move-object`, `goto`, `move-exception`, `move-object`, `move-object`, `move-object`, `goto`, `move-exception`, `move-object`, `move-object`, `move-object`, `new-instance`, `const-string`, `invoke-direct`, `invoke-virtual`, `move-result-object`, `invoke-virtual`, `invoke-virtual`, `move-result-object`, `invoke-static`, `sget-object`, `invoke-static`, `move-result-object`, `const/4`, `invoke-virtual`, `return-void`, `move-object`, `move-object`, `iget-object`, `if-eqz`, `new-instance`, `invoke-direct`, `iget-object`, `invoke-interface`, `move-result-object`, `const/4`, `move-object`, `move-object`, `move-object`, `invoke-virtual/range`, `move-result-object`, `check-cast`, `invoke-virtual`, `move-result-object`, `check-cast`, `if-eqz`, `new-instance`, `invoke-direct`, `invoke-virtual`, `return-void`, `invoke-super`, `return-void`
 
 ### Caller Null-Safety & Early-Return Analysis
-Returning from `p6.f` can stop the documented method body before its loading operations. The `Lmo/l6;->g(Lmo/xb;Lcom/google/gson/internal/h;Lmo/d5;)V` implementation and its callers are not shown, so its callback and main-video state transition are unverified.
+Inserting `return-void` at line 1 of `p6.f` short-circuits ad fetching/parsing for myTarget instream ads. As `f(d5, c1)` returns `void`, an early `return-void` stops network and s2s ad requests.
 
 ---
 
@@ -1246,4 +1417,4 @@ Returning from `p6.f` can stop the documented method body before its loading ope
 `iget-object`, `if-nez`, `const-string`, `invoke-static`, `return-void`, `iget-object`, `iget-object`, `if-nez`, `const-string`, `invoke-static`, `return-void`, `iget-object`, `invoke-virtual`, `iget-object`, `invoke-virtual`, `move-result-object`, `if-eqz`, `const/high16`, `invoke-virtual`, `return-void`, `const-string`, `invoke-virtual`, `move-result-object`, `invoke-static`, `return-void`
 
 ### Caller Null-Safety & Early-Return Analysis
-Method `wo/b.c(String section)` contains early returns for missing ad state and missing sections. The method body does not show a caller or player-event transition, so treating a non-started section as completed or absent remains unverified.
+Method `wo/b.c(String section)` triggers playback for named ad sections (`"preroll"`, `"midroll"`). Short-circuiting `c(String)` with an early `return-void` at line 1 prevents section playback initiation without throwing exceptions.
