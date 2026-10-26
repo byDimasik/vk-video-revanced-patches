@@ -532,7 +532,22 @@ These methods are candidate interception points. The documented bodies show ad p
 `const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string`, `invoke-virtual`, `move-result`, `const/4`, `const/4`, `if-ne`, `move`, `goto`, `move`, `move`, `const-string/jumbo`, `invoke-virtual`, `move-result-object`, `if-eqz`, `new-instance`, `invoke-virtual`, `move-result`, `invoke-direct`, `invoke-virtual`, `move-result`, `move`, `if-ge`, `invoke-virtual`, `move-result-object`, `invoke-static`, `move-result`, `invoke-static`, `move-result-object`, `invoke-virtual`, `add-int/lit8`, `goto`, `move-object`, `goto`, `sget-object`, `goto`, `const-string/jumbo`, `invoke-virtual`, `move-result-object`, `if-eqz`, `invoke-static`, `move-result-object`, `new-instance`, `invoke-virtual`, `move-result`, `invoke-static`, `move-result`, `invoke-direct`, `invoke-virtual`, `move-result-object`, `check-cast`, `invoke-interface`, `move-result-object`, `invoke-interface`, `move-result`, `if-eqz`, `invoke-interface`, `move-result-object`, `move-object`, `check-cast`, `invoke-interface`, `move-result-object`, `check-cast`, `invoke-interface`, `move-result-object`, `invoke-virtual`, `move-result-object`, `invoke-interface`, `goto`, `move-object`, `goto`, `sget-object`, `goto`, `const-string/jumbo`, `invoke-virtual`, `move-result-object`, `if-eqz`, `new-instance`, `invoke-virtual`, `move-result`, `invoke-direct`, `invoke-virtual`, `move-result`, `move`, `if-ge`, `invoke-virtual`, `move-result-object`, `sget-object`, `invoke-virtual`, `move-result-object`, `invoke-static`, `move-result-object`, `invoke-virtual`, `add-int/lit8`, `goto`, `invoke-static`, `move-result-object`, `if-nez`, `sget-object`, `const-string`, `invoke-virtual`, `move-result`, `if-ne`, `move`, `goto`, `move`, `new-instance`, `invoke-direct/range`, `return-object`, `const/4`, `return-object`
 
 ### Caller Null-Safety & Early-Return Analysis
-The parser returns `null` from its exception handler (`catchall_da`). Returning `null` directly from a hook replaces the `InstreamAd` DTO with `null`.
+**Verified Caller Analysis**: Decompilation of `VideoFileOld.smali` demonstrates where `InstreamAd$b.a(JSONObject)` is invoked during JSON deserialization:
+
+```smali
+# VideoFileOld.smali lines 2477-2487
+if-eqz v13, :cond_216
+sget-object v15, Lcom/vk/dto/common/InstreamAd;->CREATOR:Lcom/vk/core/serialize/Serializer$c;
+invoke-static {}, Lcom/vk/dto/common/InstreamAd$a;->a()Lcom/vk/dto/common/InstreamAd$b;
+move-result-object v15
+invoke-virtual {v15, v13}, Lcom/vk/dto/common/InstreamAd$b;->a(Lorg/json/JSONObject;)Ljava/lang/Object;
+move-result-object v13
+check-cast v13, Lcom/vk/dto/common/InstreamAd;
+iput-object v13, v1, Lcom/vk/dto/common/VideoFileOld;->b0:Lcom/vk/dto/common/InstreamAd;
+:cond_216
+```
+
+When `a(JSONObject)` returns `null` (or throws an exception caught by `:catchall_da`), `VideoFileOld.b0` is assigned `null`. Subsequent calls to `videoFile.x3()` then return `null`, causing caller `VideoAutoPlay.smali` to skip in-stream ad controller creation.
 
 ---
 
@@ -683,7 +698,7 @@ The parser returns `null` from its exception handler (`catchall_da`). Returning 
     new-instance v4, Li23/m;
 ```
 
-When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`, setting `v1 = v10` (null ad controller). Then, `if-nez v1, :goto_261` jumps to `:goto_261`, setting `v4 = v10` (null ad view) and bypassing `Li23/m;` ad controller creation entirely, allowing `VideoAutoPlay` to proceed to main video playback.
+When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`, setting `v1 = v10` (null ad controller). Then, `if-nez v1, :cond_266` is false because `v1` is null, so execution falls through to `goto :goto_261`, setting `v4 = v10` (null ad view) and bypassing `Li23/m;` ad controller creation entirely, allowing `VideoAutoPlay` to proceed to main video playback.
 
 ---
 
