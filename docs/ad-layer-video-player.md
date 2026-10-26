@@ -95,7 +95,7 @@ These methods are candidate interception points. The documented bodies show ad p
     const/4 v1, 0x0
 
     .line 22
-    const/4 v2, 01
+    const/4 v2, 0x1
 
     .line 23
     if-ne v0, v2, :cond_1a
@@ -529,7 +529,7 @@ These methods are candidate interception points. The documented bodies show ad p
 ```
 
 ### ReVanced Opcode Sequence
-`const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string`, `invoke-virtual`, `move-result`, `const/4`, `const/4`, `if-ne`
+`const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string/jumbo`, `invoke-virtual`, `move-result`, `const-string`, `invoke-virtual`, `move-result`, `const/4`, `const/4`, `if-ne`, `move`, `goto`, `move`, `move`, `const-string/jumbo`, `invoke-virtual`, `move-result-object`, `if-eqz`, `new-instance`, `invoke-virtual`, `move-result`, `invoke-direct`, `invoke-virtual`, `move-result`, `move`, `if-ge`, `invoke-virtual`, `move-result-object`, `invoke-static`, `move-result`, `invoke-static`, `move-result-object`, `invoke-virtual`, `add-int/lit8`, `goto`, `move-object`, `goto`, `sget-object`, `goto`, `const-string/jumbo`, `invoke-virtual`, `move-result-object`, `if-eqz`, `invoke-static`, `move-result-object`, `new-instance`, `invoke-virtual`, `move-result`, `invoke-static`, `move-result`, `invoke-direct`, `invoke-virtual`, `move-result-object`, `check-cast`, `invoke-interface`, `move-result-object`, `invoke-interface`, `move-result`, `if-eqz`, `invoke-interface`, `move-result-object`, `move-object`, `check-cast`, `invoke-interface`, `move-result-object`, `check-cast`, `invoke-interface`, `move-result-object`, `invoke-virtual`, `move-result-object`, `invoke-interface`, `goto`, `move-object`, `goto`, `sget-object`, `goto`, `const-string/jumbo`, `invoke-virtual`, `move-result-object`, `if-eqz`, `new-instance`, `invoke-virtual`, `move-result`, `invoke-direct`, `invoke-virtual`, `move-result`, `move`, `if-ge`, `invoke-virtual`, `move-result-object`, `sget-object`, `invoke-virtual`, `move-result-object`, `invoke-static`, `move-result-object`, `invoke-virtual`, `add-int/lit8`, `goto`, `invoke-static`, `move-result-object`, `if-nez`, `sget-object`, `const-string`, `invoke-virtual`, `move-result`, `if-ne`, `move`, `goto`, `move`, `new-instance`, `invoke-direct/range`, `return-object`, `const/4`, `return-object`
 
 ### Caller Null-Safety & Early-Return Analysis
 The parser returns `null` from its exception handler (`catchall_da`). Returning `null` directly from a hook replaces the `InstreamAd` DTO with `null`.
@@ -567,29 +567,123 @@ The parser returns `null` from its exception handler (`catchall_da`). Returning 
 `iget-object`, `return-object`
 
 ### Caller Null-Safety & Early-Return Analysis
-**Verified Caller Analysis**: Decompilation of the primary player controller `VideoAutoPlay.smali` demonstrates explicit null-safety branching:
+
+**Verified Caller Analysis**: Decompilation of the primary player controller `VideoAutoPlay.smali` demonstrates explicit null-safety branching without elisions:
 
 ```smali
-# VideoAutoPlay.smali line 9753
-invoke-interface {v1}, Lcom/vk/dto/common/VideoFile;->x3()Lcom/vk/dto/common/InstreamAd;
-move-result-object v1
-if-eqz v1, :cond_25a
-# ... initializes in-stream ad controller & requests ad slots ...
-goto :goto_25b
+# VideoAutoPlay.smali lines 9743-9772
+    :cond_d7
+    invoke-virtual {v2}, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->d1()V
 
-:cond_25a
-move-object v1, v10  # null ad controller
+    .line 217
+    .line 218
+    .line 219
+    iget-object v1, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->z:Lcom/vk/dto/common/VideoFile;
 
-:goto_25b
-invoke-virtual {v2}, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->r1()Z
-move-result v4
-if-eqz v4, :cond_263
-move-object v4, v10  # null ad view
-:goto_27b
-# ... proceeds directly to main video stream initialization & playback ...
+    .line 220
+    .line 221
+    invoke-interface {v1}, Lcom/vk/dto/common/VideoFile;->x3()Lcom/vk/dto/common/InstreamAd;
+
+    .line 222
+    .line 223
+    .line 224
+    move-result-object v1
+
+    .line 225
+    const/4 v8, 0x3
+
+    .line 226
+    const/4 v9, 0x2
+
+    .line 227
+    const/4 v10, 0x0
+
+    .line 228
+    if-eqz v1, :cond_25a
+
+    .line 229
+    .line 230
+    invoke-virtual {v2}, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->f1()Z
+
+    .line 231
+    .line 232
+    .line 233
+    move-result v11
+
+    .line 234
+    invoke-virtual {v2}, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->e1()Lcom/vk/libvideo/autoplay/a;
+
+    .line 235
+    .line 236
+    .line 237
+    move-result-object v12
+
+    .line 238
+    iget-boolean v12, v12, Lcom/vk/libvideo/autoplay/a;->a:Z
+
+    .line 239
+    .line 240
+    iget-object v13, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->B:Ljava/lang/String;
+
+    .line 241
+    .line 242
+    if-eqz v13, :cond_f9
 ```
 
-When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`. Ad player initialization and network slot requests are skipped entirely, and the player transitions cleanly into main video playback without delay or error.
+```smali
+# VideoAutoPlay.smali lines 10540-10575
+    move-object/from16 v1, v20
+
+    .line 601
+    .line 602
+    goto :goto_25b
+
+    .line 603
+    :cond_25a
+    move-object v1, v10
+
+    .line 604
+    :goto_25b
+    invoke-virtual {v2}, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->r1()Z
+
+    .line 605
+    .line 606
+    .line 607
+    move-result v4
+
+    .line 608
+    if-eqz v4, :cond_263
+
+    .line 609
+    .line 610
+    :goto_261
+    move-object v4, v10
+
+    .line 611
+    goto :goto_27b
+
+    .line 612
+    :cond_263
+    if-nez v1, :cond_266
+
+    .line 613
+    .line 614
+    goto :goto_261
+
+    .line 615
+    :cond_266
+    iget-object v4, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->U:Li23/m;
+
+    .line 616
+    .line 617
+    if-nez v4, :cond_27b
+
+    .line 618
+    .line 619
+    new-instance v4, Li23/m;
+```
+
+When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`, setting `v1 = v10` (null ad controller). Then, `if-nez v1, :goto_261` jumps to `:goto_261`, setting `v4 = v10` (null ad view) and bypassing `Li23/m;` ad controller creation entirely, allowing `VideoAutoPlay` to proceed to main video playback.
 
 ---
 
@@ -1000,7 +1094,7 @@ When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x
 ```
 
 ### ReVanced Opcode Sequence
-`iget-object`, `if-eqz`, `iget-object`, `iget-object`, `new-instance`, `invoke-direct`, `const-string/jumbo`, `invoke-virtual`, `move-result`
+`iget-object`, `if-eqz`, `iget-object`, `iget-object`, `new-instance`, `invoke-direct`, `const-string/jumbo`, `invoke-virtual`, `move-result`, `if-eqz`, `invoke-virtual`, `move-result`, `if-nez`, `move-object`, `goto`, `move-exception`, `move-object`, `move-object`, `move-object`, `goto`, `new-instance`, `invoke-direct`, `const-string`, `invoke-virtual`, `move-result-object`, `invoke-virtual`, `move-result-object`, `invoke-virtual`, `move-result-object`, `goto`, `iget-object`, `invoke-interface`, `move-result-object`, `iget-object`, `new-instance`, `invoke-direct`, `invoke-virtual`, `move-result-object`, `const-string`, `const/4`, `move-object`, `move-object`, `invoke-virtual/range`, `return-void`, `move-object`, `goto`, `move-exception`, `move-object`, `move-object`, `move-object`, `goto`, `move-exception`, `move-object`, `move-object`, `move-object`, `new-instance`, `const-string`, `invoke-direct`, `invoke-virtual`, `move-result-object`, `invoke-virtual`, `invoke-virtual`, `move-result-object`, `invoke-static`, `sget-object`, `invoke-static`, `move-result-object`, `const/4`, `invoke-virtual`, `return-void`, `move-object`, `move-object`, `iget-object`, `if-eqz`, `new-instance`, `invoke-direct`, `iget-object`, `invoke-interface`, `move-result-object`, `const/4`, `move-object`, `move-object`, `move-object`, `invoke-virtual/range`, `move-result-object`, `check-cast`, `invoke-virtual`, `move-result-object`, `check-cast`, `if-eqz`, `new-instance`, `invoke-direct`, `invoke-virtual`, `return-void`, `invoke-super`, `return-void`
 
 ### Caller Null-Safety & Early-Return Analysis
 Returning from `p6.f` can stop the documented method body before its loading operations. The `Lmo/l6;->g(Lmo/xb;Lcom/google/gson/internal/h;Lmo/d5;)V` implementation and its callers are not shown, so its callback and main-video state transition are unverified.
@@ -1134,7 +1228,7 @@ Returning from `p6.f` can stop the documented method body before its loading ope
 ```
 
 ### ReVanced Opcode Sequence
-`iget-object`, `if-nez`, `const-string`, `invoke-static`, `return-void`, `iget-object`, `iget-object`, `if-nez`
+`iget-object`, `if-nez`, `const-string`, `invoke-static`, `return-void`, `iget-object`, `iget-object`, `if-nez`, `const-string`, `invoke-static`, `return-void`, `iget-object`, `invoke-virtual`, `iget-object`, `invoke-virtual`, `move-result-object`, `if-eqz`, `const/high16`, `invoke-virtual`, `return-void`, `const-string`, `invoke-virtual`, `move-result-object`, `invoke-static`, `return-void`
 
 ### Caller Null-Safety & Early-Return Analysis
 Method `wo/b.c(String section)` contains early returns for missing ad state and missing sections. The method body does not show a caller or player-event transition, so treating a non-started section as completed or absent remains unverified.
