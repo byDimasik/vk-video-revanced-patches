@@ -871,7 +871,7 @@ When `a(JSONObject)` returns `null` (or throws an exception caught by `:catchall
     iget-object v1, v2, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->r0:Lcom/vk/media/player/video/e;
 ```
 
-When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`, setting `v1 = v10` (null ad controller). Then, `if-nez v1, :cond_266` is false because `v1` is null, so execution falls through to `goto :goto_261`, setting `v4 = v10` (null ad view) and bypassing `Li23/m;` ad controller creation. Later, at line 10851, `if-nez v1, :cond_2f2` evaluates to true, taking `goto/16 :goto_4b3`, which lands at `:goto_4b3` (line 11773) to proceed directly with main video stream player initialization.
+When `x3()` returns `null` (e.g. by replacing `iget-object` with `const/4 v0, 0x0`), `VideoAutoPlay` branch `if-eqz v1, :cond_25a` jumps directly to `:cond_25a`, setting `v1 = v10` (null ad controller). Then, `if-nez v1, :cond_266` is false because `v1` is null, so execution falls through to `goto :goto_261`, setting `v4 = v10` (null ad view) and bypassing `Li23/m;` ad controller creation. Later, at line 10851, `if-nez v1, :cond_2f2` evaluates to false, so execution falls through to `goto/16 :goto_4b3`, which lands at `:goto_4b3` (line 11773) to proceed directly with main video stream player initialization.
 
 ---
 
