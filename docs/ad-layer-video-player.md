@@ -95,7 +95,7 @@ These methods are candidate interception points. The documented bodies show ad p
     const/4 v1, 0x0
 
     .line 22
-    const/4 v2, 01
+    const/4 v2, 0x1
 
     .line 23
     if-ne v0, v2, :cond_1a
@@ -547,7 +547,7 @@ iput-object v13, v1, Lcom/vk/dto/common/VideoFileOld;->b0:Lcom/vk/dto/common/Ins
 :cond_216
 ```
 
-When `a(JSONObject)` returns `null` (or throws an exception caught by `:catchall_da`), `VideoFileOld.b0` is assigned `null`. Subsequent calls to `videoFile.x3()` then return `null`, causing caller `VideoAutoPlay.smali` to skip in-stream ad controller creation.
+When `a(JSONObject)` returns `null` (or throws an exception caught by `:catchall_da`), `VideoFileOld.b0` is assigned `null`. Subsequent calls to `videoFile.x3()` then return `null`, which directly triggers the null branch in `VideoAutoPlay.smali` (documented in Candidate 2), setting the ad controller `v1 = null` and jumping to `:goto_4b3` to proceed directly with main video stream playback.
 
 ---
 
@@ -807,6 +807,8 @@ When `a(JSONObject)` returns `null` (or throws an exception caught by `:catchall
     .line 671
     .line 672
     move-result v6
+
+    # ... lines 10673-10838 omitted for conciseness ...
 
     .line 739
     iput-boolean v7, v4, Li23/m;->e:Z
