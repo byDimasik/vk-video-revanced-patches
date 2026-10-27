@@ -51,13 +51,18 @@ class DisableVideoAdsPatchTest {
         .class public final Lmo/p6;
         .super Ljava/lang/Object;
 
+        .field public h:Ljava/lang/String;
+
         .method public final f(Lmo/d5;Lmo/c1;)V
             .registers 13
 
-            const-string v0, "version"
-            const-string v0, "2.5"
-            const-string v0, "s2s"
+            iget-object v0, p0, Lmo/p6;->h:Ljava/lang/String;
+            if-eqz v0, :cond_0
+            const-string v3, "version"
+            const-string v4, "2.5"
+            const-string v2, "s2s"
             const-string v0, "InstreamAdFactory: invalid json-data, error: "
+            :cond_0
             return-void
         .end method
     """.trimIndent()
