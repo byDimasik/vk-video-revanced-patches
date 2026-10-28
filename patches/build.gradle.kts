@@ -23,3 +23,32 @@ kotlin {
 tasks.test {
     useJUnitPlatform()
 }
+
+val generatePatchBundleMetadata = tasks.register("generatePatchBundleMetadata") {
+    val outputFile = layout.buildDirectory.file("generated/resources/patch-bundle.json")
+    outputs.file(outputFile)
+
+    doLast {
+        val file = outputFile.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            {
+              "name": "vk-video-patches",
+              "version": "${project.version}",
+              "description": "ReVanced patches for VK Video",
+              "targetPackage": "com.vk.vkvideo"
+            }
+            """.trimIndent() + "\n"
+        )
+    }
+}
+
+tasks.register<Jar>("rvp") {
+    dependsOn(generatePatchBundleMetadata)
+    archiveFileName.set("vk-video-patches.rvp")
+    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+
+    from(sourceSets.main.get().output)
+    from(generatePatchBundleMetadata.map { it.outputs.files })
+}

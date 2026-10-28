@@ -1,4 +1,4 @@
-.PHONY: all build test check fetch-apk clean
+.PHONY: all build test check fetch-apk rvp clean
 
 all: build
 
@@ -13,6 +13,9 @@ check:
 
 fetch-apk:
 	./scripts/fetch-apk.sh
+
+rvp:
+	./gradlew rvp
 
 clean:
 	./gradlew clean
