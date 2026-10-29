@@ -32,9 +32,13 @@ jobs:
 
       - name: Publish rolling release
         run: |
-          gh release create main patches/build/libs/vk-video-patches.rvp \
-            --title "main" \
-            --notes "Commit: ${{ github.sha }}" \
-            --clobber
+          if gh release view main >/dev/null 2>&1; then
+            gh release upload main patches/build/libs/vk-video-patches.rvp --clobber
+            gh release edit main --title "main" --notes "Commit: ${{ github.sha }}"
+          else
+            gh release create main patches/build/libs/vk-video-patches.rvp \
+              --title "main" \
+              --notes "Commit: ${{ github.sha }}"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
