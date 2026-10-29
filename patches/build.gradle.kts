@@ -49,6 +49,18 @@ tasks.register<Jar>("rvp") {
     archiveFileName.set("vk-video-patches.rvp")
     destinationDirectory.set(layout.buildDirectory.dir("libs"))
 
+    manifest {
+        attributes["Name"] = "vk-video-patches"
+        attributes["Description"] = "ReVanced patches for VK Video"
+        attributes["Version"] = project.version.toString()
+        attributes["Timestamp"] = System.currentTimeMillis().toString()
+        attributes["Source"] = "https://github.com/byDimasik/vk-video-revanced-patches"
+        attributes["Author"] = "byDimasik"
+        attributes["Contact"] = "https://github.com/byDimasik/vk-video-revanced-patches"
+        attributes["Website"] = "https://github.com/byDimasik/vk-video-revanced-patches"
+        attributes["License"] = "GPL-3.0"
+    }
+
     from(sourceSets.main.get().output)
     from(generatePatchBundleMetadata.map { it.outputs.files })
 }
