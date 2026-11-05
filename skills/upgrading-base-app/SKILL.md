@@ -78,6 +78,8 @@ not cold-launch tested via adb**.
    new fatals, `uiautomator dump` shows the feed. Only then install to the user's phone.
 
 9. **Repo updates**:
+   - Update `version.mk` (TARGET_VERSION / TARGET_VERSION_CODE / TARGET_SHA256 of the new base
+     APK) — CI and `scripts/fetch-apk.sh` read it; a stale value makes verification fail.
    - e2e tests resolve `.cache/vkvideo-*.apk` by newest-mtime — just add the new base snapshot
      to `.cache/`.
    - Update any version-pinned docs; fingerprints with comment notes about old versions stay as
