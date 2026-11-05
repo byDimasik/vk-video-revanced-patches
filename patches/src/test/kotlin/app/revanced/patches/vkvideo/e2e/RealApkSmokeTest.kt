@@ -3,6 +3,7 @@ package app.revanced.patches.vkvideo.e2e
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patcher.patch.ResourcePatchContext
 import app.revanced.patches.vkvideo.ad.feed.hideFeedAdsPatch
+import app.revanced.patches.vkvideo.ad.shelf.suppressTopShelfPatch
 import app.revanced.patches.vkvideo.ad.video.disableVideoAdsPatch
 import app.revanced.patches.vkvideo.util.PatchTestUtil.execute
 import app.revanced.patches.vkvideo.util.PatchTestUtil.initializeCache
@@ -56,9 +57,21 @@ class RealApkSmokeTest {
 
         val resConstructor = ResourcePatchContext::class.java.declaredConstructors.first()
         resConstructor.isAccessible = true
-        val resourceContext = resConstructor.newInstance(realApk, tempPatchedDir, tempPatchedDir, null, null) as ResourcePatchContext
+        val frameworkDir = System.getenv("APKTOOL_FRAMEWORK_DIR")
+        val resourceContext =
+            resConstructor.newInstance(realApk, tempPatchedDir, tempPatchedDir, null, frameworkDir) as ResourcePatchContext
 
         disableVideoAdsPatch.execute(bytecodeContext, resourceContext)
         hideFeedAdsPatch.execute(bytecodeContext, resourceContext)
+
+        // Resource patches need decoded resources; resourcePatch decoding is lazy until first use.
+        ResourcePatchContext::class.java.getMethod("decodeResources\$patcher").invoke(resourceContext)
+        suppressTopShelfPatch.execute(bytecodeContext, resourceContext)
+
+        for (layout in listOf("catalog_video_topshelf.xml", "catalog_video_music_topshelf.xml")) {
+            val xml = File(tempPatchedDir, "res/layout/$layout").readText()
+            check("android:layout_height=\"0dp\"" in xml) { "$layout root height not collapsed" }
+            check("android:visibility=\"gone\"" in xml) { "$layout root not hidden" }
+        }
     }
 }
