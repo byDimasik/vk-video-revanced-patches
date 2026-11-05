@@ -22,47 +22,4 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
-    // `make test-e2e` sets this; standard `make check` runs keep the missing-APK skip.
-    systemProperty("vkvideo.e2e", System.getenv("VKVIDEO_E2E") ?: "false")
-}
-
-val generatePatchBundleMetadata = tasks.register("generatePatchBundleMetadata") {
-    val outputFile = layout.buildDirectory.file("generated/resources/patch-bundle.json")
-    outputs.file(outputFile)
-
-    doLast {
-        val file = outputFile.get().asFile
-        file.parentFile.mkdirs()
-        file.writeText(
-            """
-            {
-              "name": "vk-video-patches",
-              "version": "${project.version}",
-              "description": "ReVanced patches for VK Video",
-              "targetPackage": "com.vk.vkvideo"
-            }
-            """.trimIndent() + "\n"
-        )
-    }
-}
-
-tasks.register<Jar>("rvp") {
-    dependsOn(generatePatchBundleMetadata)
-    archiveFileName.set("vk-video-patches.rvp")
-    destinationDirectory.set(layout.buildDirectory.dir("libs"))
-
-    manifest {
-        attributes["Name"] = "vk-video-patches"
-        attributes["Description"] = "ReVanced patches for VK Video"
-        attributes["Version"] = project.version.toString()
-        attributes["Timestamp"] = System.currentTimeMillis().toString()
-        attributes["Source"] = "https://github.com/byDimasik/vk-video-revanced-patches"
-        attributes["Author"] = "byDimasik"
-        attributes["Contact"] = "https://github.com/byDimasik/vk-video-revanced-patches"
-        attributes["Website"] = "https://github.com/byDimasik/vk-video-revanced-patches"
-        attributes["License"] = "GPL-3.0"
-    }
-
-    from(sourceSets.main.get().output)
-    from(generatePatchBundleMetadata.map { it.outputs.files })
 }
