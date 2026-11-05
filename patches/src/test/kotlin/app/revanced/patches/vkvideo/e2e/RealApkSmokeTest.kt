@@ -19,9 +19,9 @@ class RealApkSmokeTest {
 
     private fun findApkFile(): File? {
         val candidatePaths = listOf(
-            File(".cache/vkvideo-1.165.apk"),
-            File("/app/.cache/vkvideo-1.165.apk"),
-            File("../.cache/vkvideo-1.165.apk")
+            File(".cache/vkvideo-1.168.apk"),
+            File("/app/.cache/vkvideo-1.168.apk"),
+            File("../.cache/vkvideo-1.168.apk")
         )
         return candidatePaths.firstOrNull { it.exists() && it.isFile }
     }
@@ -33,12 +33,12 @@ class RealApkSmokeTest {
 
         if (isStrictE2e) {
             check(apkFile != null && apkFile.exists()) {
-                "VK Video target APK snapshot (vkvideo-1.165.apk) not found in .cache"
+                "VK Video target APK snapshot (vkvideo-1.168.apk) not found in .cache"
             }
         } else {
             assumeTrue(
                 apkFile != null && apkFile.exists(),
-                "Skipping RealApkSmokeTest: VK Video target APK snapshot (vkvideo-1.165.apk) not found in .cache"
+                "Skipping RealApkSmokeTest: VK Video target APK snapshot (vkvideo-1.168.apk) not found in .cache"
             )
         }
 

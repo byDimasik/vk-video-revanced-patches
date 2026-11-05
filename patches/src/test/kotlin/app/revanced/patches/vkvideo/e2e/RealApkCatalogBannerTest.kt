@@ -29,9 +29,9 @@ import java.nio.file.Files
 class RealApkCatalogBannerTest {
 
     private fun findApkFile(): File? = listOf(
-        File(".cache/vkvideo-1.165.apk"),
-        File("/app/.cache/vkvideo-1.165.apk"),
-        File("../.cache/vkvideo-1.165.apk")
+        File(".cache/vkvideo-1.168.apk"),
+        File("/app/.cache/vkvideo-1.168.apk"),
+        File("../.cache/vkvideo-1.168.apk")
     ).firstOrNull { it.exists() && it.isFile }
 
     @Test
@@ -41,7 +41,7 @@ class RealApkCatalogBannerTest {
 
         if (isStrictE2e) {
             check(apkFile != null && apkFile.exists()) {
-                "VK Video target APK snapshot (vkvideo-1.165.apk) not found in .cache"
+                "VK Video target APK snapshot (vkvideo-1.168.apk) not found in .cache"
             }
         } else {
             assumeTrue(
