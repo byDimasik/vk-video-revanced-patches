@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  packages: read
+
+# Serialize rolling-release updates so back-to-back pushes on main cannot race
+# each other into creating duplicate releases. Runs are queued, never cancelled.
+concurrency:
+  group: rolling-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: main
+      ASSET: patches/build/libs/vk-video-patches.rvp
+      NOTES: Commit ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build RVP patch bundle
+        run: make rvp
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+
+      - name: Publish rolling release
+        run: |
+          set -euo pipefail
+
+          # Skip stale runs: only the newest main commit may publish.
+          MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$MAIN_SHA" != "${{ github.sha }}" ]; then
+            echo "Run SHA ${{ github.sha }} is stale (main is $MAIN_SHA); skipping publish"
+            exit 0
+          fi
+
+          update_release() {
+            git tag -f "$TAG" "${{ github.sha }}"
+            git push -f origin "$TAG"
+            local attempts=0
+            until gh release upload "$TAG" "$ASSET" --clobber; do
+              attempts=$((attempts + 1))
+              if [ "$attempts" -ge 3 ]; then
+                echo "Asset upload failed after $attempts attempts" >&2
+                return 1
+              fi
+              echo "Upload attempt $attempts failed; retrying in 10s"
+              sleep 10
+            done
+            gh release edit "$TAG" --title "$TAG" --notes "$NOTES" --target "${{ github.sha }}" --draft=false
+          }
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            update_release
+          elif gh release create "$TAG" "$ASSET" --target "${{ github.sha }}" --title "$TAG" --notes "$NOTES"; then
+            echo "Created rolling release $TAG"
+          else
+            # Another run won the create race: fall back to updating it.
+            echo "Release $TAG appeared concurrently; updating instead"
+            update_release
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
