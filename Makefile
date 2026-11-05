@@ -9,7 +9,7 @@ test:
 	./gradlew test
 
 test-e2e:
-	./gradlew test --tests "app.revanced.patches.vkvideo.e2e.RealApkSmokeTest"
+	./gradlew -Dvkvideo.e2e=true :patches:cleanTest :patches:test --tests "app.revanced.patches.vkvideo.e2e.RealApkSmokeTest"
 
 check:
 	./gradlew check

@@ -22,4 +22,5 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("vkvideo.e2e", System.getProperty("vkvideo.e2e") ?: "false")
 }
