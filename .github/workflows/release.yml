@@ -8,9 +8,19 @@ permissions:
   contents: write
   packages: read
 
+# Serialize rolling-release updates so back-to-back pushes on main cannot race
+# each other into creating duplicate releases. Runs are queued, never cancelled.
+concurrency:
+  group: rolling-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: main
+      ASSET: patches/build/libs/vk-video-patches.rvp
+      NOTES: Commit ${{ github.sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,13 +42,21 @@ jobs:
 
       - name: Publish rolling release
         run: |
-          if gh release view main >/dev/null 2>&1; then
-            gh release upload main patches/build/libs/vk-video-patches.rvp --clobber
-            gh release edit main --title "main" --notes "Commit: ${{ github.sha }}"
+          set -euo pipefail
+
+          update_release() {
+            gh release upload "$TAG" "$ASSET" --clobber
+            gh release edit "$TAG" --title "$TAG" --notes "$NOTES"
+          }
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            update_release
+          elif gh release create "$TAG" "$ASSET" --title "$TAG" --notes "$NOTES"; then
+            echo "Created rolling release $TAG"
           else
-            gh release create main patches/build/libs/vk-video-patches.rvp \
-              --title "main" \
-              --notes "Commit: ${{ github.sha }}"
+            # Another run won the create race: fall back to updating it.
+            echo "Release $TAG appeared concurrently; updating instead"
+            update_release
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
