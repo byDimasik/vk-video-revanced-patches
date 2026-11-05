@@ -45,13 +45,15 @@ jobs:
           set -euo pipefail
 
           update_release() {
+            git tag -f "$TAG" "${{ github.sha }}"
+            git push -f origin "$TAG"
             gh release upload "$TAG" "$ASSET" --clobber
-            gh release edit "$TAG" --title "$TAG" --notes "$NOTES"
+            gh release edit "$TAG" --title "$TAG" --notes "$NOTES" --target "${{ github.sha }}" --draft=false
           }
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             update_release
-          elif gh release create "$TAG" "$ASSET" --title "$TAG" --notes "$NOTES"; then
+          elif gh release create "$TAG" "$ASSET" --target "${{ github.sha }}" --title "$TAG" --notes "$NOTES"; then
             echo "Created rolling release $TAG"
           else
             # Another run won the create race: fall back to updating it.
