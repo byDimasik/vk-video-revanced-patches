@@ -44,6 +44,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Skip stale runs: only the newest main commit may publish.
+          MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$MAIN_SHA" != "${{ github.sha }}" ]; then
+            echo "Run SHA ${{ github.sha }} is stale (main is $MAIN_SHA); skipping publish"
+            exit 0
+          fi
+
           update_release() {
             git tag -f "$TAG" "${{ github.sha }}"
             git push -f origin "$TAG"
