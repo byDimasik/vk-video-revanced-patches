@@ -53,7 +53,7 @@ jobs:
 
           update_release() {
             git tag -f "$TAG" "${{ github.sha }}"
-            git push -f origin "$TAG"
+            git push -f origin "refs/tags/$TAG"
             local attempts=0
             until gh release upload "$TAG" "$ASSET" --clobber; do
               attempts=$((attempts + 1))
