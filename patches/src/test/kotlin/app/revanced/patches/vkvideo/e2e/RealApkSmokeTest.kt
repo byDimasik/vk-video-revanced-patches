@@ -18,12 +18,16 @@ import java.nio.file.Files
 class RealApkSmokeTest {
 
     private fun findApkFile(): File? {
-        val candidatePaths = listOf(
-            File(".cache/vkvideo-1.168.apk"),
-            File("/app/.cache/vkvideo-1.168.apk"),
-            File("../.cache/vkvideo-1.168.apk")
+        val candidateDirs = listOf(
+            File(".cache"),
+            File("/app/.cache"),
+            File("../.cache")
         )
-        return candidatePaths.firstOrNull { it.exists() && it.isFile }
+        // Version-agnostic: pick the newest vkvideo-<version>.apk snapshot in the cache.
+        return candidateDirs.asSequence()
+            .filter { it.isDirectory }
+            .flatMap { it.listFiles { f -> f.isFile && f.name.matches(Regex("vkvideo-\\d+\\.\\d+(-\\d+)?\\.apk")) }?.asSequence() ?: emptySequence() }
+            .maxByOrNull { it.lastModified() }
     }
 
     @Test
@@ -33,12 +37,12 @@ class RealApkSmokeTest {
 
         if (isStrictE2e) {
             check(apkFile != null && apkFile.exists()) {
-                "VK Video target APK snapshot (vkvideo-1.168.apk) not found in .cache"
+                "VK Video target APK snapshot (vkvideo-*.apk) not found in .cache"
             }
         } else {
             assumeTrue(
                 apkFile != null && apkFile.exists(),
-                "Skipping RealApkSmokeTest: VK Video target APK snapshot (vkvideo-1.168.apk) not found in .cache"
+                "Skipping RealApkSmokeTest: VK Video target APK snapshot (vkvideo-*.apk) not found in .cache"
             )
         }
 

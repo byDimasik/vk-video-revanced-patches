@@ -28,11 +28,18 @@ import java.nio.file.Files
  */
 class RealApkCatalogBannerTest {
 
-    private fun findApkFile(): File? = listOf(
-        File(".cache/vkvideo-1.168.apk"),
-        File("/app/.cache/vkvideo-1.168.apk"),
-        File("../.cache/vkvideo-1.168.apk")
-    ).firstOrNull { it.exists() && it.isFile }
+    private fun findApkFile(): File? {
+        val candidateDirs = listOf(
+            File(".cache"),
+            File("/app/.cache"),
+            File("../.cache")
+        )
+        // Version-agnostic: pick the newest vkvideo-<version>.apk snapshot in the cache.
+        return candidateDirs.asSequence()
+            .filter { it.isDirectory }
+            .flatMap { it.listFiles { f -> f.isFile && f.name.matches(Regex("vkvideo-\\d+\\.\\d+(-\\d+)?\\.apk")) }?.asSequence() ?: emptySequence() }
+            .maxByOrNull { it.lastModified() }
+    }
 
     @Test
     fun testCatalogBannerFingerprintsOnRealApk() {
@@ -41,7 +48,7 @@ class RealApkCatalogBannerTest {
 
         if (isStrictE2e) {
             check(apkFile != null && apkFile.exists()) {
-                "VK Video target APK snapshot (vkvideo-1.168.apk) not found in .cache"
+                "VK Video target APK snapshot (vkvideo-*.apk) not found in .cache"
             }
         } else {
             assumeTrue(

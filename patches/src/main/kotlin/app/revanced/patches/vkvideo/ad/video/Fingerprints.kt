@@ -38,12 +38,12 @@ val instreamAdLoaderFingerprint = fingerprint {
     )
 }
 
+// 1.168 kept all three log strings in one method; 1.170 split them (only the
+// "No section" anchor remains in the controller), so match on that single stable string.
 val instreamAdControllerFingerprint = fingerprint {
     returns("V")
     parameters("Ljava/lang/String;")
     strings(
-        "InstreamAd: Unable to start ad - not loaded yet",
-        "InstreamAd: Unable to start ad - player has not set",
         "InstreamAdEngine: No section with name "
     )
 }
