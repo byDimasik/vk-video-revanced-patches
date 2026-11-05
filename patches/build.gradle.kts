@@ -76,18 +76,29 @@ tasks.register<Jar>("rvp") {
         val btDir = File(buildTools).listFiles()?.maxByOrNull { it.name }
         val d8Bin = btDir?.resolve("d8")
         if (d8Bin?.isFile == true) {
-            val classesDir = sourceSets.main.get().output.classesDirs.singleFile
             val tmpDex = File(temporaryDir, "classes.dex")
             tmpDex.parentFile.mkdirs()
             exec {
                 commandLine(d8Bin.absolutePath, "--release", "--min-api", "21", "--output", tmpDex.parentFile.absolutePath)
-                args(classesDir.walkTopDown().filter { it.extension == "class" }.map { it.absolutePath }.toList())
+                args(sourceSets.main.get().output.classesDirs.flatMap { dir ->
+                    dir.walkTopDown().filter { it.extension == "class" }.map { it.absolutePath }
+                })
             }
-            archiveFile.get().asFile.let { jar ->
-                copy {
-                    from(tmpDex)
-                    into(zipTree(jar))
-                }
+            val jarFile = archiveFile.get().asFile
+            val unpacked = temporaryDir.resolve("unpacked")
+            delete(unpacked)
+            copy {
+                from(zipTree(jarFile))
+                into(unpacked)
+            }
+            copy {
+                from(tmpDex)
+                into(unpacked)
+            }
+            delete(jarFile)
+            project.exec {
+                commandLine("zip", "-r", jarFile.absolutePath, ".")
+                workingDir(unpacked)
             }
         } else {
             logger.lifecycle("rvp: Android build-tools not found (ANDROID_HOME unset); bundle will contain JVM classes only")
