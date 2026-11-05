@@ -26,9 +26,10 @@ val videoFileInstreamAdFingerprint = fingerprint {
     )
 }
 
+// The parameter descriptors differ between APK versions (1.165: `Lmo/d5;Lmo/c1;`, 1.168: `Lno/x7;Lno/r4;`),
+// and the patch only needs the method entry point, so match on the unique log strings instead.
 val instreamAdLoaderFingerprint = fingerprint {
     returns("V")
-    parameters("Lmo/d5;", "Lmo/c1;")
     strings(
         "version",
         "2.5",
