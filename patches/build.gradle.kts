@@ -22,6 +22,8 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    // `make test-e2e` sets this; standard `make check` runs keep the missing-APK skip.
+    systemProperty("vkvideo.e2e", System.getenv("VKVIDEO_E2E") ?: "false")
 }
 
 val generatePatchBundleMetadata = tasks.register("generatePatchBundleMetadata") {

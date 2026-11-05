@@ -15,23 +15,24 @@ import java.nio.file.Files
 
 class RealApkSmokeTest {
 
-    private fun findApkFile(): File? {
-        val candidatePaths = listOf(
-            File(".cache/vkvideo-1.165.apk"),
-            File("/app/.cache/vkvideo-1.165.apk")
-        )
-        for (file in candidatePaths) {
-            if (file.exists() && file.isFile) return file
+    private fun cacheDirs(): List<File> {
+        // Gradle runs :patches:test with the patches/ project directory as the working
+        // directory, while the snapshot lives in the repository root .cache/ directory.
+        // Walk up towards the repository root so both layouts resolve.
+        val dirs = mutableListOf<File>()
+        var current: File? = File("").absoluteFile
+        while (current != null) {
+            dirs += File(current, ".cache")
+            current = current.parentFile
         }
+        dirs += File("/app/.cache")
+        return dirs.distinctBy { it.absolutePath }
+    }
 
-        val candidateDirs = listOf(File(".cache"), File("/app/.cache"))
-        for (dir in candidateDirs) {
-            if (dir.exists() && dir.isDirectory) {
-                val apkMatch = dir.listFiles { _, name ->
-                    name.startsWith("vkvideo-") && name.endsWith(".apk")
-                }?.firstOrNull()
-                if (apkMatch != null) return apkMatch
-            }
+    private fun findApkFile(): File? {
+        for (dir in cacheDirs()) {
+            val candidate = File(dir, TARGET_APK_NAME)
+            if (candidate.isFile) return candidate
         }
         return null
     }
@@ -39,10 +40,16 @@ class RealApkSmokeTest {
     @Test
     fun testPatchesOnRealApk() {
         val apkFile = findApkFile()
-        assumeTrue(
-            apkFile != null && apkFile.exists(),
-            "Skipping RealApkSmokeTest: VK Video target APK snapshot not found in .cache"
-        )
+        if (System.getProperty(E2E_STRICT_MODE_PROPERTY) == "true") {
+            check(apkFile != null) {
+                "VK Video target APK snapshot $TARGET_APK_NAME not found in .cache (strict e2e mode)"
+            }
+        } else {
+            assumeTrue(
+                apkFile != null,
+                "Skipping RealApkSmokeTest: VK Video target APK snapshot not found in .cache"
+            )
+        }
 
         val realApk = apkFile!!
         val tempPatchedDir = Files.createTempDirectory("patched-apk-test").toFile().apply { deleteOnExit() }
@@ -64,5 +71,13 @@ class RealApkSmokeTest {
 
         disableVideoAdsPatch.execute(bytecodeContext, resourceContext)
         hideFeedAdsPatch.execute(bytecodeContext, resourceContext)
+    }
+
+    private companion object {
+        // Exact snapshot under test: a different version must not silently stand in for it.
+        const val TARGET_APK_NAME = "vkvideo-1.165.apk"
+
+        // Set by `make test-e2e`; standard `make check` runs keep the skip behavior.
+        const val E2E_STRICT_MODE_PROPERTY = "vkvideo.e2e"
     }
 }
