@@ -47,7 +47,16 @@ jobs:
           update_release() {
             git tag -f "$TAG" "${{ github.sha }}"
             git push -f origin "$TAG"
-            gh release upload "$TAG" "$ASSET" --clobber
+            local attempts=0
+            until gh release upload "$TAG" "$ASSET" --clobber; do
+              attempts=$((attempts + 1))
+              if [ "$attempts" -ge 3 ]; then
+                echo "Asset upload failed after $attempts attempts" >&2
+                return 1
+              fi
+              echo "Upload attempt $attempts failed; retrying in 10s"
+              sleep 10
+            done
             gh release edit "$TAG" --title "$TAG" --notes "$NOTES" --target "${{ github.sha }}" --draft=false
           }
 
