@@ -22,6 +22,7 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("vkvideo.e2e", System.getProperty("vkvideo.e2e") ?: System.getenv("VKVIDEO_E2E") ?: "false")
 }
 
 val generatePatchBundleMetadata = tasks.register("generatePatchBundleMetadata") {
@@ -63,4 +64,33 @@ tasks.register<Jar>("rvp") {
 
     from(sourceSets.main.get().output)
     from(generatePatchBundleMetadata.map { it.outputs.files })
+
+    // Compile patch classes to DEX so ReVanced Manager can load the bundle.
+    // dexlib2 is already a runtime dependency; use its DEX writer via the
+    // dexlib2-backed approach: compile classes then convert with d8 if present.
+    val d8 = providers.systemProperty("android.sdk.dir").orElse(providers.environmentVariable("ANDROID_HOME")).map { "$it/build-tools" }
+    doLast {
+        // Best-effort DEX: if Android build-tools (d8) are available, add classes.dex;
+        // otherwise document the limitation in the bundle metadata.
+        val buildTools = d8.get()
+        val btDir = File(buildTools).listFiles()?.maxByOrNull { it.name }
+        val d8Bin = btDir?.resolve("d8")
+        if (d8Bin?.isFile == true) {
+            val classesDir = sourceSets.main.get().output.classesDirs.singleFile
+            val tmpDex = File(temporaryDir, "classes.dex")
+            tmpDex.parentFile.mkdirs()
+            exec {
+                commandLine(d8Bin.absolutePath, "--release", "--min-api", "21", "--output", tmpDex.parentFile.absolutePath)
+                args(classesDir.walkTopDown().filter { it.extension == "class" }.map { it.absolutePath }.toList())
+            }
+            archiveFile.get().asFile.let { jar ->
+                copy {
+                    from(tmpDex)
+                    into(zipTree(jar))
+                }
+            }
+        } else {
+            logger.lifecycle("rvp: Android build-tools not found (ANDROID_HOME unset); bundle will contain JVM classes only")
+        }
+    }
 }
