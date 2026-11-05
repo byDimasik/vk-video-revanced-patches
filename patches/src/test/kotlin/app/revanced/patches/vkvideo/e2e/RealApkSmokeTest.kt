@@ -2,6 +2,7 @@ package app.revanced.patches.vkvideo.e2e
 
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patcher.patch.ResourcePatchContext
+import app.revanced.patches.vkvideo.ad.catalog.hideCatalogBannersPatch
 import app.revanced.patches.vkvideo.ad.feed.hideFeedAdsPatch
 import app.revanced.patches.vkvideo.ad.shelf.suppressTopShelfPatch
 import app.revanced.patches.vkvideo.ad.video.disableVideoAdsPatch
@@ -63,6 +64,7 @@ class RealApkSmokeTest {
 
         disableVideoAdsPatch.execute(bytecodeContext, resourceContext)
         hideFeedAdsPatch.execute(bytecodeContext, resourceContext)
+        hideCatalogBannersPatch.execute(bytecodeContext, resourceContext)
 
         // Resource patches need decoded resources; resourcePatch decoding is lazy until first use.
         ResourcePatchContext::class.java.getMethod("decodeResources\$patcher").invoke(resourceContext)
