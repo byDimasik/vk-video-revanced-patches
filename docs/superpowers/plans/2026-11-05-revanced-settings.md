@@ -550,3 +550,23 @@ Post one comment on issue #40 with the PR link and the one-line status "PR open,
 ## Top-shelf ruling
 
 Keep `suppressTopShelfPatch` always-on and unchanged. It is a resource patch that rewrites two layout XMLs at patch time; a runtime toggle would require swapping decoded layouts or adding a second layout set, which the spec allows deferring. The dialog carries the static note `Top shelf promotions are always blocked.` Record this ruling in the PR body.
+
+
+## Round 15 — implementation gate (2026-11-06)
+
+All plan tasks implemented and committed on `feat/issue40-revanced-settings`
+(90bcd8b..d694716, 7 commits, 22 files, +2399/−159).
+
+**Redesign during e2e (supersedes the round-14 shift scheme):**
+`prependConditionalReturn` now uses **append-scratch** — grow `registerCount`
+by 1, scratch register = old count. DEX parameter registers are always the
+last `paramWidth` slots, so they keep their exact registers after growth:
+no instruction remapping, no try-block/debug-item rewrite, and the 4-bit
+nibble limit of 35c operands can never overflow (the old scheme produced
+`Invalid register: v16` on the 1.168 loader with `.registers 15`).
+Verified by dedicated checks: scratch does not alias the last parameter and
+the injected block reads no parameter registers.
+
+**Verification:** full unit suite green; e2e on the real 1.168 APK
+(RealApkSmokeTest, RealApkCatalogBannerTest, RealApkSettingsEntryTest) green;
+`make check` pass. Reviewer verdict: **Ready** (one Minor naming note).
