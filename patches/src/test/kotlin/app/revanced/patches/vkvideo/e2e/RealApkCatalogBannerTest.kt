@@ -4,7 +4,9 @@ import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patches.vkvideo.ad.catalog.catalogAdBannerSlotIdFingerprint
 import app.revanced.patches.vkvideo.ad.catalog.catalogSectionAdBannerGetterFingerprint
 import app.revanced.patches.vkvideo.ad.catalog.hideCatalogBannersPatch
-import app.revanced.patches.vkvideo.util.PatchTestUtil.execute
+import app.revanced.patches.vkvideo.settings.ADS_SETTINGS_CLASS
+import app.revanced.patches.vkvideo.settings.revancedSettingsPatch
+import app.revanced.patches.vkvideo.util.PatchTestUtil.applyPatches
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getInstructions
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getMethod
 import app.revanced.patches.vkvideo.util.PatchTestUtil.initializeCache
@@ -12,10 +14,11 @@ import app.revanced.patches.vkvideo.util.PatchTestUtil.matchOrNull
 import com.android.tools.smali.dexlib2.DexFileFactory
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.Opcodes
-import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import com.android.tools.smali.dexlib2.builder.BuilderInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -71,6 +74,9 @@ class RealApkCatalogBannerTest {
         }
         context.initializeCache()
 
+        assertNotNull(catalogAdBannerSlotIdFingerprint.matchOrNull(context))
+        assertNotNull(catalogSectionAdBannerGetterFingerprint.matchOrNull(context))
+
         val slotIdFingerprintMethod = catalogAdBannerSlotIdFingerprint.getMethod(context)
         val sectionGetterMethod = catalogSectionAdBannerGetterFingerprint.getMethod(context)
 
@@ -82,17 +88,37 @@ class RealApkCatalogBannerTest {
             "Lcom/vk/api/generated/catalog/dto/CatalogSectionDto;",
             sectionGetterMethod.definingClass
         )
-        assertNotNull(catalogAdBannerSlotIdFingerprint.matchOrNull(context))
-        assertNotNull(catalogSectionAdBannerGetterFingerprint.matchOrNull(context))
 
-        hideCatalogBannersPatch.execute(context)
+        assertTrue(
+            hideCatalogBannersPatch.dependencies.contains(revancedSettingsPatch),
+            "hideCatalogBannersPatch must depend on revancedSettingsPatch"
+        )
+
+        applyPatches(context, hideCatalogBannersPatch)
+
+        assertTrue(
+            context.classDefs.any { it.type == ADS_SETTINGS_CLASS },
+            "revancedSettingsPatch dependency must inject AdsSettings"
+        )
 
         for (method in listOf(slotIdFingerprintMethod, sectionGetterMethod)) {
-            val instructions = method.getInstructions()
-            assertEquals(Opcode.CONST_4, instructions[0].opcode)
-            assertEquals(0, (instructions[0] as NarrowLiteralInstruction).narrowLiteral)
-            assertEquals(Opcode.RETURN_OBJECT, instructions[1].opcode)
-            assertEquals(0, (instructions[1] as OneRegisterInstruction).registerA)
+            assertConditionalReturn(method.getInstructions())
         }
+    }
+
+    private fun assertConditionalReturn(instructions: List<BuilderInstruction>) {
+        assertEquals(Opcode.INVOKE_STATIC, instructions[0].opcode)
+        assertEquals(Opcode.MOVE_RESULT, instructions[1].opcode)
+        assertEquals(Opcode.IF_EQZ, instructions[2].opcode)
+        assertEquals(Opcode.CONST_4, instructions[3].opcode)
+        assertEquals(Opcode.RETURN_OBJECT, instructions[4].opcode)
+
+        val firstReturn = instructions.indexOfFirst { it.opcode == Opcode.RETURN_OBJECT }
+        assertEquals(4, firstReturn, "fallback must be the first return")
+
+        val branch = instructions[2]
+        val targetAddress = branch.location.codeAddress + (branch as OffsetInstruction).codeOffset
+        val target = instructions.indexOfFirst { it.location.codeAddress == targetAddress }
+        assertTrue(target > firstReturn, "branch must jump past the fallback")
     }
 }
