@@ -12,7 +12,7 @@ Target distribution is ReVanced Patch Bundle (`.rvp`) format for use in ReVanced
 
 * Video player ad blocking (pre-roll, mid-roll short-circuiting)
 * Feed and banner ad injection filtering
-* Sponsored shelf and promotional card removal
+* Runtime-toggleable blocking of video ads, feed ads, catalog banners and top-shelf promotions via a native themed ReVanced settings screen (profile menu, above Sign out)
 * UI and player cleanup
 
 ## Architecture
