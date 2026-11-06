@@ -28,7 +28,7 @@ val revancedSettingsPatch = bytecodePatch(
 
         val recyclerIndex = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
-            instruction.opcode == Opcode.INVOKE_VIRTUAL &&
+            instruction.opcode in setOf(Opcode.INVOKE_VIRTUAL, Opcode.INVOKE_VIRTUAL_RANGE) &&
                 reference is MethodReference &&
                 reference.definingClass == RECYCLER_CLASS &&
                 reference.parameterTypes == listOf("Ljava/util/List;", "Z") &&
@@ -45,10 +45,12 @@ val revancedSettingsPatch = bytecodePatch(
         val types = resolveTypes(instructions)
 
         injectSettingsClasses(this, types)
-        method.addInstruction(
-            recyclerIndex,
-            "invoke-static {v$listRegister}, $ADS_SETTINGS_CLASS->addMenuEntry(Ljava/util/List;)V",
-        )
+        val call = if (listRegister > 15) {
+            "invoke-static/range {v$listRegister .. v$listRegister}, $ADS_SETTINGS_CLASS->addMenuEntry(Ljava/util/List;)V"
+        } else {
+            "invoke-static {v$listRegister}, $ADS_SETTINGS_CLASS->addMenuEntry(Ljava/util/List;)V"
+        }
+        method.addInstruction(recyclerIndex, call)
     }
 }
 

@@ -156,6 +156,32 @@ class InjectedClassesTest {
     }
 
     @Test
+    fun `buildContentView labels every toggle`() {
+        val context = createContext()
+        injectSettingsClasses(context, menuTypes)
+
+        val strings = method(context, "buildContentView").getInstructions()
+            .filterIsInstance<ReferenceInstruction>()
+            .mapNotNull { (it.reference as? StringReference)?.string }
+        assertTrue(strings.containsAll(listOf("Block video ads", "Block feed ads", "Block catalog banners")))
+    }
+
+    @Test
+    fun `ToggleListener passes the checked value`() {
+        val context = createContext()
+        injectSettingsClasses(context, menuTypes)
+
+        val listenerClassDef = context.classDefs.first { it.type == listenerClass }
+        val listener = MutableMethod(listenerClassDef.methods.first { it.name == "onCheckedChanged" })
+        val instructions = listener.getInstructions()
+        val setEnabledIndex = indexOfInvoke(instructions, "setEnabled")
+        val setEnabled = instructions[setEnabledIndex] as FiveRegisterInstruction
+        val reference = (setEnabled as ReferenceInstruction).reference as MethodReference
+        assertEquals(listOf("Ljava/lang/String;", "Z"), reference.parameterTypes)
+        assertEquals(listener.implementation!!.registerCount - 1, setEnabled.registerD)
+    }
+
+    @Test
     fun `each row initializes from prefs before registering its listener`() {
         val context = createContext()
         injectSettingsClasses(context, menuTypes)
@@ -163,6 +189,11 @@ class InjectedClassesTest {
         val instructions = method(context, "buildContentView").getInstructions()
 
         for (row in rows) {
+            val wrapperStrings = method(context, row.enabledMethod).getInstructions()
+                .filterIsInstance<ReferenceInstruction>()
+                .mapNotNull { (it.reference as? StringReference)?.string }
+            assertTrue(wrapperStrings.contains(row.key), "${row.enabledMethod} must read ${row.key}")
+
             val enabledIndex = indexOfInvoke(instructions, row.enabledMethod)
 
             val checkedIndex = indexOfInvoke(instructions, "setChecked", enabledIndex)

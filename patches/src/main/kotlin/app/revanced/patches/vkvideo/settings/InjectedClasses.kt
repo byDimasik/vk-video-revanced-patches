@@ -142,7 +142,7 @@ private fun adsSettingsSmali(types: SettingsMenuTypes): String = """
 
         new-instance v1, Landroid/widget/Switch;
         invoke-direct {v1, p0}, Landroid/widget/Switch;-><init>(Landroid/content/Context;)V
-        const-string v2, "Video ads"
+        const-string v2, "Block video ads"
         invoke-virtual {v1, v2}, Landroid/widget/Switch;->setText(Ljava/lang/CharSequence;)V
         invoke-static {}, $ADS_SETTINGS_CLASS->isVideoAdsEnabled()Z
         move-result v3
@@ -155,7 +155,7 @@ private fun adsSettingsSmali(types: SettingsMenuTypes): String = """
 
         new-instance v1, Landroid/widget/Switch;
         invoke-direct {v1, p0}, Landroid/widget/Switch;-><init>(Landroid/content/Context;)V
-        const-string v2, "Feed ads"
+        const-string v2, "Block feed ads"
         invoke-virtual {v1, v2}, Landroid/widget/Switch;->setText(Ljava/lang/CharSequence;)V
         invoke-static {}, $ADS_SETTINGS_CLASS->isFeedAdsEnabled()Z
         move-result v3
@@ -168,7 +168,7 @@ private fun adsSettingsSmali(types: SettingsMenuTypes): String = """
 
         new-instance v1, Landroid/widget/Switch;
         invoke-direct {v1, p0}, Landroid/widget/Switch;-><init>(Landroid/content/Context;)V
-        const-string v2, "Catalog banners"
+        const-string v2, "Block catalog banners"
         invoke-virtual {v1, v2}, Landroid/widget/Switch;->setText(Ljava/lang/CharSequence;)V
         invoke-static {}, $ADS_SETTINGS_CLASS->isCatalogAdsEnabled()Z
         move-result v3

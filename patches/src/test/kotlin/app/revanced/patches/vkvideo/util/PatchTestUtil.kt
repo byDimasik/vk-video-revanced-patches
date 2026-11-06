@@ -7,6 +7,7 @@ import app.revanced.patcher.Match
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patcher.patch.Patch
 import app.revanced.patcher.patch.ResourcePatchContext
+import app.revanced.patches.vkvideo.settings.profileMenuItemsFingerprint
 import com.android.tools.smali.dexlib2.Opcodes
 import com.android.tools.smali.dexlib2.builder.BuilderInstruction
 import com.android.tools.smali.dexlib2.iface.DexFile
@@ -17,6 +18,7 @@ import java.nio.file.Files
 
 object PatchTestUtil {
     fun createBytecodeContext(vararg smaliSources: String): BytecodePatchContext {
+        fingerprintMatchField.set(profileMenuItemsFingerprint, null)
         val tempApk = Files.createTempFile("test-app", ".apk").toFile().apply { deleteOnExit() }
         val tempPatchedDir = Files.createTempDirectory("test-patched").toFile().apply { deleteOnExit() }
 

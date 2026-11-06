@@ -49,7 +49,7 @@ class ConditionalReturnTest {
         method.prependConditionalReturn(enabledMethod, "const/4 v0, 0x0\nreturn v0")
 
         val instructions = method.getInstructions()
-        val scratch = originalCount
+        val scratch = originalCount - 2
 
         assertEquals(Opcode.INVOKE_STATIC, instructions[0].opcode)
         val invoke = instructions[0] as Instruction35c
@@ -80,8 +80,8 @@ class ConditionalReturnTest {
         instructions[6].let {
             it as ThreeRegisterInstruction
             assertEquals(0, it.registerA)
-            assertEquals(3, it.registerB)
-            assertEquals(4, it.registerC)
+            assertEquals(4, it.registerB)
+            assertEquals(5, it.registerC)
         }
 
         assertEquals(Opcode.ADD_INT, instructions[7].opcode)
@@ -127,8 +127,8 @@ class ConditionalReturnTest {
         instructions[6].let {
             it as ThreeRegisterInstruction
             assertEquals(0, it.registerA)
-            assertEquals(4, it.registerB)
-            assertEquals(5, it.registerC)
+            assertEquals(5, it.registerB)
+            assertEquals(6, it.registerC)
         }
     }
 
@@ -153,8 +153,8 @@ class ConditionalReturnTest {
 
         val instructions = method.getInstructions()
         assertEquals(5, instructions.size)
-        assertEquals(4, (instructions[1] as OneRegisterInstruction).registerA)
-        assertEquals(4, (instructions[2] as OneRegisterInstruction).registerA)
+        assertEquals(2, (instructions[1] as OneRegisterInstruction).registerA)
+        assertEquals(2, (instructions[2] as OneRegisterInstruction).registerA)
         assertEquals(3, (instructions[2] as Instruction21t).codeOffset)
         assertEquals(Opcode.RETURN_VOID, instructions[3].opcode)
         assertEquals(5, method.implementation!!.registerCount)
