@@ -12,6 +12,7 @@ private const val PREF_FILE = "revanced_settings"
 private const val KEY_VIDEO_ADS = "revanced_ads_video"
 private const val KEY_FEED_ADS = "revanced_ads_feed"
 private const val KEY_CATALOG_ADS = "revanced_ads_catalog"
+internal const val KEY_TOPSHELF_ADS = "revanced_ads_topshelf"
 
 internal data class SettingsMenuTypes(
     val menuItemType: String,
@@ -98,6 +99,29 @@ private fun adsSettingsSmali(types: SettingsMenuTypes): String = """
         invoke-static {v0}, $ADS_SETTINGS_CLASS->getBoolean(Ljava/lang/String;)Z
         move-result v0
         return v0
+    .end method
+
+    .method public static isTopShelfAdsEnabled()Z
+        .registers 1
+
+        const-string v0, "$KEY_TOPSHELF_ADS"
+        invoke-static {v0}, $ADS_SETTINGS_CLASS->getBoolean(Ljava/lang/String;)Z
+        move-result v0
+        return v0
+    .end method
+
+    .method public static collapseTopShelfView(Landroid/view/View;)V
+        .registers 3
+        .param p0, "shelfView"
+
+        invoke-virtual {p0}, Landroid/view/View;->getLayoutParams()Landroid/view/ViewGroup${'$'}LayoutParams;
+        move-result-object v0
+        const/4 v1, 0x0
+        iput v1, v0, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
+        invoke-virtual {p0, v0}, Landroid/view/View;->setLayoutParams(Landroid/view/ViewGroup${'$'}LayoutParams;)V
+        const/16 v1, 0x8
+        invoke-virtual {p0, v1}, Landroid/view/View;->setVisibility(I)V
+        return-void
     .end method
 
     .method public static addMenuEntry(Ljava/util/List;)V

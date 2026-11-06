@@ -54,7 +54,7 @@ val revancedSettingsPatch = bytecodePatch(
     }
 }
 
-private fun resolveTypes(instructions: List<BuilderInstruction>): SettingsMenuTypes {
+internal fun resolveTypes(instructions: List<BuilderInstruction>): SettingsMenuTypes {
     val playerSettingsIndex = instructions.indexOfFirst { instruction ->
         val reference = (instruction as? ReferenceInstruction)?.reference
         reference is FieldReference && reference.name == "PLAYER_SETTINGS"
