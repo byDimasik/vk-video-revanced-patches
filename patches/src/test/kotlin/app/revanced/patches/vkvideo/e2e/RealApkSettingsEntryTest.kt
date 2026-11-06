@@ -4,6 +4,7 @@ import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patches.vkvideo.settings.ADS_SETTINGS_CLASS
 import app.revanced.patches.vkvideo.settings.profileMenuItemsFingerprint
 import app.revanced.patches.vkvideo.settings.revancedSettingsPatch
+import app.revanced.patches.vkvideo.settings.signOutRowFingerprint
 import app.revanced.patches.vkvideo.util.PatchTestUtil.applyPatches
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getInstructions
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getMethod
@@ -61,30 +62,30 @@ class RealApkSettingsEntryTest {
         context.initializeCache()
 
         assertNotNull(profileMenuItemsFingerprint.matchOrNull(context))
-        val menuMethod = profileMenuItemsFingerprint.getMethod(context)
+        assertNotNull(signOutRowFingerprint.matchOrNull(context))
 
         applyPatches(context, revancedSettingsPatch)
 
-        val instructions = menuMethod.getInstructions()
-        val recyclerIndex = instructions.indexOfFirst { instruction ->
-            val reference = (instruction as? ReferenceInstruction)?.reference
-            instruction.opcode == Opcode.INVOKE_VIRTUAL &&
-                reference is MethodReference &&
-                reference.definingClass == "Lme/grishka/appkit/fragments/BaseRecyclerFragment;" &&
-                reference.parameterTypes == listOf("Ljava/util/List;", "Z") &&
-                reference.returnType == "V"
-        }
-        assertTrue(recyclerIndex > 0, "recycler call not found")
-
-        val addMenuEntry = instructions[recyclerIndex - 1] as ReferenceInstruction
+        // The entry must be prepended to the Sign-out row builder (rendering directly
+        // above Sign out / Login), using that method's own list parameter register.
+        val signOutMethod = signOutRowFingerprint.getMethod(context)
+        val instructions = signOutMethod.getInstructions()
+        val addMenuEntry = instructions[0] as ReferenceInstruction
         assertEquals(Opcode.INVOKE_STATIC, addMenuEntry.opcode)
         val addMenuEntryReference = addMenuEntry.reference as MethodReference
         assertEquals(ADS_SETTINGS_CLASS, addMenuEntryReference.definingClass)
         assertEquals("addMenuEntry", addMenuEntryReference.name)
         assertEquals(listOf("Ljava/util/List;"), addMenuEntryReference.parameterTypes.map { it.toString() })
 
-        val listRegister = (instructions[recyclerIndex] as FiveRegisterInstruction).registerD
-        assertEquals(listRegister, (addMenuEntry as FiveRegisterInstruction).registerC)
+        val listRegister = signOutMethod.implementation!!.registerCount - 1
+        assertEquals(listRegister, (instructions[0] as FiveRegisterInstruction).registerC)
+        assertTrue(
+            instructions.drop(1).any { instruction ->
+                instruction.opcode == Opcode.INVOKE_VIRTUAL &&
+                    (instruction as ReferenceInstruction).reference.let { it is MethodReference && it.name == "add" }
+            },
+            "matched Sign-out builder must still append its own rows",
+        )
 
         assertTrue(context.classDefs.any { it.type == ADS_SETTINGS_CLASS })
         assertTrue(context.classDefs.any { it.type == "Lcom/vk/video/screens/profile/ProfileMenuFragment;" })

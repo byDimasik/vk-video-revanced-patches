@@ -127,14 +127,14 @@ class ConditionalTopShelfTest {
     private val fixtures = listOf(
         Fixture(
             name = "video topshelf block (ni0/k, 15 registers)",
-            sources = PatchTestUtil.profileMenuFixture170 + listOf(videoBlockFixture),
+            sources = PatchTestUtil.profileMenuFixture170 + listOf(videoBlockFixture, musicBlockFixture),
             fingerprint = videoTopshelfBlockFingerprint,
             expectedLayoutId = topLevelshelfLayoutId,
             expectedMethodName = "<init>",
         ),
         Fixture(
             name = "music topshelf fragment (32 registers)",
-            sources = PatchTestUtil.profileMenuFixture170 + listOf(musicBlockFixture),
+            sources = PatchTestUtil.profileMenuFixture170 + listOf(videoBlockFixture, musicBlockFixture),
             fingerprint = musicTopshelfFragmentFingerprint,
             expectedLayoutId = musicTopshelfLayoutId,
             expectedMethodName = "onCreateView",
@@ -143,6 +143,10 @@ class ConditionalTopShelfTest {
 
     private fun createContext(sources: List<String>) =
         PatchTestUtil.createBytecodeContext(*sources.toTypedArray())
+
+    /** The patch requires BOTH shelf sites; every context carries both fixtures. */
+    private fun contextWithShelves(extra: List<String> = emptyList()) =
+        createContext(PatchTestUtil.profileMenuFixture170 + listOf(videoBlockFixture, musicBlockFixture) + extra)
 
     private fun shelfInflateIndex(instructions: List<BuilderInstruction>): Int =
         instructions.indexOfFirst { instruction ->
@@ -252,7 +256,7 @@ class ConditionalTopShelfTest {
 
     @Test
     fun `collapse helper performs the runtime equivalent of the deleted resource patch`() {
-        val context = createContext(PatchTestUtil.profileMenuFixture170)
+        val context = contextWithShelves()
         applyPatches(context, conditionalTopShelfPatch)
 
         val helper = context.classDefs
@@ -298,7 +302,7 @@ class ConditionalTopShelfTest {
 
     @Test
     fun `isTopShelfAdsEnabled reads the shared AdsSettings store`() {
-        val context = createContext(PatchTestUtil.profileMenuFixture170)
+        val context = contextWithShelves()
         applyPatches(context, conditionalTopShelfPatch)
 
         val adsSettings = context.classDefs.first { it.type == ADS_SETTINGS_CLASS }

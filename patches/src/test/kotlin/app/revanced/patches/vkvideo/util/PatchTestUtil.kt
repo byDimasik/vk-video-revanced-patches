@@ -22,6 +22,9 @@ object PatchTestUtil {
         // fresh context re-matches instead of observing an earlier context's match.
         listOf(
             profileMenuItemsFingerprint,
+            app.revanced.patches.vkvideo.settings.signOutRowFingerprint,
+            app.revanced.patches.vkvideo.ad.shelf.videoTopshelfBlockFingerprint,
+            app.revanced.patches.vkvideo.ad.shelf.musicTopshelfFragmentFingerprint,
             app.revanced.patches.vkvideo.ad.video.instreamAdJsonParserFingerprint,
             app.revanced.patches.vkvideo.ad.video.videoFileInstreamAdFingerprint,
             app.revanced.patches.vkvideo.ad.video.instreamAdLoaderFingerprint,
@@ -80,7 +83,13 @@ object PatchTestUtil {
 
     fun applyPatches(context: BytecodePatchContext, vararg patches: Patch) {
         val resourceContext = createDummyResourceContext(context.getApkFile(), context.getPatchedFilesPath())
-        patches.toSet().apply(context, resourceContext) {}
+        val failed = mutableListOf<app.revanced.patcher.patch.PatchResult>()
+        patches.toSet().apply(context, resourceContext) { result ->
+            if (result.exception != null) failed += result
+        }
+        failed.forEach { failure ->
+            throw IllegalStateException("Patch failed: ${failure.patch.name}", failure.exception)
+        }
     }
 
     fun Patch.execute(context: BytecodePatchContext, resourceContext: ResourcePatchContext? = null) {
@@ -122,6 +131,8 @@ object PatchTestUtil {
 
         .field public static final ITEM_WITH_ICON:Lfixture/menu/Type;
         .field public static final PLAYER_SETTINGS:Lfixture/menu/Type;
+        .field public static final LOGOUT:Lfixture/menu/Type;
+        .field public static final LOGIN:Lfixture/menu/Type;
 
         .method static constructor <clinit>()V
             .registers 4
@@ -137,6 +148,18 @@ object PatchTestUtil {
             new-instance v2, Lfixture/menu/Type;
             invoke-direct {v2, v1, v0}, Lfixture/menu/Type;-><init>(Ljava/lang/String;I)V
             sput-object v2, Lfixture/menu/Type;->ITEM_WITH_ICON:Lfixture/menu/Type;
+
+            const/4 v0, 0x2
+            const-string v1, "LOGOUT"
+            new-instance v2, Lfixture/menu/Type;
+            invoke-direct {v2, v1, v0}, Lfixture/menu/Type;-><init>(Ljava/lang/String;I)V
+            sput-object v2, Lfixture/menu/Type;->LOGOUT:Lfixture/menu/Type;
+
+            const/4 v0, 0x3
+            const-string v1, "LOGIN"
+            new-instance v2, Lfixture/menu/Type;
+            invoke-direct {v2, v1, v0}, Lfixture/menu/Type;-><init>(Ljava/lang/String;I)V
+            sput-object v2, Lfixture/menu/Type;->LOGIN:Lfixture/menu/Type;
 
             return-void
         .end method
@@ -166,6 +189,51 @@ object PatchTestUtil {
 
             const/4 v0, 0x0
             return-object v0
+        .end method
+    """.trimIndent()
+
+    /**
+     * Mirrors `yj6/r` (1.170): the row-builder class whose Sign-out method is the
+     * only one referencing the LOGOUT menu-item type; `cm` calls it in both branches
+     * right before handing the list to the recycler.
+     */
+    private val rowsBuilderFixture = """
+        .class public final Lfixture/menu/Rows;
+        .super Ljava/lang/Object;
+
+        .field public e:Z
+
+        .method public constructor <init>()V
+            .registers 1
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .method public final g(Ljava/util/ArrayList;)V
+            .registers 7
+
+            sget-object v1, Lfixture/menu/Type;->LOGOUT:Lfixture/menu/Type;
+            invoke-virtual {v1}, Lfixture/menu/Type;->ordinal()I
+            move-result v1
+            new-instance v2, Ljava/lang/Object;
+            invoke-direct {v2}, Ljava/lang/Object;-><init>()V
+            new-instance v3, Lfixture/menu/Wrapper;
+            invoke-direct {v3, v1, v2}, Lfixture/menu/Wrapper;-><init>(ILjava/lang/Object;)V
+            invoke-virtual {p1, v3}, Ljava/util/ArrayList;->add(Ljava/lang/Object;)Z
+            return-void
+        .end method
+    """.trimIndent()
+
+    private val rowsWrapperFixture = """
+        .class public final Lfixture/menu/Wrapper;
+        .super Ljava/lang/Object;
+
+        .method public constructor <init>(ILjava/lang/Object;)V
+            .registers 3
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
         .end method
     """.trimIndent()
 
@@ -277,6 +345,11 @@ object PatchTestUtil {
             invoke-direct {v2, v1, v0}, Lz17/e${'$'}a;-><init>(ILjava/lang/Object;)V
             invoke-virtual {v7, v2}, Ljava/util/List;->add(Ljava/lang/Object;)Z
 
+            new-instance v0, Lfixture/menu/Rows;
+            invoke-direct {v0}, Lfixture/menu/Rows;-><init>()V
+            invoke-virtual {v0, v7}, Lfixture/menu/Rows;->g(Ljava/util/ArrayList;)V
+            invoke-virtual {v0, v7}, Lfixture/menu/Rows;->g(Ljava/util/ArrayList;)V
+
             const/4 v0, 0x0
             invoke-virtual {p0, v7, v0}, Lme/grishka/appkit/fragments/BaseRecyclerFragment;->nm(Ljava/util/List;Z)V
             return-void
@@ -308,6 +381,11 @@ object PatchTestUtil {
             move-object v5, p2
             invoke-virtual {v5, v2}, Ljava/util/List;->add(Ljava/lang/Object;)Z
 
+            new-instance v0, Lfixture/menu/Rows;
+            invoke-direct {v0}, Lfixture/menu/Rows;-><init>()V
+            invoke-virtual {v0, v5}, Lfixture/menu/Rows;->g(Ljava/util/ArrayList;)V
+            invoke-virtual {v0, v5}, Lfixture/menu/Rows;->g(Ljava/util/ArrayList;)V
+
             const/4 v0, 0x0
             invoke-virtual {p0, v5, v0}, Lme/grishka/appkit/fragments/BaseRecyclerFragment;->hm(Ljava/util/List;Z)V
             return-void
@@ -320,6 +398,8 @@ object PatchTestUtil {
         baseRecyclerFragmentFixture168,
         menuItemFixture168,
         menuWrapperFixture168,
+        rowsWrapperFixture,
+        rowsBuilderFixture,
         profileMenuFragmentFixture168,
     )
 
@@ -329,6 +409,8 @@ object PatchTestUtil {
         baseRecyclerFragmentFixture170,
         menuItemFixture170,
         menuWrapperFixture170,
+        rowsWrapperFixture,
+        rowsBuilderFixture,
         profileMenuFragmentFixture170,
     )
 
