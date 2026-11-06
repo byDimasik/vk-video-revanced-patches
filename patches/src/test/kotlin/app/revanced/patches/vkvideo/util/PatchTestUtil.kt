@@ -18,7 +18,19 @@ import java.nio.file.Files
 
 object PatchTestUtil {
     fun createBytecodeContext(vararg smaliSources: String): BytecodePatchContext {
-        fingerprintMatchField.set(profileMenuItemsFingerprint, null)
+        // Fingerprint matches are cached per-instance objects; reset them so each
+        // fresh context re-matches instead of observing an earlier context's match.
+        listOf(
+            profileMenuItemsFingerprint,
+            app.revanced.patches.vkvideo.ad.video.instreamAdJsonParserFingerprint,
+            app.revanced.patches.vkvideo.ad.video.videoFileInstreamAdFingerprint,
+            app.revanced.patches.vkvideo.ad.video.instreamAdLoaderFingerprint,
+            app.revanced.patches.vkvideo.ad.video.instreamAdControllerFingerprint,
+            app.revanced.patches.vkvideo.ad.feed.myTargetNativeAdEntryFingerprint,
+            app.revanced.patches.vkvideo.ad.feed.promoPostFingerprint,
+            app.revanced.patches.vkvideo.ad.catalog.catalogAdBannerSlotIdFingerprint,
+            app.revanced.patches.vkvideo.ad.catalog.catalogSectionAdBannerGetterFingerprint,
+        ).forEach { fingerprintMatchField.set(it, null) }
         val tempApk = Files.createTempFile("test-app", ".apk").toFile().apply { deleteOnExit() }
         val tempPatchedDir = Files.createTempDirectory("test-patched").toFile().apply { deleteOnExit() }
 

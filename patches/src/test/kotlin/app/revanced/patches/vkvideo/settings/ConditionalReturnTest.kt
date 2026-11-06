@@ -160,4 +160,97 @@ class ConditionalReturnTest {
         assertEquals(5, method.implementation!!.registerCount)
         assertEquals(Opcode.RETURN_VOID, instructions.last().opcode)
     }
+
+    @Test
+    fun `wide parameter occupies two slots and the whole window shifts`() {
+        val smali = """
+            .class public Lcom/example/Wide;
+            .super Ljava/lang/Object;
+
+            .method public static wide(IJ)J
+                .registers 7
+                .param p0, "x"
+                .param p1, "y"
+                .local v4, "lo":I
+
+                const/4 v4, 0x1
+                return-wide v1
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Wide;", "wide")
+
+        // (I J) -> 1 + 2 = 3 param slots; scratch = 7 - 3 = v4
+        method.prependConditionalReturn(enabledMethod, "const/4 v0, 0x0\nreturn v0")
+
+        val instructions = method.getInstructions()
+        // guard: invoke, move-result v4, if-eqz v4
+        assertEquals(4, (instructions[1] as OneRegisterInstruction).registerA)
+        assertEquals(4, (instructions[2] as OneRegisterInstruction).registerA)
+        // const/4 v4 was a local at old v4 == old scratch boundary? v4 < oldParamStart(4)? No: oldParamStart=4,
+        // so v4 was the FIRST param slot (p1 lo) and must be remapped to v5.
+        assertEquals(Opcode.CONST_4, instructions[5].opcode)
+        assertEquals(5, (instructions[5] as OneRegisterInstruction).registerA)
+        assertEquals(8, method.implementation!!.registerCount)
+    }
+
+    @Test
+    fun `12x instruction reading a parameter is remapped`() {
+        val smali = """
+            .class public Lcom/example/Twelve;
+            .super Ljava/lang/Object;
+
+            .method public static calc(I)I
+                .registers 3
+                .param p0, "a"
+
+                move-object v0, p0
+                invoke-static {v0}, Lstub/Use;->use(Ljava/lang/Object;)I
+                move-result v0
+                return v0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Twelve;", "calc")
+
+        method.prependConditionalReturn(enabledMethod, "const/4 v0, 0x0\nreturn v0")
+
+        val instructions = method.getInstructions()
+        // Static method, .registers 3: v0 local, v2 = p0 (params occupy the tail).
+        // After growth (count 4): p0 -> v3, scratch = 3-1 = v2.
+        // move-object v0, p0 becomes move-object v0, v3 (still 12x, both <= 15).
+        val move = instructions.first { it.opcode == Opcode.MOVE_OBJECT } as TwoRegisterInstruction
+        assertEquals(0, move.registerA)
+        assertEquals(3, move.registerB)
+    }
+
+    @Test
+    fun `12x instruction overflowing the nibble limit widens to 22x`() {
+        val smali = """
+            .class public Lcom/example/Nib;
+            .super Ljava/lang/Object;
+
+            .method public static calc(I)V
+                .registers 16
+                .param p0, "a"
+
+                move-object v0, p0
+                return-void
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Nib;", "calc")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        // Static method, .registers 16: v15 = p0. Growth to 17: p0 -> v16, which a
+        // 12x nibble cannot hold; the instruction widens to move-object/from16 (22x).
+        val move = instructions.first { it.opcode == Opcode.MOVE_OBJECT_FROM16 } as TwoRegisterInstruction
+        assertEquals(0, move.registerA)
+        assertEquals(16, move.registerB)
+    }
 }

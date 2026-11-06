@@ -30,9 +30,12 @@ import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35ms
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction3rc
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction3rmi
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction3rms
+import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction45cc
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction11n
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction11x
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction12x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21c
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21s
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21t
@@ -50,17 +53,32 @@ import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstructio
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction3rc
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction3rmi
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction3rms
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction45cc
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction4rcc
 
 /**
- * Parameter width in DEX register slots: one slot per declared parameter,
- * plus the implicit receiver slot for non-static methods.
+ * Parameter width in DEX register slots: `J` and `D` each occupy two slots,
+ * every other parameter occupies one, plus the implicit receiver slot for
+ * non-static methods.
  */
 internal fun parameterWidth(method: MutableMethod): Int =
-    method.parameters.size + if (method.accessFlags(AccessFlags.STATIC)) 0 else 1
+    method.parameterTypes.sumOf { if (it == "J" || it == "D") 2 else 1 } +
+        if (method.accessFlags(AccessFlags.STATIC)) 0 else 1
 
 private fun shiftRegisters(insn: Instruction, remap: (Int) -> Int): ImmutableInstruction {
     val imm = ImmutableInstruction.of(insn)
     return when (imm) {
+        is ImmutableInstruction11n -> {
+            val a = remap(imm.registerA)
+            if (a <= 15) ImmutableInstruction11n(imm.opcode, a, imm.narrowLiteral)
+            else ImmutableInstruction21s(Opcode.CONST_16, a, imm.narrowLiteral)
+        }
+        is ImmutableInstruction12x -> {
+            val a = remap(imm.registerA)
+            val b = remap(imm.registerB)
+            if (a <= 15 && b <= 15) ImmutableInstruction12x(imm.opcode, a, b)
+            else ImmutableInstruction22x(wideOpcodeOf(imm.opcode), a, b)
+        }
         is ImmutableInstruction11x -> ImmutableInstruction11x(imm.opcode, remap(imm.registerA))
         is ImmutableInstruction21t -> ImmutableInstruction21t(imm.opcode, remap(imm.registerA), imm.codeOffset)
         is ImmutableInstruction21s -> ImmutableInstruction21s(imm.opcode, remap(imm.registerA), imm.narrowLiteral)
@@ -115,6 +133,17 @@ private fun shiftRegisters(insn: Instruction, remap: (Int) -> Int): ImmutableIns
         }
         is ImmutableInstruction3rmi -> ImmutableInstruction3rmi(imm.opcode, imm.registerCount, remap(imm.startRegister), imm.inlineIndex)
         is ImmutableInstruction3rms -> ImmutableInstruction3rms(imm.opcode, imm.registerCount, remap(imm.startRegister), imm.vtableIndex)
+        is ImmutableInstruction45cc -> {
+            val regs = listOf(imm.registerC, imm.registerD, imm.registerE, imm.registerF, imm.registerG)
+                .take(imm.registerCount).map(remap)
+            if (regs.all { it <= 15 }) {
+                val padded = regs + List(5 - regs.size) { 0 }
+                ImmutableInstruction45cc(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.reference, imm.reference2)
+            } else {
+                ImmutableInstruction4rcc(imm.opcode, imm.registerCount, regs.min(), imm.reference, imm.reference2)
+            }
+        }
+        is ImmutableInstruction4rcc -> ImmutableInstruction4rcc(imm.opcode, imm.registerCount, remap(imm.startRegister), imm.reference, imm.reference2)
         else -> imm
     }
 }
@@ -123,6 +152,7 @@ private fun Instruction.usedRegisters(): List<Int> = when (this) {
     is Instruction35c -> listOf(registerC, registerD, registerE, registerF, registerG).take(registerCount)
     is Instruction35mi -> listOf(registerC, registerD, registerE, registerF, registerG).take(registerCount)
     is Instruction35ms -> listOf(registerC, registerD, registerE, registerF, registerG).take(registerCount)
+    is Instruction45cc -> listOf(registerC, registerD, registerE, registerF, registerG).take(registerCount)
     else -> emptyList()
 }
 
@@ -152,6 +182,17 @@ private val RANGE_OPCODES: Map<Opcode, Opcode> = mapOf(
 
 private fun rangeOpcodeOf(opcode: Opcode): Opcode =
     RANGE_OPCODES[opcode] ?: error("No range form for opcode $opcode")
+
+/**
+ * A remapped 12x operand can exceed the 4-bit limit; convert to the
+ * move/from16 family (Format22x), which has identical dest<-src semantics.
+ */
+private fun wideOpcodeOf(opcode: Opcode): Opcode = when (opcode) {
+    Opcode.MOVE -> Opcode.MOVE_FROM16
+    Opcode.MOVE_OBJECT -> Opcode.MOVE_OBJECT_FROM16
+    Opcode.MOVE_WIDE -> Opcode.MOVE_WIDE_FROM16
+    else -> error("No 22x equivalent for opcode $opcode")
+}
 
 private fun toRangeFormIfNeeded(insn: ImmutableInstruction): ImmutableInstruction {
     val registers = insn.usedRegisters()
