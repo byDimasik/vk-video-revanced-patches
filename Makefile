@@ -6,7 +6,7 @@ build:
 	./gradlew build
 
 test:
-	./gradlew test
+	./gradlew test $(if $(TEST_FILTER),--tests "$(TEST_FILTER)")
 
 test-e2e:
 	./gradlew -Dvkvideo.e2e=true :patches:cleanTest :patches:test --tests "app.revanced.patches.vkvideo.e2e.RealApkSmokeTest"
