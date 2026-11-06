@@ -77,8 +77,8 @@ class HideCatalogBannersPatchTest {
     private data class MenuFixture(val name: String, val sources: List<String>)
 
     private val menuFixtures = listOf(
-        MenuFixture("1.168", PatchTestUtil.profileMenuFixture),
-        MenuFixture("1.170", PatchTestUtil.profileMenuFixture170),
+        MenuFixture("1.168", PatchTestUtil.settingsScreenFixture168),
+        MenuFixture("1.170", PatchTestUtil.settingsScreenFixture170),
     )
 
     @TestFactory

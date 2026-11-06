@@ -127,14 +127,14 @@ class ConditionalTopShelfTest {
     private val fixtures = listOf(
         Fixture(
             name = "video topshelf block (ni0/k, 15 registers)",
-            sources = PatchTestUtil.profileMenuFixture170 + listOf(videoBlockFixture, musicBlockFixture),
+            sources = PatchTestUtil.settingsScreenFixture170 + listOf(videoBlockFixture, musicBlockFixture),
             fingerprint = videoTopshelfBlockFingerprint,
             expectedLayoutId = topLevelshelfLayoutId,
             expectedMethodName = "<init>",
         ),
         Fixture(
             name = "music topshelf fragment (32 registers)",
-            sources = PatchTestUtil.profileMenuFixture170 + listOf(videoBlockFixture, musicBlockFixture),
+            sources = PatchTestUtil.settingsScreenFixture170 + listOf(videoBlockFixture, musicBlockFixture),
             fingerprint = musicTopshelfFragmentFingerprint,
             expectedLayoutId = musicTopshelfLayoutId,
             expectedMethodName = "onCreateView",
@@ -146,7 +146,7 @@ class ConditionalTopShelfTest {
 
     /** The patch requires BOTH shelf sites; every context carries both fixtures. */
     private fun contextWithShelves(extra: List<String> = emptyList()) =
-        createContext(PatchTestUtil.profileMenuFixture170 + listOf(videoBlockFixture, musicBlockFixture) + extra)
+        createContext(PatchTestUtil.settingsScreenFixture170 + listOf(videoBlockFixture, musicBlockFixture) + extra)
 
     private fun shelfInflateIndex(instructions: List<BuilderInstruction>): Int =
         instructions.indexOfFirst { instruction ->

@@ -4,9 +4,6 @@ import app.revanced.patcher.extensions.ExternalLabel
 import app.revanced.patcher.extensions.addInstructionsWithLabels
 import app.revanced.patcher.patch.bytecodePatch
 import app.revanced.patches.vkvideo.settings.ADS_SETTINGS_CLASS
-import app.revanced.patches.vkvideo.settings.injectSettingsClasses
-import app.revanced.patches.vkvideo.settings.profileMenuItemsFingerprint
-import app.revanced.patches.vkvideo.settings.resolveTypes
 import app.revanced.patches.vkvideo.settings.revancedSettingsPatch
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation
@@ -35,8 +32,8 @@ val conditionalTopShelfPatch = bytecodePatch(
     dependsOn(revancedSettingsPatch)
 
     apply {
-        val types = resolveTypes(profileMenuItemsFingerprint.method.implementation!!.instructions)
-        injectSettingsClasses(this, types)
+        // AdsSettings (incl. isTopShelfAdsEnabled/collapseTopShelfView) is injected by
+        // the revancedSettingsPatch dependency.
 
         for (fingerprint in listOf(videoTopshelfBlockFingerprint, musicTopshelfFragmentFingerprint)) {
             val method = fingerprint.method

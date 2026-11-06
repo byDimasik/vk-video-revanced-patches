@@ -24,7 +24,14 @@ val revancedSettingsPatch = bytecodePatch(
         val menuMethod = profileMenuItemsFingerprint.method
         val types = resolveTypes(menuMethod.implementation!!.instructions)
 
-        injectSettingsClasses(this, types)
+        // Chrome, opener and listener-method names are resolved from the app's own
+        // code, never hardcoded (obfuscated names differ between versions).
+        val chromeMethod = toolbarChromeFingerprint.method
+        val chrome = extractToolbarChrome(classDefs.first { it.type == chromeMethod.definingClass })
+        val opener = resolveNavOpener(navOpenerFingerprint.method)
+        val switchListenerMethod = switchListenerMethodFingerprint.method.name
+
+        injectSettingsClasses(this, types, chrome, opener, switchListenerMethod)
 
         // The ReVanced entry is appended by the Sign-out row builder before it appends
         // Sign out / Login, so the entry renders directly above it in both cm(II) branches.

@@ -34,7 +34,7 @@ class ReVancedSettingsPatchTest {
     private val fixtures = listOf(
         Fixture(
             name = "1.168",
-            sources = PatchTestUtil.profileMenuFixture,
+            sources = PatchTestUtil.settingsScreenFixture168,
             recyclerMethod = "nm",
             itemClass = "Lcom/vk/video/screens/profile/adapter/holder/i\$a;",
             wrapperClass = "Lz17/e\$a;",
@@ -42,7 +42,7 @@ class ReVancedSettingsPatchTest {
         ),
         Fixture(
             name = "1.170",
-            sources = PatchTestUtil.profileMenuFixture170,
+            sources = PatchTestUtil.settingsScreenFixture170,
             recyclerMethod = "hm",
             itemClass = "Lcom/vk/video/screens/profile/adapter/holder/j\$a;",
             wrapperClass = "Lj57/e\$a;",
@@ -155,9 +155,10 @@ class ReVancedSettingsPatchTest {
         }
 
     private val expectedDescriptors = setOf(
-        "Lapp/revanced/extension/vkvideo/AdsSettings;",
+        ADS_SETTINGS_CLASS,
         "Lapp/revanced/extension/vkvideo/StartReVancedSettings;",
-        "Lapp/revanced/extension/vkvideo/ReVancedSettingsDialog;",
-        "Lapp/revanced/extension/vkvideo/ToggleListener;",
+        SETTINGS_FRAGMENT_CLASS,
+        "Lapp/revanced/extension/vkvideo/ReVancedToggleListener;",
+        "Lapp/revanced/extension/vkvideo/ReVancedBackClick;",
     )
 }
