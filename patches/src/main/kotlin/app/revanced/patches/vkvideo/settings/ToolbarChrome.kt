@@ -156,8 +156,9 @@ internal fun extractToolbarChrome(classDef: ClassDef): ToolbarChrome {
     val topBarBase = "Lcom/vk/core/view/components/topbar/VkTopBar"
     val topBarType = "${topBarBase};"
     val (topBarCtor, topBarRegs, topBarCtorIndex) = onViewCreated.findConstructor(topBarType)
-    val topBarStyleInt = onViewCreated.constFeeding(topBarCtorIndex, topBarRegs[2])
-    val topBarFlagsInt = onViewCreated.constFeeding(topBarCtorIndex, topBarRegs[3])
+    // ctor args: [receiver, Context, AttributeSet, styleInt, flagsInt]
+    val topBarStyleInt = onViewCreated.constFeeding(topBarCtorIndex, topBarRegs[3])
+    val topBarFlagsInt = onViewCreated.constFeeding(topBarCtorIndex, topBarRegs[4])
 
     val titleType = "${topBarBase}\$Middle\$Text\$Title;"
     val (titleCtor, titleRegs, titleCtorIndex) = onViewCreated.findConstructor(titleType)
