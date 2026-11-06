@@ -22,6 +22,7 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    maxHeapSize = "4g"
     systemProperty("vkvideo.e2e", System.getProperty("vkvideo.e2e") ?: System.getenv("VKVIDEO_E2E") ?: "false")
 }
 
