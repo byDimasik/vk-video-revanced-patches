@@ -2,6 +2,7 @@ package app.revanced.patches.vkvideo.util
 
 import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod
 import app.revanced.patcher.Fingerprint
+import app.revanced.patcher.apply
 import app.revanced.patcher.Match
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patcher.patch.Patch
@@ -61,6 +62,11 @@ object PatchTestUtil {
             ?: error("initializeCache method not found in ClassDefs")
         method.isAccessible = true
         method.invoke(this.classDefs)
+    }
+
+    fun applyPatches(context: BytecodePatchContext, vararg patches: Patch) {
+        val resourceContext = createDummyResourceContext(context.getApkFile(), context.getPatchedFilesPath())
+        patches.toSet().apply(context, resourceContext) {}
     }
 
     fun Patch.execute(context: BytecodePatchContext, resourceContext: ResourcePatchContext? = null) {
