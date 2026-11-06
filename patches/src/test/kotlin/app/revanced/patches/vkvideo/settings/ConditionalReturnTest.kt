@@ -392,6 +392,62 @@ class ConditionalReturnTest {
     }
 
     @Test
+    fun `descending overflow invoke operands are spilled instead of widened`() {
+        // Remapped operands {v16, v15} (receiver p0 -> v16, arg p1 -> v15) are
+        // 'contiguous' by max-min+1 but DESCENDING: a range form starting at v15
+        // would read (v15, v16) and swap the argument order. The invoke must be
+        // spilled with order-preserving gather moves, not widened directly.
+        val smali = """
+            .class public Lcom/example/Swapper;
+            .super Ljava/lang/Object;
+
+            .method public swap(Lcom/example/A;)V
+                .registers 16
+                .param p1, "a"
+
+                invoke-virtual {v15, v14}, Lcom/example/A;->use(Lcom/example/B;)V
+                return-void
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Swapper;", "swap")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        // paramWidth = receiver + 1 param = 2; K = 2 spill slots.
+        // newCount = 16 + 2 + 1 + 2 = 21; block = v19..v20 (top of frame).
+        assertEquals(21, method.implementation!!.registerCount)
+
+        // Guard scratch = oldCount - paramWidth = v14.
+        assertEquals(Opcode.INVOKE_STATIC, instructions[0].opcode)
+        assertEquals(14, (instructions[1] as OneRegisterInstruction).registerA)
+        assertEquals(14, (instructions[2] as OneRegisterInstruction).registerA)
+
+        // Body starts at index 4 (guard + fallback return-void). Two gather
+        // moves in OPERAND order: v19 <- v16 (receiver), then v20 <- v15 (arg).
+        val moves = instructions.drop(4).take(2).map { it as TwoRegisterInstruction }
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, moves[0].opcode)
+        assertEquals(19 to 16, moves[0].registerA to moves[0].registerB)
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, moves[1].opcode)
+        assertEquals(20 to 15, moves[1].registerA to moves[1].registerB)
+
+        // The invoke is a range form against the spill block, NOT {v15..v16}.
+        val invoke = instructions[6] as Instruction3rc
+        assertEquals(Opcode.INVOKE_VIRTUAL_RANGE, invoke.opcode)
+        assertEquals(19, invoke.startRegister)
+        assertEquals(2, invoke.registerCount)
+        (invoke.reference as MethodReference).let {
+            assertEquals("Lcom/example/A;", it.definingClass)
+            assertEquals("use", it.name)
+        }
+
+        assertEquals(Opcode.RETURN_VOID, instructions[7].opcode)
+        assertEquals(8, instructions.size)
+    }
+
+    @Test
     fun `scattered overflow invoke is spilled into a contiguous range block`() {
         // Replicates qo.w0.g: non-static, 2 object params, .registers 16. The
         // invoke's operands {v0,v1,v2,v14,v15} remap to {v0,v1,v2,v15,v16} —

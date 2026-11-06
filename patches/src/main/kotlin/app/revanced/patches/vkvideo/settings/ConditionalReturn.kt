@@ -135,7 +135,8 @@ private sealed interface InvokeRemap {
     /** All remapped operands still fit the 4-bit nibble fields. */
     data class Fits(val regs: List<Int>) : InvokeRemap
 
-    /** Remapped operands overflow v15 but are contiguous: widen to the range form. */
+    /** Remapped operands overflow v15 but are exactly ascending-contiguous:
+     * widen to the range form. */
     data class Range(val start: Int) : InvokeRemap
 
     /**
@@ -150,7 +151,12 @@ private fun classifyInvoke(insn: FiveRegisterInstruction, remap: (Int) -> Int): 
     val regs = operandRegisters(insn).map(remap)
     return when {
         regs.all { it <= 15 } -> InvokeRemap.Fits(regs)
-        regs.max() - regs.min() + 1 == insn.registerCount -> InvokeRemap.Range(regs.min())
+        // A range form reads (start, start+1, ...) in ascending slot order, so
+        // widening is only legal when the remapped operand list is EXACTLY
+        // ascending-contiguous. A descending list like {v16, v15} passes the
+        // old max-min+1 check but would swap the argument semantics; it (and
+        // any gapped list) must go through the order-preserving spill path.
+        regs.indices.all { regs[it] == regs.min() + it } -> InvokeRemap.Range(regs.min())
         else -> InvokeRemap.Spill(regs)
     }
 }
@@ -345,7 +351,8 @@ private fun applySpills(
  *
  * Widened 4-bit invoke operands are rebuilt in range form — `3rc`/`4rcc`
  * constructors take `(opcode, startRegister, registerCount, ...)` — but only
- * when the remapped operands are contiguous (`max - min + 1 == registerCount`).
+ * when the remapped operands are exactly ascending-contiguous
+ * (`regs[i] == regs.min() + i` for every i; a descending operand order would
  * Non-contiguous overflow invokes are spilled: gather moves copy each operand,
  * in argument order, into a fresh contiguous scratch block at the top of the
  * grown frame, and the invoke is rewritten as a range form against that block.
