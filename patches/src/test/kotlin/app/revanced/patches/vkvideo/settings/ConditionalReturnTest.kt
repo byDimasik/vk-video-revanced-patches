@@ -10,6 +10,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstructio
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21t
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
+import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction3rc
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -308,5 +309,152 @@ class ConditionalReturnTest {
         val move = instructions.first { it.opcode == Opcode.MOVE_OBJECT_FROM16 } as TwoRegisterInstruction
         assertEquals(0, move.registerA)
         assertEquals(16, move.registerB)
+    }
+
+    @Test
+    fun `contiguous overflow invoke widens to a correct range form`() {
+        // Remapped operands {v15, v16} overflow the 4-bit fields but are
+        // contiguous, so the invoke widens to invoke-virtual/range with
+        // startRegister = 15, registerCount = 2 (ctor order: start, count).
+        val smali = """
+            .class public Lcom/example/Appender;
+            .super Ljava/lang/Object;
+
+            .method public build(Ljava/lang/StringBuilder;)V
+                .registers 16
+                .param p1, "sb"
+
+                const-string v0, "x"
+                invoke-virtual {v14, v15}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+                return-void
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Appender;", "build")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        // Guard scratch = 16 - (receiver + 1 param) = v14; frame grows by 1.
+        assertEquals(14, (instructions[1] as OneRegisterInstruction).registerA)
+        assertEquals(17, method.implementation!!.registerCount)
+
+        // Body: const-string v0, widened invoke, return-void.
+        assertEquals(Opcode.CONST_STRING, instructions[4].opcode)
+        val invoke = instructions[5] as Instruction3rc
+        assertEquals(Opcode.INVOKE_VIRTUAL_RANGE, invoke.opcode)
+        assertEquals(15, invoke.startRegister)
+        assertEquals(2, invoke.registerCount)
+        invoke.reference.let {
+            it as MethodReference
+            assertEquals("Ljava/lang/StringBuilder;", it.definingClass)
+            assertEquals("append", it.name)
+        }
+        assertEquals(Opcode.RETURN_VOID, instructions[6].opcode)
+    }
+
+    @Test
+    fun `single-register overflow invoke widens to a one-register range`() {
+        // {v15} remaps to {v16}: one register above the nibble limit, trivially
+        // contiguous, so it widens to invoke-virtual/range {v16}.
+        val smali = """
+            .class public Lcom/example/Thrower;
+            .super Ljava/lang/Object;
+
+            .method public describe(Ljava/lang/Throwable;)Ljava/lang/String;
+                .registers 16
+                .param p1, "t"
+
+                invoke-virtual {v15}, Ljava/lang/Throwable;->getMessage()Ljava/lang/String;
+                move-result-object v0
+                return-object v0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Thrower;", "describe")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        assertEquals(17, method.implementation!!.registerCount)
+
+        // Body: widened invoke at index 4, move-result-object, return-object.
+        val invoke = instructions[4] as Instruction3rc
+        assertEquals(Opcode.INVOKE_VIRTUAL_RANGE, invoke.opcode)
+        assertEquals(16, invoke.startRegister)
+        assertEquals(1, invoke.registerCount)
+        (invoke.reference as MethodReference).let {
+            assertEquals("Ljava/lang/Throwable;", it.definingClass)
+            assertEquals("getMessage", it.name)
+        }
+    }
+
+    @Test
+    fun `scattered overflow invoke is spilled into a contiguous range block`() {
+        // Replicates qo.w0.g: non-static, 2 object params, .registers 16. The
+        // invoke's operands {v0,v1,v2,v14,v15} remap to {v0,v1,v2,v15,v16} —
+        // overflowing v15 but NOT contiguous, so no legal range form exists.
+        // The operands must be gathered, in argument order, into a fresh
+        // contiguous scratch block at the top of the grown frame, and the
+        // invoke rewritten as a range form against the block.
+        val smali = """
+            .class public Lqo/w0;
+            .super Ljava/lang/Object;
+
+            .method public g(Lqo/k;Lqo/hb;)V
+                .registers 16
+
+                const/4 v0, 0x0
+                const/4 v1, 0x1
+                const/4 v2, 0x2
+                invoke-static {v0, v1, v2, v14, v15}, Lg0/a;->a(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V
+                return-void
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lqo/w0;", "g")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        // paramWidth = receiver + 2 params = 3; K = 5 spill slots.
+        // newCount = 16 + 3 + 1 + 5 = 25; block = v20..v24 (top of frame).
+        assertEquals(25, method.implementation!!.registerCount)
+
+        // Guard scratch stays at oldCount - paramWidth = v13.
+        assertEquals(Opcode.INVOKE_STATIC, instructions[0].opcode)
+        assertEquals(13, (instructions[1] as OneRegisterInstruction).registerA)
+        assertEquals(13, (instructions[2] as OneRegisterInstruction).registerA)
+
+        // Body: 3 const, then the spill moves (5) directly before the invoke,
+        // then return-void. Guard = 4 instructions, so body starts at 4.
+        assertEquals(Opcode.CONST_4, instructions[4].opcode)
+        assertEquals(Opcode.CONST_4, instructions[5].opcode)
+        assertEquals(Opcode.CONST_4, instructions[6].opcode)
+
+        val moves = instructions.drop(7).take(5).map { it as TwoRegisterInstruction }
+        assertEquals(5, moves.size)
+        moves.forEach { assertEquals(Opcode.MOVE_OBJECT_FROM16, it.opcode) }
+        // Argument order preserved: block regs 20..24 gather v0,v1,v2,v15,v16.
+        assertEquals(20 to 0, moves[0].registerA to moves[0].registerB)
+        assertEquals(21 to 1, moves[1].registerA to moves[1].registerB)
+        assertEquals(22 to 2, moves[2].registerA to moves[2].registerB)
+        assertEquals(23 to 15, moves[3].registerA to moves[3].registerB)
+        assertEquals(24 to 16, moves[4].registerA to moves[4].registerB)
+
+        val invoke = instructions[12] as Instruction3rc
+        assertEquals(Opcode.INVOKE_STATIC_RANGE, invoke.opcode)
+        assertEquals(20, invoke.startRegister)
+        assertEquals(5, invoke.registerCount)
+        (invoke.reference as MethodReference).let {
+            assertEquals("Lg0/a;", it.definingClass)
+            assertEquals("a", it.name)
+        }
+
+        assertEquals(Opcode.RETURN_VOID, instructions[13].opcode)
+        assertEquals(14, instructions.size)
     }
 }
