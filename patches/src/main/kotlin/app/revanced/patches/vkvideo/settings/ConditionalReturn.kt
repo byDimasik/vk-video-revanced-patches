@@ -239,9 +239,9 @@ internal fun MutableMethod.prependConditionalReturn(enabledMethod: String, fallb
             when (insn) {
                 // Range forms are contiguous: move the whole window up one slot.
                 is RegisterRangeInstruction -> shiftRegisters(insn) { it + 1 }
-                // Five-register forms are contiguous too, even when the window
-                // covers only their tail; shift every operand to keep them so.
-                is FiveRegisterInstruction -> shiftRegisters(insn) { it + 1 }
+                // Everything else (incl. 35c-family invokes) uses independent
+                // register operands, not a contiguous range: remap each
+                // register conditionally — only window registers shift +1.
                 else -> shiftRegisters(insn) { if (it >= oldParamStart) it + 1 else it }
             }
         } else {

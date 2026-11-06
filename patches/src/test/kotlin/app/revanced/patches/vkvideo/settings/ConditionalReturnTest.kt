@@ -196,6 +196,62 @@ class ConditionalReturnTest {
     }
 
     @Test
+    fun `35c invoke arg below the window stays in sync with its const-string writer`() {
+        // Replicates com.vk.dto.common.InstreamAd$b.a(Lorg/json/JSONObject;)Z:
+        // instance method, 1 object param, .registers 15 (v13 = p0, v14 = p1),
+        // invoke-virtual with the receiver inside the param window and a String
+        // arg BELOW the window written by const-string. Regression test for the
+        // ART VerifyError where the whole 35c operand set was shifted +1 while
+        // the const-string writer was not, leaving the invoke reading an
+        // Undefined register.
+        val smali = """
+            .class public Lcom/example/Json;
+            .super Ljava/lang/Object;
+
+            .method public a(Lorg/json/JSONObject;)Z
+                .registers 15
+
+                const-string v0, "slot_id"
+                invoke-virtual {v14, v0}, Lorg/json/JSONObject;->optInt(Ljava/lang/String;)I
+                move-result v1
+                if-lez v1, :cond_0
+                const/4 v2, 0x1
+                return v2
+                :cond_0
+                const/4 v2, 0x0
+                return v2
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Json;", "a")
+
+        method.prependConditionalReturn(enabledMethod, "const/4 v0, 0x0\nreturn v0")
+
+        val instructions = method.getInstructions()
+        // Guard: invoke-static, move-result v13, if-eqz v13 (scratch = 15 - 2).
+        assertEquals(Opcode.INVOKE_STATIC, instructions[0].opcode)
+        assertEquals(13, (instructions[1] as OneRegisterInstruction).registerA)
+        assertEquals(13, (instructions[2] as OneRegisterInstruction).registerA)
+
+        // Original body starts at index 5 (guard = 5 instructions).
+        // const-string arg register is a local below the window: unchanged at v0.
+        assertEquals(Opcode.CONST_STRING, instructions[5].opcode)
+        assertEquals(0, (instructions[5] as OneRegisterInstruction).registerA)
+
+        // invoke-virtual stays a 35c: receiver v14 (p1) shifts +1 -> v15, while
+        // the out-of-window arg register v0 must NOT shift — the same register
+        // the preceding const-string writes.
+        val invoke = instructions[6] as Instruction35c
+        assertEquals(Opcode.INVOKE_VIRTUAL, invoke.opcode)
+        assertEquals(2, invoke.registerCount)
+        assertEquals(15, invoke.registerC)
+        assertEquals((instructions[5] as OneRegisterInstruction).registerA, invoke.registerD)
+
+        assertEquals(16, method.implementation!!.registerCount)
+    }
+
+    @Test
     fun `12x instruction reading a parameter is remapped`() {
         val smali = """
             .class public Lcom/example/Twelve;
