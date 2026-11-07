@@ -15,3 +15,9 @@ Always use the /caveman skill from skills/caveman/SKILL.md
 - Target ReVanced Patcher v22.0.1 Kotlin DSL (`bytecodePatch`, `resourcePatch`, `fingerprint`).
 - Target APK `com.vk.vkvideo` is cached in `.cache/` via `make fetch-apk` and tracked in `version.mk`.
 - Never commit `.apk`, `.dex`, `.rvp`, or raw decompiled `.smali` trees to git.
+
+## 4. Injected-Smali Rules (hard-won, device-verified)
+- Growing a method's register frame moves the incoming-argument window: DEX places arguments in the LAST `paramWidth` registers of the frame, so ANY registerCount growth must remap the parameter window (+1 per grown slot) — `growFrameWithScratch`/`prependConditionalReturn` do this. Appending registers without remapping reads every parameter one register low (ART `Undefined` VerifyError; JVM tests cannot catch it).
+- R8 does not retain `kotlin/Unit` in this app — injected `Function0`/`Function1` callbacks must end `const/4 v0, 0x0` + `return-object v0`, never `sget-object Lkotlin/Unit;` (device crash: `NoClassDefFoundError: Lkotlin/Unit;`).
+- Field opcodes (`iget-object`, `iput*`) are format 22c — 4-bit registers, no `/range` form. Scratch logic that touches fields must live in an injected helper class, not in appended high-register blocks.
+- Check `logcat -b crash` after EVERY interaction on device, not only after cold start — a tap-triggered crash (e.g. the Unit case above) otherwise masquerades as a navigation bug.

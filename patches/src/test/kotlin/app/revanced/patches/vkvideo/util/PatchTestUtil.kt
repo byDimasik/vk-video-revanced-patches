@@ -22,6 +22,12 @@ object PatchTestUtil {
         // fresh context re-matches instead of observing an earlier context's match.
         listOf(
             profileMenuItemsFingerprint,
+            app.revanced.patches.vkvideo.settings.signOutRowFingerprint,
+            app.revanced.patches.vkvideo.settings.navOpenerFingerprint,
+            app.revanced.patches.vkvideo.settings.switchListenerMethodFingerprint,
+            app.revanced.patches.vkvideo.settings.toolbarChromeFingerprint,
+            app.revanced.patches.vkvideo.ad.shelf.videoTopshelfBlockFingerprint,
+            app.revanced.patches.vkvideo.ad.shelf.musicTopshelfFragmentFingerprint,
             app.revanced.patches.vkvideo.ad.video.instreamAdJsonParserFingerprint,
             app.revanced.patches.vkvideo.ad.video.videoFileInstreamAdFingerprint,
             app.revanced.patches.vkvideo.ad.video.instreamAdLoaderFingerprint,
@@ -80,7 +86,13 @@ object PatchTestUtil {
 
     fun applyPatches(context: BytecodePatchContext, vararg patches: Patch) {
         val resourceContext = createDummyResourceContext(context.getApkFile(), context.getPatchedFilesPath())
-        patches.toSet().apply(context, resourceContext) {}
+        val failed = mutableListOf<app.revanced.patcher.patch.PatchResult>()
+        patches.toSet().apply(context, resourceContext) { result ->
+            if (result.exception != null) failed += result
+        }
+        failed.forEach { failure ->
+            throw IllegalStateException("Patch failed: ${failure.patch.name}", failure.exception)
+        }
     }
 
     fun Patch.execute(context: BytecodePatchContext, resourceContext: ResourcePatchContext? = null) {
@@ -122,6 +134,8 @@ object PatchTestUtil {
 
         .field public static final ITEM_WITH_ICON:Lfixture/menu/Type;
         .field public static final PLAYER_SETTINGS:Lfixture/menu/Type;
+        .field public static final LOGOUT:Lfixture/menu/Type;
+        .field public static final LOGIN:Lfixture/menu/Type;
 
         .method static constructor <clinit>()V
             .registers 4
@@ -137,6 +151,18 @@ object PatchTestUtil {
             new-instance v2, Lfixture/menu/Type;
             invoke-direct {v2, v1, v0}, Lfixture/menu/Type;-><init>(Ljava/lang/String;I)V
             sput-object v2, Lfixture/menu/Type;->ITEM_WITH_ICON:Lfixture/menu/Type;
+
+            const/4 v0, 0x2
+            const-string v1, "LOGOUT"
+            new-instance v2, Lfixture/menu/Type;
+            invoke-direct {v2, v1, v0}, Lfixture/menu/Type;-><init>(Ljava/lang/String;I)V
+            sput-object v2, Lfixture/menu/Type;->LOGOUT:Lfixture/menu/Type;
+
+            const/4 v0, 0x3
+            const-string v1, "LOGIN"
+            new-instance v2, Lfixture/menu/Type;
+            invoke-direct {v2, v1, v0}, Lfixture/menu/Type;-><init>(Ljava/lang/String;I)V
+            sput-object v2, Lfixture/menu/Type;->LOGIN:Lfixture/menu/Type;
 
             return-void
         .end method
@@ -166,6 +192,51 @@ object PatchTestUtil {
 
             const/4 v0, 0x0
             return-object v0
+        .end method
+    """.trimIndent()
+
+    /**
+     * Mirrors `yj6/r` (1.170): the row-builder class whose Sign-out method is the
+     * only one referencing the LOGOUT menu-item type; `cm` calls it in both branches
+     * right before handing the list to the recycler.
+     */
+    private val rowsBuilderFixture = """
+        .class public final Lfixture/menu/Rows;
+        .super Ljava/lang/Object;
+
+        .field public e:Z
+
+        .method public constructor <init>()V
+            .registers 1
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .method public final g(Ljava/util/ArrayList;)V
+            .registers 7
+
+            sget-object v1, Lcom/vk/video/screens/profile/adapter/ProfileMenuItemType;->LOGOUT:Lcom/vk/video/screens/profile/adapter/ProfileMenuItemType;
+            invoke-virtual {v1}, Lfixture/menu/Type;->ordinal()I
+            move-result v1
+            new-instance v2, Ljava/lang/Object;
+            invoke-direct {v2}, Ljava/lang/Object;-><init>()V
+            new-instance v3, Lfixture/menu/Wrapper;
+            invoke-direct {v3, v1, v2}, Lfixture/menu/Wrapper;-><init>(ILjava/lang/Object;)V
+            invoke-virtual {p1, v3}, Ljava/util/ArrayList;->add(Ljava/lang/Object;)Z
+            return-void
+        .end method
+    """.trimIndent()
+
+    private val rowsWrapperFixture = """
+        .class public final Lfixture/menu/Wrapper;
+        .super Ljava/lang/Object;
+
+        .method public constructor <init>(ILjava/lang/Object;)V
+            .registers 3
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
         .end method
     """.trimIndent()
 
@@ -277,6 +348,11 @@ object PatchTestUtil {
             invoke-direct {v2, v1, v0}, Lz17/e${'$'}a;-><init>(ILjava/lang/Object;)V
             invoke-virtual {v7, v2}, Ljava/util/List;->add(Ljava/lang/Object;)Z
 
+            new-instance v0, Lfixture/menu/Rows;
+            invoke-direct {v0}, Lfixture/menu/Rows;-><init>()V
+            invoke-virtual {v0, v7}, Lfixture/menu/Rows;->g(Ljava/util/ArrayList;)V
+            invoke-virtual {v0, v7}, Lfixture/menu/Rows;->g(Ljava/util/ArrayList;)V
+
             const/4 v0, 0x0
             invoke-virtual {p0, v7, v0}, Lme/grishka/appkit/fragments/BaseRecyclerFragment;->nm(Ljava/util/List;Z)V
             return-void
@@ -308,6 +384,11 @@ object PatchTestUtil {
             move-object v5, p2
             invoke-virtual {v5, v2}, Ljava/util/List;->add(Ljava/lang/Object;)Z
 
+            new-instance v0, Lfixture/menu/Rows;
+            invoke-direct {v0}, Lfixture/menu/Rows;-><init>()V
+            invoke-virtual {v0, v5}, Lfixture/menu/Rows;->g(Ljava/util/ArrayList;)V
+            invoke-virtual {v0, v5}, Lfixture/menu/Rows;->g(Ljava/util/ArrayList;)V
+
             const/4 v0, 0x0
             invoke-virtual {p0, v5, v0}, Lme/grishka/appkit/fragments/BaseRecyclerFragment;->hm(Ljava/util/List;Z)V
             return-void
@@ -320,6 +401,8 @@ object PatchTestUtil {
         baseRecyclerFragmentFixture168,
         menuItemFixture168,
         menuWrapperFixture168,
+        rowsWrapperFixture,
+        rowsBuilderFixture,
         profileMenuFragmentFixture168,
     )
 
@@ -329,7 +412,224 @@ object PatchTestUtil {
         baseRecyclerFragmentFixture170,
         menuItemFixture170,
         menuWrapperFixture170,
+        rowsWrapperFixture,
+        rowsBuilderFixture,
         profileMenuFragmentFixture170,
     )
+
+    /** `VkSwitchItem$a` — the switch-row listener interface (1.170 shape). */
+    private val switchListenerInterfaceFixture = """
+        .class public interface abstract Lcom/vk/core/view/components/switch/VkSwitchItem${'$'}a;
+        .super Ljava/lang/Object;
+
+        .method public abstract b(Z)V
+        .end method
+    """.trimIndent()
+
+    /** `MaterialPreferenceToolbarFragment` — the chrome transcription source (1.170 shape). */
+    private val toolbarChromeFragmentFixture = """
+        .class public abstract Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;
+        .super Lcom/vk/prefui/fragments/MaterialPreferenceFragment;
+
+        .method public constructor <init>()V
+            .registers 1
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .method public final onCreateView(Landroid/view/LayoutInflater;Landroid/view/ViewGroup;Landroid/os/Bundle;)Landroid/view/View;
+            .registers 8
+
+            invoke-super {p0, p1, p2, p3}, Lcom/vk/prefui/fragments/MaterialPreferenceFragment;->onCreateView(Landroid/view/LayoutInflater;Landroid/view/ViewGroup;Landroid/os/Bundle;)Landroid/view/View;
+            move-result-object p3
+
+            const v0, 0x7f0e0062
+            const/4 v1, 0x0
+            invoke-virtual {p1, v0, p2, v1}, Landroid/view/LayoutInflater;->inflate(ILandroid/view/ViewGroup;Z)Landroid/view/View;
+            move-result-object p1
+
+            const p2, 0x7f0b01a0
+            invoke-virtual {p1, p2}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+            move-result-object p2
+            check-cast p2, Landroid/view/ViewGroup;
+            invoke-virtual {p2, p3}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
+
+            const p2, 0x7f0b270c
+            invoke-virtual {p1, p2}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+            move-result-object p2
+            check-cast p2, Landroidx/appcompat/widget/Toolbar;
+            if-eqz p2, :cond_revanced_t
+            invoke-static {p2}, Lty1/i0;->m(Landroid/view/View;)V
+            :cond_revanced_t
+
+            const p2, 0x7f0b2292
+            invoke-virtual {p1, p2}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+            move-result-object p2
+            check-cast p2, Lcom/vk/core/view/AppBarShadowView;
+            if-eqz p2, :cond_revanced_s
+            invoke-static {p2}, Lty1/i0;->m(Landroid/view/View;)V
+            :cond_revanced_s
+
+            return-object p1
+        .end method
+
+        .method public final onViewCreated(Landroid/view/View;Landroid/os/Bundle;)V
+            .registers 15
+
+            invoke-super {p0, p1, p2}, Lcom/vk/prefui/fragments/MaterialPreferenceFragment;->onViewCreated(Landroid/view/View;Landroid/os/Bundle;)V
+
+            new-instance p1, Lcom/vk/core/view/components/topbar/VkTopBar;
+            invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->requireContext()Landroid/content/Context;
+            move-result-object p2
+            const/4 v0, 0x6
+            const/4 v1, 0x0
+            const/4 v2, 0x0
+            invoke-direct {p1, p2, v2, v0, v1}, Lcom/vk/core/view/components/topbar/VkTopBar;-><init>(Landroid/content/Context;Landroid/util/AttributeSet;II)V
+
+            new-instance v3, Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text;
+            new-instance v4, Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text${'$'}Title;
+            const-string v5, "title"
+            const/4 v8, 0x0
+            const/16 v9, 0x1e
+            const/4 v6, 0x0
+            const/4 v7, 0x0
+            invoke-direct/range {v4 .. v9}, Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text${'$'}Title;-><init>(Ljava/lang/String;Li12/o;Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text${'$'}Title${'$'}a${'$'}a;Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text${'$'}Title${'$'}Size;I)V
+
+            const/16 v8, 0xe
+            const/4 v5, 0x0
+            invoke-direct/range {v3 .. v8}, Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text;-><init>(Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text${'$'}Title;Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text${'$'}c;Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text${'$'}a${'$'}b;Lcom/vk/core/compose/component/semantics/SemanticsConfiguration;I)V
+
+            invoke-virtual {p1, v3}, Lcom/vk/core/view/components/topbar/VkTopBar;->setMiddle(Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle;)V
+
+            new-instance v4, Lcom/vk/core/view/components/topbar/VkTopBar${'$'}c;
+            sget-object v0, Lpx1/a;->Companion:Lpx1/a${'$'}a;
+            const v1, 0x7f140052
+            invoke-static {v0, v1}, Landroidx/media3/exoplayer/hls/v;->d(Lpx1/a${'$'}a;I)Lpx1/a${'$'}f;
+            move-result-object v6
+            const/4 v8, 0x0
+            const/16 v9, 0x1c
+            const/4 v7, 0x0
+            const/4 v5, 0x0
+            invoke-direct/range {v4 .. v9}, Lcom/vk/core/view/components/topbar/VkTopBar${'$'}c;-><init>(Lkotlin/jvm/functions/Function0;Lpx1/a;Lp72/e;Lcom/vk/core/compose/component/semantics/a;I)V
+
+            invoke-virtual {p1, v4}, Lcom/vk/core/view/components/topbar/VkTopBar;->setBack(Lcom/vk/core/view/components/topbar/VkTopBar${'$'}c;)V
+
+            invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->getView()Landroid/view/View;
+            move-result-object v0
+            if-eqz v0, :cond_revanced_a
+            const v1, 0x7f0b0191
+            invoke-virtual {v0, v1}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+            move-result-object v0
+            check-cast v0, Landroid/view/ViewGroup;
+            if-eqz v0, :cond_revanced_a
+            invoke-virtual {v0, p1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
+            :cond_revanced_a
+
+            invoke-static {p0, p1}, Lg57/a;->f(Lcom/vk/core/fragments/FragmentImpl;Lcom/vk/core/view/components/topbar/VkTopBar;)Z
+            move-result v0
+            if-eqz v0, :cond_revanced_b
+            const/4 v2, 0x0
+            invoke-virtual {p1, v2}, Lcom/vk/core/view/components/topbar/VkTopBar;->setBefore(Lcom/vk/core/view/components/topbar/VkTopBar${'$'}d;)V
+            :cond_revanced_b
+
+            return-void
+        .end method
+    """.trimIndent()
+
+    /** `g57/a` — the fragment-chrome helper carrying the toolbar-back dispatch. */
+    private val chromeHelperFixture = """
+        .class public final Lg57/a;
+        .super Ljava/lang/Object;
+
+        .method public constructor <init>()V
+            .registers 1
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .method public static final a(Lcom/vk/core/fragments/FragmentImpl;)Z
+            .registers 2
+
+            const/4 v0, 0x1
+            return v0
+        .end method
+
+        .method public static final b(Lcom/vk/core/fragments/FragmentImpl;)V
+            .registers 2
+
+            return-void
+        .end method
+
+        .method public static final f(Lcom/vk/core/fragments/FragmentImpl;Lcom/vk/core/view/components/topbar/VkTopBar;)Z
+            .registers 3
+
+            const/4 v0, 0x0
+            return v0
+        .end method
+    """.trimIndent()
+
+    /** The General-settings click lambda shape (1.170: `oi5/d`) opening via `o54/r`. */
+    private val navOpenerCallFixture = """
+        .class public final Lfixture/menu/OpenerUser;
+        .super Ljava/lang/Object;
+
+        .method public click(Landroid/content/Context;)V
+            .registers 5
+
+            new-instance v0, Lfixture/menu/NavSub;
+            const-class v1, Lcom/vk/video/screens/settings/main/ui/VideoUserSettingsFragment;
+            const/4 v2, 0x0
+            const/4 v3, 0x0
+            invoke-direct {v0, v1, v2, v3}, Lfixture/menu/Nav;-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
+            invoke-virtual {v0, p1}, Lfixture/menu/Nav;->h(Landroid/content/Context;)V
+            return-void
+        .end method
+    """.trimIndent()
+
+    private val navOpenerSubclassFixture = """
+        .class public final Lfixture/menu/NavSub;
+        .super Lfixture/menu/Nav;
+
+        .method public constructor <init>()V
+            .registers 1
+
+            invoke-direct {p0}, Lfixture/menu/Nav;-><init>()V
+            return-void
+        .end method
+    """.trimIndent()
+
+    private val navOpenerClassFixture = """
+        .class public final Lfixture/menu/Nav;
+        .super Ljava/lang/Object;
+
+        .method public constructor <init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
+            .registers 4
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .method public final h(Landroid/content/Context;)V
+            .registers 2
+
+            return-void
+        .end method
+    """.trimIndent()
+
+    /** Fixture sets covering every fingerprint the settings patch resolves. */
+    private val settingsExtras: List<String> = listOf(
+        switchListenerInterfaceFixture,
+        toolbarChromeFragmentFixture,
+        chromeHelperFixture,
+        navOpenerCallFixture,
+        navOpenerClassFixture,
+        navOpenerSubclassFixture,
+    )
+
+    val settingsScreenFixture168: List<String> = profileMenuFixture + settingsExtras
+
+    val settingsScreenFixture170: List<String> = profileMenuFixture170 + settingsExtras
 
 }

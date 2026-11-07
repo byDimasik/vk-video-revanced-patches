@@ -1,14 +1,15 @@
 package app.revanced.patches.vkvideo.e2e
 
 import app.revanced.patcher.patch.BytecodePatchContext
-import app.revanced.patcher.patch.ResourcePatchContext
 import app.revanced.patches.vkvideo.ad.catalog.catalogAdBannerSlotIdFingerprint
 import app.revanced.patches.vkvideo.ad.catalog.catalogSectionAdBannerGetterFingerprint
 import app.revanced.patches.vkvideo.ad.catalog.hideCatalogBannersPatch
 import app.revanced.patches.vkvideo.ad.feed.hideFeedAdsPatch
 import app.revanced.patches.vkvideo.ad.feed.myTargetNativeAdEntryFingerprint
 import app.revanced.patches.vkvideo.ad.feed.promoPostFingerprint
-import app.revanced.patches.vkvideo.ad.shelf.suppressTopShelfPatch
+import app.revanced.patches.vkvideo.ad.shelf.conditionalTopShelfPatch
+import app.revanced.patches.vkvideo.ad.shelf.musicTopshelfFragmentFingerprint
+import app.revanced.patches.vkvideo.ad.shelf.videoTopshelfBlockFingerprint
 import app.revanced.patches.vkvideo.ad.video.disableVideoAdsPatch
 import app.revanced.patches.vkvideo.ad.video.instreamAdControllerFingerprint
 import app.revanced.patches.vkvideo.ad.video.instreamAdJsonParserFingerprint
@@ -80,12 +81,6 @@ class RealApkSmokeTest {
         }
         bytecodeContext.initializeCache()
 
-        val resConstructor = ResourcePatchContext::class.java.declaredConstructors.first()
-        resConstructor.isAccessible = true
-        val frameworkDir = System.getenv("APKTOOL_FRAMEWORK_DIR")
-        val resourceContext =
-            resConstructor.newInstance(realApk, tempPatchedDir, tempPatchedDir, null, frameworkDir) as ResourcePatchContext
-
         val adPatches = listOf(disableVideoAdsPatch, hideFeedAdsPatch, hideCatalogBannersPatch)
         for (patch in adPatches) {
             assertTrue(
@@ -94,7 +89,7 @@ class RealApkSmokeTest {
             )
         }
 
-        applyPatches(bytecodeContext, *adPatches.toTypedArray())
+        applyPatches(bytecodeContext, *(adPatches + conditionalTopShelfPatch).toTypedArray())
 
         for (classDef in bytecodeContext.classDefs) {
             for (m in classDef.methods) {
@@ -104,6 +99,19 @@ class RealApkSmokeTest {
                 }
                 if (hit != null) System.err.println("GETTERHIT ${classDef.type}->${m.name}${m.parameterTypes} idx=${hit.index} count=${m.implementation!!.instructions.toList().size}")
             }
+        }
+
+        // Runtime top-shelf conditional: both shelf sites matched, collapse block appended,
+        // AdsSettings injected (asserted below).
+        for (fingerprint in listOf(videoTopshelfBlockFingerprint, musicTopshelfFragmentFingerprint)) {
+            val shelfMethod = fingerprint.getMethod(bytecodeContext)
+            val insns = shelfMethod.getInstructions()
+            val guardIndex = insns.indexOfFirst { insn ->
+                insn.opcode == Opcode.INVOKE_STATIC &&
+                    ((insn as? ReferenceInstruction)?.reference as? MethodReference)?.name == "isTopShelfAdsEnabled"
+            }
+            assertTrue(guardIndex >= 0, "${shelfMethod.definingClass}->${shelfMethod.name}: no top-shelf conditional")
+            assertEquals(Opcode.INVOKE_STATIC_RANGE, insns[guardIndex + 3].opcode, "collapse invoke must be the range form")
         }
 
         assertTrue(
@@ -126,16 +134,6 @@ class RealApkSmokeTest {
             val hasInvoke = insns.any { it.opcode == Opcode.INVOKE_STATIC }
             System.err.println("ADM $label ${method.definingClass}->${method.name}${method.parameterTypes} insns=${insns.size} first=${insns.firstOrNull()?.opcode} hasInvoke=$hasInvoke")
             assertConditionalReturn(insns, label)
-        }
-
-        // Resource patches need decoded resources; resourcePatch decoding is lazy until first use.
-        ResourcePatchContext::class.java.getMethod("decodeResources\$patcher").invoke(resourceContext)
-        suppressTopShelfPatch.execute(bytecodeContext, resourceContext)
-
-        for (layout in listOf("catalog_video_topshelf.xml", "catalog_video_music_topshelf.xml")) {
-            val xml = File(tempPatchedDir, "res/layout/$layout").readText()
-            check("android:layout_height=\"0dp\"" in xml) { "$layout root height not collapsed" }
-            check("android:visibility=\"gone\"" in xml) { "$layout root not hidden" }
         }
     }
 

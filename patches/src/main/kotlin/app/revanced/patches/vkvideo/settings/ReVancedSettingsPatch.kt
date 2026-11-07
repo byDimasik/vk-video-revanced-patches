@@ -8,12 +8,10 @@ import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 
-private const val RECYCLER_CLASS = "Lme/grishka/appkit/fragments/BaseRecyclerFragment;"
 private const val ITEM_CONSTRUCTOR_TYPES = "Lkotlin/jvm/functions/Function1;"
 
 val revancedSettingsPatch = bytecodePatch(
@@ -23,38 +21,41 @@ val revancedSettingsPatch = bytecodePatch(
     compatibleWith("com.vk.vkvideo")
 
     apply {
-        val method = profileMenuItemsFingerprint.method
-        val instructions = method.implementation!!.instructions
+        val menuMethod = profileMenuItemsFingerprint.method
+        val types = resolveTypes(menuMethod.implementation!!.instructions)
 
-        val recyclerIndex = instructions.indexOfFirst { instruction ->
+        // Chrome, opener and listener-method names are resolved from the app's own
+        // code, never hardcoded (obfuscated names differ between versions).
+        val chromeMethod = toolbarChromeFingerprint.method
+        val chrome = extractToolbarChrome(classDefs.first { it.type == chromeMethod.definingClass })
+        val opener = resolveNavOpener(navOpenerFingerprint.method, classDefs.toList())
+        val switchListenerMethod = switchListenerMethodFingerprint.method.name
+
+        injectSettingsClasses(this, types, chrome, opener, switchListenerMethod)
+
+        // The ReVanced entry is appended by the Sign-out row builder before it appends
+        // Sign out / Login, so the entry renders directly above it in both cm(II) branches.
+        val signOutMethod = signOutRowFingerprint.method
+        val builderReferencedFromMenu = menuMethod.implementation!!.instructions.any { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
             instruction.opcode in setOf(Opcode.INVOKE_VIRTUAL, Opcode.INVOKE_VIRTUAL_RANGE) &&
                 reference is MethodReference &&
-                reference.definingClass == RECYCLER_CLASS &&
-                reference.parameterTypes == listOf("Ljava/util/List;", "Z") &&
-                reference.returnType == "V"
+                reference.definingClass == signOutMethod.definingClass
         }
-        if (recyclerIndex < 0) error("Profile menu recycler call not found")
-
-        val listRegister = when (val call = instructions[recyclerIndex]) {
-            is FiveRegisterInstruction -> call.registerD
-            is RegisterRangeInstruction -> call.startRegister + 1
-            else -> error("Unexpected recycler call instruction ${call.opcode}")
+        check(builderReferencedFromMenu) {
+            "Sign-out builder ${signOutMethod.definingClass} is not invoked from the profile menu"
         }
-
-        val types = resolveTypes(instructions)
-
-        injectSettingsClasses(this, types)
+        val listRegister = signOutMethod.implementation!!.registerCount - parameterWidth(signOutMethod) + 1
         val call = if (listRegister > 15) {
             "invoke-static/range {v$listRegister .. v$listRegister}, $ADS_SETTINGS_CLASS->addMenuEntry(Ljava/util/List;)V"
         } else {
             "invoke-static {v$listRegister}, $ADS_SETTINGS_CLASS->addMenuEntry(Ljava/util/List;)V"
         }
-        method.addInstruction(recyclerIndex, call)
+        signOutMethod.addInstruction(0, call)
     }
 }
 
-private fun resolveTypes(instructions: List<BuilderInstruction>): SettingsMenuTypes {
+internal fun resolveTypes(instructions: List<BuilderInstruction>): SettingsMenuTypes {
     val playerSettingsIndex = instructions.indexOfFirst { instruction ->
         val reference = (instruction as? ReferenceInstruction)?.reference
         reference is FieldReference && reference.name == "PLAYER_SETTINGS"

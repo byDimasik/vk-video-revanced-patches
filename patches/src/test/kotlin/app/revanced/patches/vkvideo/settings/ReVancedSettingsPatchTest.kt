@@ -8,11 +8,13 @@ import app.revanced.patches.vkvideo.util.PatchTestUtil.matchOrNull
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DynamicTest
@@ -32,7 +34,7 @@ class ReVancedSettingsPatchTest {
     private val fixtures = listOf(
         Fixture(
             name = "1.168",
-            sources = PatchTestUtil.profileMenuFixture,
+            sources = PatchTestUtil.settingsScreenFixture168,
             recyclerMethod = "nm",
             itemClass = "Lcom/vk/video/screens/profile/adapter/holder/i\$a;",
             wrapperClass = "Lz17/e\$a;",
@@ -40,7 +42,7 @@ class ReVancedSettingsPatchTest {
         ),
         Fixture(
             name = "1.170",
-            sources = PatchTestUtil.profileMenuFixture170,
+            sources = PatchTestUtil.settingsScreenFixture170,
             recyclerMethod = "hm",
             itemClass = "Lcom/vk/video/screens/profile/adapter/holder/j\$a;",
             wrapperClass = "Lj57/e\$a;",
@@ -49,16 +51,48 @@ class ReVancedSettingsPatchTest {
     )
 
     @TestFactory
-    fun `inserts the ReVanced entry before the recycler call`(): List<DynamicTest> =
+    fun `inserts the ReVanced entry at the top of the Sign-out row builder`(): List<DynamicTest> =
         fixtures.map { fixture ->
             DynamicTest.dynamicTest(fixture.name) {
                 val context = PatchTestUtil.createBytecodeContext(*fixture.sources.toTypedArray())
                 assertNotNull(profileMenuItemsFingerprint.matchOrNull(context))
+                val signOutMatch = assertNotNull(signOutRowFingerprint.matchOrNull(context))
+
+                val signOutMethod = signOutRowFingerprint.getMethod(context)
+                assertEquals("g", signOutMethod.name)
+                assertEquals("Lfixture/menu/Rows;", signOutMethod.definingClass)
+                // Snapshot the opcodes: getInstructions() is a live view over the
+                // mutable implementation, so it would grow with the patch's insertion.
+                val beforeOpcodes = signOutMethod.getInstructions().map { it.opcode }
+                val listRegister = signOutMethod.implementation!!.registerCount -
+                    app.revanced.patches.vkvideo.settings.parameterWidth(signOutMethod) + 1
 
                 revancedSettingsPatch.execute(context)
 
-                val instructions = profileMenuItemsFingerprint.getMethod(context).getInstructions()
-                val recyclerIndex = instructions.indexOfFirst { instruction ->
+                // addMenuEntry lands at index 0 with the builder's list parameter.
+                // Re-match: patch execution re-resolves fingerprint matches against the
+                // mutated context, so earlier method handles may be stale.
+                assertNotNull(signOutRowFingerprint.matchOrNull(context))
+                val instructions = signOutRowFingerprint.getMethod(context).getInstructions()
+                assertEquals(beforeOpcodes.size + 1, instructions.size, "exactly one instruction prepended")
+                val entry = instructions[0] as ReferenceInstruction
+                assertEquals(Opcode.INVOKE_STATIC, entry.opcode)
+                val entryReference = entry.reference as MethodReference
+                assertEquals(ADS_SETTINGS_CLASS, entryReference.definingClass)
+                assertEquals("addMenuEntry", entryReference.name)
+                assertEquals(listOf("Ljava/util/List;"), entryReference.parameterTypes.map { it.toString() })
+                assertEquals(listRegister, (instructions[0] as FiveRegisterInstruction).registerC)
+
+                // The builder's original instructions follow unchanged (no remap: the
+                // prepended invoke only reads the existing list register).
+                beforeOpcodes.forEachIndexed { index, originalOpcode ->
+                    assertEquals(originalOpcode, instructions[index + 1].opcode, "builder instruction $index")
+                }
+
+                // The old behavior is gone: nothing is inserted before the recycler call.
+                assertNotNull(profileMenuItemsFingerprint.matchOrNull(context))
+                val menuInstructions = profileMenuItemsFingerprint.getMethod(context).getInstructions()
+                val recyclerIndex = menuInstructions.indexOfFirst { instruction ->
                     val reference = (instruction as? ReferenceInstruction)?.reference
                     instruction.opcode == Opcode.INVOKE_VIRTUAL &&
                         reference is MethodReference &&
@@ -68,19 +102,16 @@ class ReVancedSettingsPatchTest {
                         reference.returnType == "V"
                 }
                 assertTrue(recyclerIndex > 0, "recycler call not found")
-
-                val addMenuEntry = instructions[recyclerIndex - 1] as ReferenceInstruction
-                assertEquals(Opcode.INVOKE_STATIC, addMenuEntry.opcode)
-                val addMenuEntryReference = addMenuEntry.reference as MethodReference
-                assertEquals(ADS_SETTINGS_CLASS, addMenuEntryReference.definingClass)
-                assertEquals("addMenuEntry", addMenuEntryReference.name)
-                assertEquals(listOf("Ljava/util/List;"), addMenuEntryReference.parameterTypes.map { it.toString() })
-
-                val listRegister = (instructions[recyclerIndex] as FiveRegisterInstruction).registerD
-                assertEquals(listRegister, (addMenuEntry as FiveRegisterInstruction).registerC)
+                val beforeRecycler = menuInstructions[recyclerIndex - 1]
+                val beforeRecyclerRef = (beforeRecycler as? ReferenceInstruction)?.reference as? MethodReference
+                assertFalse(
+                    beforeRecyclerRef?.name == "addMenuEntry",
+                    "addMenuEntry must not sit before the recycler call anymore",
+                )
 
                 assertTrue(context.classDefs.any { it.type == ADS_SETTINGS_CLASS })
 
+                // The injected entry still references the resolved fixture types and icon.
                 val addMenuEntryMethod = context.classDefs
                     .first { it.type == ADS_SETTINGS_CLASS }
                     .methods
@@ -124,9 +155,10 @@ class ReVancedSettingsPatchTest {
         }
 
     private val expectedDescriptors = setOf(
-        "Lapp/revanced/extension/vkvideo/AdsSettings;",
+        ADS_SETTINGS_CLASS,
         "Lapp/revanced/extension/vkvideo/StartReVancedSettings;",
-        "Lapp/revanced/extension/vkvideo/ReVancedSettingsDialog;",
-        "Lapp/revanced/extension/vkvideo/ToggleListener;",
+        SETTINGS_FRAGMENT_CLASS,
+        "Lapp/revanced/extension/vkvideo/ReVancedToggleListener;",
+        "Lapp/revanced/extension/vkvideo/ReVancedBackClick;",
     )
 }
