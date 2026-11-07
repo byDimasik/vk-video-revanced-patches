@@ -4,14 +4,45 @@ import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod
 import app.revanced.patcher.extensions.accessFlags
 import app.revanced.patcher.extensions.addInstructionsWithLabels
 import com.android.tools.smali.dexlib2.AccessFlags
+import com.android.tools.smali.dexlib2.Format
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.BuilderInstruction
+import com.android.tools.smali.dexlib2.builder.BuilderOffsetInstruction
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction10t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction10x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction11n
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction11x
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction12x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction20t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21ih
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21lh
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21s
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22b
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22s
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22t
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction23x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction30t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction31c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction31i
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction31t
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction32x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction35c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction35mi
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction35ms
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rc
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rmi
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rms
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction45cc
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction4rcc
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction51l
+import com.android.tools.smali.dexlib2.iface.debug.EndLocal
+import com.android.tools.smali.dexlib2.iface.debug.RestartLocal
+import com.android.tools.smali.dexlib2.iface.debug.StartLocal
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
@@ -20,13 +51,18 @@ import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstructio
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.Reference
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction10t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction10x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction11n
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction11x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction12x
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction20t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21c
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21ih
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21lh
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21s
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22b
@@ -35,6 +71,9 @@ import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstructio
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction23x
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction30t
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction31c
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction31i
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction31t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction32x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction35c
@@ -45,6 +84,8 @@ import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstructio
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction3rms
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction45cc
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction4rcc
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction51l
+import java.lang.reflect.Field
 
 /**
  * Parameter width in DEX register slots: `J` and `D` each occupy two slots,
@@ -165,7 +206,8 @@ private fun classifyInvoke(insn: FiveRegisterInstruction, remap: (Int) -> Int): 
  * Result of remapping one instruction while growing the frame.
  */
 private sealed interface Remapped {
-    data class Insn(val insn: ImmutableInstruction) : Remapped
+    /** The replacement instructions in order: at least one, possibly several. */
+    data class Insns(val insns: List<Instruction>) : Remapped
 
     /** A 4-bit invoke that needs its operands spilled into a contiguous block. */
     data class SpillInvoke(
@@ -177,40 +219,40 @@ private sealed interface Remapped {
     ) : Remapped
 }
 
-private fun remapForFrameGrow(insn: Instruction, oldParamStart: Int): Remapped {
+private fun remapForFrameGrow(insn: Instruction, oldParamStart: Int, delta: Int, temp: Int): Remapped {
     val imm = ImmutableInstruction.of(insn)
-    if (!usesParameterWindow(insn, oldParamStart)) return Remapped.Insn(imm)
+    if (!usesParameterWindow(insn, oldParamStart)) return Remapped.Insns(listOf(imm))
 
-    // Range forms are contiguous: move the whole window up one slot. Everything
-    // else (incl. 35c-family invokes) uses independent register operands: remap
-    // each register conditionally — only window registers shift +1.
+    // Range forms are contiguous: move the whole window up by the frame growth.
+    // Everything else (incl. 35c-family invokes) uses independent register
+    // operands: remap each register conditionally — only window registers shift.
     val remap: (Int) -> Int = when (imm) {
-        is RegisterRangeInstruction -> { r -> r + 1 }
-        else -> { r -> if (r >= oldParamStart) r + 1 else r }
+        is RegisterRangeInstruction -> { r -> r + delta }
+        else -> { r -> if (r >= oldParamStart) r + delta else r }
     }
 
     return when (imm) {
         is ImmutableInstruction35c -> when (val c = classifyInvoke(imm, remap)) {
             is InvokeRemap.Fits -> {
                 val padded = c.regs + List(5 - c.regs.size) { 0 }
-                Remapped.Insn(
-                    ImmutableInstruction35c(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.reference)
+                Remapped.Insns(
+                    listOf(ImmutableInstruction35c(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.reference))
                 )
             }
-            is InvokeRemap.Range -> Remapped.Insn(
-                ImmutableInstruction3rc(rangeOpcodeOf(imm.opcode), c.start, imm.registerCount, imm.reference)
+            is InvokeRemap.Range -> Remapped.Insns(
+                listOf(ImmutableInstruction3rc(rangeOpcodeOf(imm.opcode), c.start, imm.registerCount, imm.reference))
             )
             is InvokeRemap.Spill -> Remapped.SpillInvoke(rangeOpcodeOf(imm.opcode), imm.registerCount, c.regs, imm.reference, null)
         }
         is ImmutableInstruction35mi -> when (val c = classifyInvoke(imm, remap)) {
             is InvokeRemap.Fits -> {
                 val padded = c.regs + List(5 - c.regs.size) { 0 }
-                Remapped.Insn(
-                    ImmutableInstruction35mi(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.inlineIndex)
+                Remapped.Insns(
+                    listOf(ImmutableInstruction35mi(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.inlineIndex))
                 )
             }
-            is InvokeRemap.Range -> Remapped.Insn(
-                ImmutableInstruction3rmi(rangeOpcodeOf(imm.opcode), c.start, imm.registerCount, imm.inlineIndex)
+            is InvokeRemap.Range -> Remapped.Insns(
+                listOf(ImmutableInstruction3rmi(rangeOpcodeOf(imm.opcode), c.start, imm.registerCount, imm.inlineIndex))
             )
             // Quickened/inline invokes carry no method reference, so argument
             // types are unknown; they are spilled with plain moves.
@@ -219,29 +261,223 @@ private fun remapForFrameGrow(insn: Instruction, oldParamStart: Int): Remapped {
         is ImmutableInstruction35ms -> when (val c = classifyInvoke(imm, remap)) {
             is InvokeRemap.Fits -> {
                 val padded = c.regs + List(5 - c.regs.size) { 0 }
-                Remapped.Insn(
-                    ImmutableInstruction35ms(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.vtableIndex)
+                Remapped.Insns(
+                    listOf(ImmutableInstruction35ms(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.vtableIndex))
                 )
             }
-            is InvokeRemap.Range -> Remapped.Insn(
-                ImmutableInstruction3rms(rangeOpcodeOf(imm.opcode), c.start, imm.registerCount, imm.vtableIndex)
+            is InvokeRemap.Range -> Remapped.Insns(
+                listOf(ImmutableInstruction3rms(rangeOpcodeOf(imm.opcode), c.start, imm.registerCount, imm.vtableIndex))
             )
             is InvokeRemap.Spill -> Remapped.SpillInvoke(rangeOpcodeOf(imm.opcode), imm.registerCount, c.regs, NoReference, null)
         }
         is ImmutableInstruction45cc -> when (val c = classifyInvoke(imm, remap)) {
             is InvokeRemap.Fits -> {
                 val padded = c.regs + List(5 - c.regs.size) { 0 }
-                Remapped.Insn(
-                    ImmutableInstruction45cc(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.reference, imm.reference2)
+                Remapped.Insns(
+                    listOf(ImmutableInstruction45cc(imm.opcode, imm.registerCount, padded[0], padded[1], padded[2], padded[3], padded[4], imm.reference, imm.reference2))
                 )
             }
-            is InvokeRemap.Range -> Remapped.Insn(
-                ImmutableInstruction4rcc(rangeOpcodeOf(imm.opcode), c.start, imm.registerCount, imm.reference, imm.reference2)
+            is InvokeRemap.Range -> Remapped.Insns(
+                listOf(ImmutableInstruction4rcc(rangeOpcodeOf(imm.opcode), c.start, imm.registerCount, imm.reference, imm.reference2))
             )
             is InvokeRemap.Spill -> Remapped.SpillInvoke(rangeOpcodeOf(imm.opcode), imm.registerCount, c.regs, imm.reference, imm.reference2)
         }
-        else -> Remapped.Insn(shiftRegisters(insn, remap))
+        is ImmutableInstruction11x ->
+            if (remap(imm.registerA) > 0xFF) narrow11x(imm, remap, temp) else Remapped.Insns(listOf(shiftRegisters(insn, remap)))
+        is ImmutableInstruction22c -> narrow22c(imm, remap, temp)
+        is ImmutableInstruction12x -> narrow12x(imm, remap, temp)
+        is ImmutableInstruction22b ->
+            if (maxOf(remap(imm.registerA), remap(imm.registerB)) > 0xFF) narrow22b(imm, imm.narrowLiteral, remap, temp, wide = false)
+            else Remapped.Insns(listOf(shiftRegisters(insn, remap)))
+        is ImmutableInstruction22s ->
+            if (maxOf(remap(imm.registerA), remap(imm.registerB)) > 0xFF) narrow22b(imm, imm.narrowLiteral, remap, temp, wide = true)
+            else Remapped.Insns(listOf(shiftRegisters(insn, remap)))
+        is ImmutableInstruction22t -> narrow22t(imm, insn, remap, temp)
+        else -> Remapped.Insns(listOf(shiftRegisters(insn, remap)))
     }
+}
+
+/** A window register remapped by this much frame growth, locals untouched. */
+private fun remapped(r: Int, oldParamStart: Int, delta: Int): Int = if (r >= oldParamStart) r + delta else r
+
+/**
+ * Low temp slots (`temp`, `temp + 1`) the remap of [insn] needs: nibble formats
+ * cannot address a moved window, so each high operand is snapshotted first.
+ * Zero means the instruction is rebuilt in place.
+ */
+private fun tempSlots(insn: Instruction, oldParamStart: Int, delta: Int): Int {
+    val two = insn as? TwoRegisterInstruction ?: return 0
+    val a = remapped(two.registerA, oldParamStart, delta)
+    val b = remapped(two.registerB, oldParamStart, delta)
+    return when (insn.opcode.format) {
+        Format.Format11n -> 0
+        Format.Format11x -> if (a > 0xFF) 1 else 0
+        Format.Format12x -> when {
+            a <= 0xFF && b <= 0xFF -> 0
+            a > 15 && b > 15 && a != b -> 2
+            else -> 1
+        }
+        Format.Format22b, Format.Format22s -> if (a > 0xFF || b > 0xFF) 1 else 0
+        Format.Format22t -> when {
+            a <= 15 && b <= 15 -> 0
+            a > 15 && b > 15 && a != b -> 2
+            else -> 1
+        }
+        Format.Format22c -> {
+            // A wide field also needs a second slot for the data copy.
+            val width = if (moveKindOf(insn.opcode) == MoveKind.WIDE) 2 else 1
+            when {
+                a <= 15 && b <= 15 -> 0
+                a == b -> width
+                else -> (if (b > 15) 1 else 0) + (if (a > 15) width else 0)
+            }
+        }
+        else -> 0
+    }
+}
+
+/**
+ * Formats with 4-bit register fields (`11x`, `12x`, `22b`, `22s`, `22t`, `22c`,
+ * plus `11n` which is widened to `21s`) cannot address a parameter once the
+ * window has moved above v15. The freed low window slots (`oldParamStart` and,
+ * once the frame has grown by two or more, the slot above it) are always below
+ * v16 whenever such an instruction references the window: the original opcode
+ * could only name registers up to v15 and parameters are the only registers
+ * that shift. High operands are therefore snapshotted into those slots (and a
+ * high destination copied back) around the instruction.
+ */
+private fun moveKindOf(opcode: Opcode): MoveKind = when {
+    opcode.name.contains("wide") || opcode.name.contains("long") || opcode.name.contains("double") -> MoveKind.WIDE
+    opcode.name.contains("object") || opcode.name == "move-exception" ||
+        opcode.name.startsWith("throw") || opcode.name.startsWith("monitor") -> MoveKind.OBJECT
+    else -> MoveKind.INT
+}
+
+private fun copyFromHigh(kind: MoveKind, dest: Int, src: Int): BuilderInstruction = moveInstruction(kind, dest, src)
+
+private fun narrow11x(imm: ImmutableInstruction11x, remap: (Int) -> Int, temp: Int): Remapped {
+    val a = remap(imm.registerA)
+    val kind = moveKindOf(imm.opcode)
+    val copy = if (a <= 15) null else copyFromHigh(kind, temp, a)
+    // move-result* must stay adjacent to its invoke and move-exception has to
+    // stay at the handler entry; both only write, so nothing is copied in and
+    // the copy-back goes after them.
+    return if (imm.opcode.name.startsWith("move-result") || imm.opcode.name == "move-exception") {
+        // Writes `a`: run into the temp and copy back.
+        if (a <= 15) return Remapped.Insns(listOf(ImmutableInstruction11x(imm.opcode, a)))
+        Remapped.Insns(listOf<Instruction>(ImmutableInstruction11x(imm.opcode, temp), moveInstruction(kind, a, temp)))
+    } else {
+        val target = if (copy == null) a else temp
+        Remapped.Insns(listOfNotNull<Instruction>(copy, ImmutableInstruction11x(imm.opcode, target)))
+    }
+}
+
+private fun narrow12x(imm: ImmutableInstruction12x, remap: (Int) -> Int, temp: Int): Remapped {
+    val a = remap(imm.registerA)
+    val b = remap(imm.registerB)
+    if (a <= 15 && b <= 15) return Remapped.Insns(listOf(ImmutableInstruction12x(imm.opcode, a, b)))
+    // The move family has a wide (22x) equivalent with an 8-bit destination.
+    when (imm.opcode) {
+        Opcode.MOVE, Opcode.MOVE_OBJECT, Opcode.MOVE_WIDE ->
+            return Remapped.Insns(listOf(ImmutableInstruction22x(wideOpcodeOf(imm.opcode), a, b)))
+        else -> Unit
+    }
+    val kind = moveKindOf(imm.opcode)
+    val out = mutableListOf<Instruction>()
+    // `/2addr` opcodes read registerA as a source as well, so its value has to
+    // be snapshotted before the operation writes it.
+    if (imm.opcode.name.endsWith("/2addr") && a > 15) {
+        out += copyFromHigh(kind, temp, a)
+        val src = if (b > 15) {
+            out += copyFromHigh(kind, temp + 1, b)
+            temp + 1
+        } else {
+            b
+        }
+        out += ImmutableInstruction12x(imm.opcode, temp, src)
+        out += moveInstruction(kind, a, temp)
+        return Remapped.Insns(out)
+    }
+    // registerB is read, registerA is written.
+    if (b > 15) out += copyFromHigh(kind, temp, b)
+    val source = if (b > 15) temp else b
+    val dest = if (a <= 15) a else temp
+    out += ImmutableInstruction12x(imm.opcode, dest, source)
+    if (a > 15) out += moveInstruction(kind, a, temp)
+    return Remapped.Insns(out)
+}
+
+/** `22b`/`22s` store a literal: registerB is read, registerA is written. */
+private fun narrow22b(insn: Instruction, literal: Int, remap: (Int) -> Int, temp: Int, wide: Boolean): Remapped {
+    val two = insn as TwoRegisterInstruction
+    val a = remap(two.registerA)
+    val b = remap(two.registerB)
+    val build: (Int, Int) -> Instruction = { dest, src ->
+        if (wide) ImmutableInstruction22s(insn.opcode, dest, src, literal) else ImmutableInstruction22b(insn.opcode, dest, src, literal)
+    }
+    if (a <= 15 && b <= 15) return Remapped.Insns(listOf(build(a, b)))
+    val kind = moveKindOf(insn.opcode)
+    val out = mutableListOf<Instruction>()
+    if (b > 15) out += copyFromHigh(kind, temp, b)
+    val source = if (b > 15) temp else b
+    val dest = if (a <= 15) a else temp
+    out += build(dest, source)
+    if (a > 15) out += moveInstruction(kind, a, temp)
+    return Remapped.Insns(out)
+}
+
+/** `22t` compares both operands, so each high one gets its own snapshot. */
+private fun narrow22t(imm: ImmutableInstruction22t, original: Instruction, remap: (Int) -> Int, temp: Int): Remapped {
+    val a = remap(imm.registerA)
+    val b = remap(imm.registerB)
+    val target = (original as? BuilderOffsetInstruction)?.target
+        ?: error("22t without a builder label: ${imm.opcode}")
+    if (a <= 15 && b <= 15) return Remapped.Insns(listOf(BuilderInstruction22t(imm.opcode, a, b, target)))
+    val out = mutableListOf<Instruction>()
+    val x = if (a > 15) { out += copyFromHigh(MoveKind.INT, temp, a); temp } else a
+    val y = if (b > 15 && b != a) { out += copyFromHigh(MoveKind.INT, temp + 1, b); temp + 1 } else b
+    out += BuilderInstruction22t(imm.opcode, x, if (b == a) x else y, target)
+    return Remapped.Insns(out)
+}
+
+private fun narrow22c(imm: ImmutableInstruction22c, remap: (Int) -> Int, temp: Int): Remapped {
+    val a = remap(imm.registerA)
+    val b = remap(imm.registerB)
+    if (a <= 15 && b <= 15) return Remapped.Insns(listOf(ImmutableInstruction22c(imm.opcode, a, b, imm.reference)))
+    // The field BASE is always an object; only the data operand carries the
+    // field's own kind, and a wide field needs two slots for the data copy.
+    val dataKind = moveKindOf(imm.opcode)
+    if (a == b) {
+        // `iget p0, p0` style: a single snapshot serves as base and data. It is
+        // taken as an object move because the base is what has to be low.
+        return Remapped.Insns(
+            listOf<Instruction>(copyFromHigh(MoveKind.OBJECT, temp, a), ImmutableInstruction22c(imm.opcode, temp, temp, imm.reference))
+        )
+    }
+    val out = mutableListOf<Instruction>()
+    if (imm.opcode.name.startsWith("iput")) {
+        // Object first, then the data, then store both from the temps.
+        val base = if (b > 15) { out += copyFromHigh(MoveKind.OBJECT, temp, b); temp } else b
+        val data = if (a > 15) {
+            val slot = if (b > 15) temp + 1 else temp
+            out += copyFromHigh(dataKind, slot, a)
+            slot
+        } else {
+            a
+        }
+        out += ImmutableInstruction22c(imm.opcode, data, base, imm.reference)
+        return Remapped.Insns(out)
+    }
+    // iget*: base is read, the value is written to the data register.
+    val base = if (b > 15) { out += copyFromHigh(MoveKind.OBJECT, temp, b); temp } else b
+    if (a > 15) {
+        val slot = if (b > 15) temp + 1 else temp
+        out += ImmutableInstruction22c(imm.opcode, slot, base, imm.reference)
+        out += moveInstruction(dataKind, a, slot)
+    } else {
+        out += ImmutableInstruction22c(imm.opcode, a, base, imm.reference)
+    }
+    return Remapped.Insns(out)
 }
 
 /** Placeholder reference for spilled invokes without a method reference (35mi/35ms). */
@@ -255,6 +491,11 @@ private val NoReference: Reference = object : Reference {
  * (receiver first for non-static callees, `J`/`D` two slots).
  */
 private fun spillMoveKinds(registerCount: Int, reference: Reference?): List<MoveKind> {
+    // filled-new-array references the array TYPE, not a method: object elements
+    // have to be gathered with object moves.
+    (reference as? TypeReference)?.type?.let { type ->
+        return List(registerCount) { if (type.startsWith("[L") || type.startsWith("[[")) MoveKind.OBJECT else MoveKind.INT }
+    }
     val methodRef = reference as? MethodReference ?: return List(registerCount) { MoveKind.INT }
     val params = methodRef.parameterTypes
     val paramSlots = params.sumOf { if (it == "J" || it == "D") 2 else 1 }
@@ -304,32 +545,95 @@ private fun buildSpillMoves(kinds: List<MoveKind>, regs: List<Int>, blockStart: 
 }
 
 /**
- * Applies every spill plan against the mutable implementation: inserts the
- * gather moves right before the invoke and rewrites the invoke as a range form
- * against the scratch block. [MutableMethodImplementation] keeps builder
- * labels, so branch targets and try-block ranges stay correct across the
- * insertions — no hand-patched code offsets.
+ * Rebinds a remapped [insn] into the mutable builder. An immutable copy of an
+ * offset-carrying instruction only keeps a numeric code offset, which goes
+ * stale as soon as instructions are inserted around it, so those formats take
+ * the label of [original] and let the builder resolve the target. Instructions
+ * without registers (switch/array payloads) are reused unchanged.
  */
-private fun applySpills(
-    impl: MutableMethodImplementation,
-    spills: List<Pair<Int, Remapped.SpillInvoke>>,
-    blockStart: Int,
-) {
-    var offset = 0
-    for ((index, spill) in spills) {
-        val at = index + offset
-        val kinds = spillMoveKinds(spill.registerCount, spill.reference)
-        val moves = buildSpillMoves(kinds, spill.registers, blockStart)
-        moves.forEachIndexed { j, move -> impl.addInstruction(at + j, move) }
-        val rangeInsn: BuilderInstruction = if (spill.reference2 != null) {
-            BuilderInstruction4rcc(spill.rangeOpcode, blockStart, spill.registerCount, spill.reference, spill.reference2)
-        } else {
-            BuilderInstruction3rc(spill.rangeOpcode, blockStart, spill.registerCount, spill.reference)
+private fun toBuilder(insn: Instruction, original: BuilderInstruction): BuilderInstruction {
+    // Instructions synthesized by the narrow helpers are already builders and
+    // carry final registers; payloads and other register-less formats are
+    // reused unchanged.
+    if (insn !is ImmutableInstruction) return insn as BuilderInstruction
+    if (original is BuilderOffsetInstruction) {
+        val target = original.target
+        return when (insn) {
+            is ImmutableInstruction10t -> BuilderInstruction10t(insn.opcode, target)
+            is ImmutableInstruction20t -> BuilderInstruction20t(insn.opcode, target)
+            is ImmutableInstruction21t -> BuilderInstruction21t(insn.opcode, insn.registerA, target)
+            is ImmutableInstruction22t -> BuilderInstruction22t(insn.opcode, insn.registerA, insn.registerB, target)
+            is ImmutableInstruction30t -> BuilderInstruction30t(insn.opcode, target)
+            is ImmutableInstruction31t -> BuilderInstruction31t(insn.opcode, insn.registerA, target)
+            else -> error("No builder case for offset format ${insn.opcode}")
         }
-        impl.replaceInstruction(at + moves.size, rangeInsn)
-        offset += moves.size
+    }
+    return when (insn) {
+        is ImmutableInstruction10x -> BuilderInstruction10x(insn.opcode)
+        is ImmutableInstruction11n -> BuilderInstruction11n(insn.opcode, insn.registerA, insn.narrowLiteral)
+        is ImmutableInstruction11x -> BuilderInstruction11x(insn.opcode, insn.registerA)
+        is ImmutableInstruction12x -> BuilderInstruction12x(insn.opcode, insn.registerA, insn.registerB)
+        is ImmutableInstruction21c -> BuilderInstruction21c(insn.opcode, insn.registerA, insn.reference)
+        is ImmutableInstruction21ih -> BuilderInstruction21ih(insn.opcode, insn.registerA, insn.narrowLiteral)
+        is ImmutableInstruction21lh -> BuilderInstruction21lh(insn.opcode, insn.registerA, insn.wideLiteral)
+        is ImmutableInstruction21s -> BuilderInstruction21s(insn.opcode, insn.registerA, insn.narrowLiteral)
+        is ImmutableInstruction22b -> BuilderInstruction22b(insn.opcode, insn.registerA, insn.registerB, insn.narrowLiteral)
+        is ImmutableInstruction22c -> BuilderInstruction22c(insn.opcode, insn.registerA, insn.registerB, insn.reference)
+        is ImmutableInstruction22s -> BuilderInstruction22s(insn.opcode, insn.registerA, insn.registerB, insn.narrowLiteral)
+        is ImmutableInstruction22x -> BuilderInstruction22x(insn.opcode, insn.registerA, insn.registerB)
+        is ImmutableInstruction23x -> BuilderInstruction23x(insn.opcode, insn.registerA, insn.registerB, insn.registerC)
+        is ImmutableInstruction31c -> BuilderInstruction31c(insn.opcode, insn.registerA, insn.reference)
+        is ImmutableInstruction31i -> BuilderInstruction31i(insn.opcode, insn.registerA, insn.narrowLiteral)
+        is ImmutableInstruction32x -> BuilderInstruction32x(insn.opcode, insn.registerA, insn.registerB)
+        is ImmutableInstruction35c -> BuilderInstruction35c(
+            insn.opcode, insn.registerCount, insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG, insn.reference
+        )
+        is ImmutableInstruction35mi -> BuilderInstruction35mi(
+            insn.opcode, insn.registerCount, insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG, insn.inlineIndex
+        )
+        is ImmutableInstruction35ms -> BuilderInstruction35ms(
+            insn.opcode, insn.registerCount, insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG, insn.vtableIndex
+        )
+        is ImmutableInstruction3rc -> BuilderInstruction3rc(insn.opcode, insn.startRegister, insn.registerCount, insn.reference)
+        is ImmutableInstruction3rmi -> BuilderInstruction3rmi(insn.opcode, insn.startRegister, insn.registerCount, insn.inlineIndex)
+        is ImmutableInstruction3rms -> BuilderInstruction3rms(insn.opcode, insn.startRegister, insn.registerCount, insn.vtableIndex)
+        is ImmutableInstruction45cc -> BuilderInstruction45cc(
+            insn.opcode, insn.registerCount, insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG, insn.reference, insn.reference2
+        )
+        is ImmutableInstruction4rcc ->
+            BuilderInstruction4rcc(insn.opcode, insn.startRegister, insn.registerCount, insn.reference, insn.reference2)
+        is ImmutableInstruction51l -> BuilderInstruction51l(insn.opcode, insn.registerA, insn.wideLiteral)
+        else -> original
     }
 }
+/**
+ * Local debug items describe window registers by number; those values move
+ * with the window, so their register has to follow the same delta.
+ */
+private fun remapDebugRegisters(impl: MutableMethodImplementation, oldParamStart: Int, delta: Int) {
+    impl.debugItems.forEach { item ->
+        val register = when (item) {
+            is StartLocal -> item.register
+            is EndLocal -> item.register
+            is RestartLocal -> item.register
+            else -> return@forEach
+        }
+        if (register < oldParamStart) return@forEach
+        item.javaClass.getDeclaredField("register").apply { isAccessible = true }.setInt(item, register + delta)
+    }
+}
+
+/** Formats whose register fields are 8 bits wide (max v255). */
+private val BYTE_FORMATS = setOf(
+    Format.Format11x, Format.Format12x, Format.Format21c, Format.Format21ih,
+    Format.Format21lh, Format.Format21s, Format.Format21t, Format.Format22b, Format.Format22c,
+    Format.Format22s, Format.Format22t, Format.Format22x, Format.Format23x, Format.Format31c,
+    Format.Format31i, Format.Format31t,
+)
+
+/** [MutableMethodImplementation] exposes no setter for the frame size. */
+private val REGISTER_COUNT: Field =
+    MutableMethodImplementation::class.java.getDeclaredField("registerCount").apply { isAccessible = true }
 
 /**
  * Prepends a conditional early-return block at index 0:
@@ -383,15 +687,26 @@ internal fun MutableMethod.prependConditionalReturn(enabledMethod: String, fallb
 }
 
 /**
- * Grows the frame by one register and remaps the original instructions so the
- * incoming parameter window stays at the tail of the new frame (DEX places the
- * arguments in the LAST `paramWidth` registers, so growth without remapping
- * misaligns every parameter — the ART `Undefined register` VerifyError class).
+ * Grows the frame by the guard slot (plus the widest spill block, if the body
+ * has to spill) and remaps the original instructions so the incoming parameter
+ * window is re-emitted at the tail of the new frame. DEX places the arguments
+ * in the LAST `paramWidth` registers, so the window has to move by the FULL
+ * frame growth — guard + spill slots — not just by the guard: remapping by the
+ * guard alone leaves every parameter `paramWidth`… read too low (the ART
+ * `Undefined register` VerifyError class, issue #46).
  *
- * The register freed by the window shift (`oldCount - paramWidth`, the old first
- * parameter slot) is returned as scratch. Window-touching operands are remapped
- * per-register with the same 35c/range/spill discipline as
- * [prependConditionalReturn]; spill blocks sit above every remapped register.
+ * The register freed by the window shift (`oldCount - paramWidth`, the old
+ * first parameter slot) is returned as scratch; it and the slot above it double
+ * as low temp registers for the 4-bit formats that cannot address the moved
+ * window ([narrow11x]/[narrow12x]/[narrow22c]). Window-touching operands are
+ * remapped per-register with the same 35c/range/spill discipline as
+ * [prependConditionalReturn]; the spill block is placed immediately below the
+ * re-emitted window, above every remapped register.
+ *
+ * The body is rebuilt through [MutableMethodImplementation] so the old code
+ * offsets are resolved into labels: branch targets, try ranges and debug items
+ * then track the instructions inserted here instead of pointing at whatever
+ * now sits at the old offset.
  */
 internal fun MutableMethod.growFrameWithScratch(): Int {
     val oldImpl = implementation ?: error("Method has no implementation: $name")
@@ -399,29 +714,83 @@ internal fun MutableMethod.growFrameWithScratch(): Int {
     val paramWidth = parameterWidth(this)
     val oldParamStart = oldCount - paramWidth
 
-    val remapped: List<Remapped> = oldImpl.instructions.map { remapForFrameGrow(it, oldParamStart) }
-    val spills = remapped.mapIndexedNotNull { index, r ->
-        (r as? Remapped.SpillInvoke)?.let { index to it }
+    // Low temp base for the nibble formats: the freed first parameter slot. A
+    // wide local can never own it — locals end before the parameter window does.
+    val temp = oldParamStart
+
+    // The spill set depends on how far the window moves (a larger shift can
+    // push a formerly fitting operand over the nibble limit) while the
+    // required shift depends on the widest spill: iterate to the fixed point.
+    // Every round only grows the shift, so this settles immediately in practice.
+    var delta = 1
+    var maxSpillWidth: Int
+    var rounds = 0
+    while (true) {
+        val spills = oldImpl.instructions
+            .mapNotNull { remapForFrameGrow(it, oldParamStart, delta, temp) as? Remapped.SpillInvoke }
+        maxSpillWidth = spills.maxOfOrNull { it.registerCount } ?: 0
+        val needed = if (spills.isEmpty()) 1 else paramWidth + 1 + maxSpillWidth
+        if (needed <= delta) break
+        check(++rounds < 8) { "Frame growth did not settle in $definingClass->$name" }
+        delta = needed
     }
-    val maxSpillWidth = spills.maxOfOrNull { it.second.registerCount } ?: 0
 
-    val newCount = if (spills.isEmpty()) oldCount + 1 else oldCount + paramWidth + 1 + maxSpillWidth
+    val newCount = oldCount + delta
+    check(newCount <= 0xFFFF) { "Frame of $newCount registers is not addressable in $definingClass->$name" }
+    val newParamStart = newCount - paramWidth
+    val blockStart = newParamStart - maxSpillWidth
 
-    // Spilled invokes are parked as NOPs; applySpills rewrites them in place
-    // once the mutable implementation exists.
-    val grown = ImmutableMethodImplementation(
-        newCount,
-        remapped.map { if (it is Remapped.Insn) it.insn else ImmutableInstruction10x(Opcode.NOP) },
-        oldImpl.tryBlocks,
-        oldImpl.debugItems
-    )
-    setImplementation(MutableMethodImplementation(grown))
-
-    if (spills.isNotEmpty()) {
-        applySpills(implementation!!, spills, newCount - maxSpillWidth)
+    // Nibble staging covers the 4-bit formats; the 8-bit ones (21t etc.) cannot
+    // be staged yet, so a register above v255 fails loudly instead.
+    if (newCount - 1 > 0xFF) {
+        val overflowing = oldImpl.instructions.firstOrNull {
+            usesParameterWindow(it, oldParamStart) && it.opcode.format in BYTE_FORMATS
+        }
+        check(overflowing == null) {
+            "${overflowing?.opcode} in $definingClass->$name needs a register above v255"
+        }
+    }
+    val slots = oldImpl.instructions.maxOf { tempSlots(it, oldParamStart, delta) }
+    check(slots == 0 || temp + slots - 1 <= 15) {
+        val culprit = oldImpl.instructions.firstOrNull { tempSlots(it, oldParamStart, delta) == slots }
+        "No low temp v$temp..v${temp + slots - 1} for ${culprit?.opcode} in $definingClass->$name"
     }
 
-    val scratch = oldCount - paramWidth
+    // Rebuild through the mutable builder: it converts the old code addresses
+    // into labels, so branch targets, try ranges and debug items follow the
+    // inserted instructions instead of staying at stale offsets.
+    val impl = MutableMethodImplementation(oldImpl)
+    REGISTER_COUNT.setInt(impl, newCount)
+    setImplementation(impl)
+
+    remapDebugRegisters(impl, oldParamStart, delta)
+
+    val originals = impl.instructions.toList()
+    var index = 0
+    for (old in originals) {
+        when (val r = remapForFrameGrow(old, oldParamStart, delta, temp)) {
+            is Remapped.Insns -> {
+                val built = r.insns.map { toBuilder(it, old) }
+                built.forEachIndexed { k, insn ->
+                    if (k == 0) impl.replaceInstruction(index, insn) else impl.addInstruction(index + k, insn)
+                }
+                index += built.size
+            }
+            is Remapped.SpillInvoke -> {
+                val moves = buildSpillMoves(spillMoveKinds(r.registerCount, r.reference), r.registers, blockStart)
+                moves.forEachIndexed { k, move -> impl.addInstruction(index + k, move) }
+                val rangeInsn: BuilderInstruction = if (r.reference2 != null) {
+                    BuilderInstruction4rcc(r.rangeOpcode, blockStart, r.registerCount, r.reference, r.reference2)
+                } else {
+                    BuilderInstruction3rc(r.rangeOpcode, blockStart, r.registerCount, r.reference)
+                }
+                impl.replaceInstruction(index + moves.size, rangeInsn)
+                index += moves.size + 1
+            }
+        }
+    }
+
+    val scratch = temp
     check(scratch in 0..0xFF) {
         "Scratch register v$scratch does not fit move-result/if-eqz in $definingClass->$name"
     }
