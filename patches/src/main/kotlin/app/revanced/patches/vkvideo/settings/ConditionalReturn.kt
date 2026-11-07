@@ -40,6 +40,9 @@ import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rm
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction45cc
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction4rcc
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction51l
+import com.android.tools.smali.dexlib2.iface.debug.EndLocal
+import com.android.tools.smali.dexlib2.iface.debug.RestartLocal
+import com.android.tools.smali.dexlib2.iface.debug.StartLocal
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
@@ -48,6 +51,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstructio
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.Reference
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction10t
@@ -215,7 +219,7 @@ private sealed interface Remapped {
     ) : Remapped
 }
 
-private fun remapForFrameGrow(insn: Instruction, oldParamStart: Int, delta: Int): Remapped {
+private fun remapForFrameGrow(insn: Instruction, oldParamStart: Int, delta: Int, temp: Int): Remapped {
     val imm = ImmutableInstruction.of(insn)
     if (!usesParameterWindow(insn, oldParamStart)) return Remapped.Insns(listOf(imm))
 
@@ -278,12 +282,17 @@ private fun remapForFrameGrow(insn: Instruction, oldParamStart: Int, delta: Int)
             )
             is InvokeRemap.Spill -> Remapped.SpillInvoke(rangeOpcodeOf(imm.opcode), imm.registerCount, c.regs, imm.reference, imm.reference2)
         }
-        is ImmutableInstruction11x -> narrow11x(imm, remap, oldParamStart)
-        is ImmutableInstruction22c -> narrow22c(imm, remap, oldParamStart)
-        is ImmutableInstruction12x -> narrow12x(imm, remap, oldParamStart)
-        is ImmutableInstruction22b -> narrow22b(imm, imm.narrowLiteral, remap, oldParamStart, wide = false)
-        is ImmutableInstruction22s -> narrow22b(imm, imm.narrowLiteral, remap, oldParamStart, wide = true)
-        is ImmutableInstruction22t -> narrow22t(imm, insn, remap, oldParamStart)
+        is ImmutableInstruction11x ->
+            if (remap(imm.registerA) > 0xFF) narrow11x(imm, remap, temp) else Remapped.Insns(listOf(shiftRegisters(insn, remap)))
+        is ImmutableInstruction22c -> narrow22c(imm, remap, temp)
+        is ImmutableInstruction12x -> narrow12x(imm, remap, temp)
+        is ImmutableInstruction22b ->
+            if (maxOf(remap(imm.registerA), remap(imm.registerB)) > 0xFF) narrow22b(imm, imm.narrowLiteral, remap, temp, wide = false)
+            else Remapped.Insns(listOf(shiftRegisters(insn, remap)))
+        is ImmutableInstruction22s ->
+            if (maxOf(remap(imm.registerA), remap(imm.registerB)) > 0xFF) narrow22b(imm, imm.narrowLiteral, remap, temp, wide = true)
+            else Remapped.Insns(listOf(shiftRegisters(insn, remap)))
+        is ImmutableInstruction22t -> narrow22t(imm, insn, remap, temp)
         else -> Remapped.Insns(listOf(shiftRegisters(insn, remap)))
     }
 }
@@ -292,19 +301,39 @@ private fun remapForFrameGrow(insn: Instruction, oldParamStart: Int, delta: Int)
 private fun remapped(r: Int, oldParamStart: Int, delta: Int): Int = if (r >= oldParamStart) r + delta else r
 
 /**
- * `true` when [insn] has two window operands that both land above v15 and each
- * has to be snapshotted separately, so the low temp pair (`oldParamStart`,
- * `oldParamStart + 1`) is needed. The second slot is only free once the frame
- * has grown by at least two (`growFrameWithScratch` reserves that).
+ * Low temp slots (`temp`, `temp + 1`) the remap of [insn] needs: nibble formats
+ * cannot address a moved window, so each high operand is snapshotted first.
+ * Zero means the instruction is rebuilt in place.
  */
-private fun needsTwoLowTemps(insn: Instruction, oldParamStart: Int, delta: Int): Boolean {
-    val two = insn as? TwoRegisterInstruction ?: return false
-    val twoWay = insn.opcode.name.startsWith("iput") ||
-        insn.opcode.format == Format.Format22t ||
-        insn.opcode.name.endsWith("/2addr")
-    if (!twoWay) return false
-    return remapped(two.registerA, oldParamStart, delta) > 15 &&
-        remapped(two.registerB, oldParamStart, delta) > 15
+private fun tempSlots(insn: Instruction, oldParamStart: Int, delta: Int): Int {
+    val two = insn as? TwoRegisterInstruction ?: return 0
+    val a = remapped(two.registerA, oldParamStart, delta)
+    val b = remapped(two.registerB, oldParamStart, delta)
+    return when (insn.opcode.format) {
+        Format.Format11n -> 0
+        Format.Format11x -> if (a > 0xFF) 1 else 0
+        Format.Format12x -> when {
+            a <= 0xFF && b <= 0xFF -> 0
+            a > 15 && b > 15 && a != b -> 2
+            else -> 1
+        }
+        Format.Format22b, Format.Format22s -> if (a > 0xFF || b > 0xFF) 1 else 0
+        Format.Format22t -> when {
+            a <= 15 && b <= 15 -> 0
+            a > 15 && b > 15 && a != b -> 2
+            else -> 1
+        }
+        Format.Format22c -> {
+            // A wide field also needs a second slot for the data copy.
+            val width = if (moveKindOf(insn.opcode) == MoveKind.WIDE) 2 else 1
+            when {
+                a <= 15 && b <= 15 -> 0
+                a == b -> width
+                else -> (if (b > 15) 1 else 0) + (if (a > 15) width else 0)
+            }
+        }
+        else -> 0
+    }
 }
 
 /**
@@ -318,25 +347,25 @@ private fun needsTwoLowTemps(insn: Instruction, oldParamStart: Int, delta: Int):
  * high destination copied back) around the instruction.
  */
 private fun moveKindOf(opcode: Opcode): MoveKind = when {
-    opcode.name.contains("wide") -> MoveKind.WIDE
-    opcode.name.contains("object") -> MoveKind.OBJECT
+    opcode.name.contains("wide") || opcode.name.contains("long") || opcode.name.contains("double") -> MoveKind.WIDE
+    opcode.name.contains("object") || opcode.name == "move-exception" ||
+        opcode.name.startsWith("throw") || opcode.name.startsWith("monitor") -> MoveKind.OBJECT
     else -> MoveKind.INT
 }
 
-private fun copyFromHigh(kind: MoveKind, dest: Int, src: Int): BuilderInstruction = when {
-    dest <= 15 && src <= 15 -> error("copyFromHigh on two low registers")
-    else -> BuilderInstruction22x(kind.op22x, dest, src)
-}
+private fun copyFromHigh(kind: MoveKind, dest: Int, src: Int): BuilderInstruction = moveInstruction(kind, dest, src)
 
 private fun narrow11x(imm: ImmutableInstruction11x, remap: (Int) -> Int, temp: Int): Remapped {
     val a = remap(imm.registerA)
     val kind = moveKindOf(imm.opcode)
     val copy = if (a <= 15) null else copyFromHigh(kind, temp, a)
-    // move-result* must stay adjacent to its invoke: the copy-back goes AFTER.
-    return if (imm.opcode.name.startsWith("move-result")) {
+    // move-result* must stay adjacent to its invoke and move-exception has to
+    // stay at the handler entry; both only write, so nothing is copied in and
+    // the copy-back goes after them.
+    return if (imm.opcode.name.startsWith("move-result") || imm.opcode.name == "move-exception") {
         // Writes `a`: run into the temp and copy back.
         if (a <= 15) return Remapped.Insns(listOf(ImmutableInstruction11x(imm.opcode, a)))
-        Remapped.Insns(listOf<Instruction>(ImmutableInstruction11x(imm.opcode, temp), BuilderInstruction22x(kind.op22x, a, temp)))
+        Remapped.Insns(listOf<Instruction>(ImmutableInstruction11x(imm.opcode, temp), moveInstruction(kind, a, temp)))
     } else {
         val target = if (copy == null) a else temp
         Remapped.Insns(listOfNotNull<Instruction>(copy, ImmutableInstruction11x(imm.opcode, target)))
@@ -366,7 +395,7 @@ private fun narrow12x(imm: ImmutableInstruction12x, remap: (Int) -> Int, temp: I
             b
         }
         out += ImmutableInstruction12x(imm.opcode, temp, src)
-        out += BuilderInstruction22x(kind.op22x, a, temp)
+        out += moveInstruction(kind, a, temp)
         return Remapped.Insns(out)
     }
     // registerB is read, registerA is written.
@@ -374,7 +403,7 @@ private fun narrow12x(imm: ImmutableInstruction12x, remap: (Int) -> Int, temp: I
     val source = if (b > 15) temp else b
     val dest = if (a <= 15) a else temp
     out += ImmutableInstruction12x(imm.opcode, dest, source)
-    if (a > 15) out += BuilderInstruction22x(kind.op22x, a, temp)
+    if (a > 15) out += moveInstruction(kind, a, temp)
     return Remapped.Insns(out)
 }
 
@@ -393,7 +422,7 @@ private fun narrow22b(insn: Instruction, literal: Int, remap: (Int) -> Int, temp
     val source = if (b > 15) temp else b
     val dest = if (a <= 15) a else temp
     out += build(dest, source)
-    if (a > 15) out += BuilderInstruction22x(kind.op22x, a, temp)
+    if (a > 15) out += moveInstruction(kind, a, temp)
     return Remapped.Insns(out)
 }
 
@@ -406,8 +435,8 @@ private fun narrow22t(imm: ImmutableInstruction22t, original: Instruction, remap
     if (a <= 15 && b <= 15) return Remapped.Insns(listOf(BuilderInstruction22t(imm.opcode, a, b, target)))
     val out = mutableListOf<Instruction>()
     val x = if (a > 15) { out += copyFromHigh(MoveKind.INT, temp, a); temp } else a
-    val y = if (b > 15) { out += copyFromHigh(MoveKind.INT, temp + 1, b); temp + 1 } else b
-    out += BuilderInstruction22t(imm.opcode, x, y, target)
+    val y = if (b > 15 && b != a) { out += copyFromHigh(MoveKind.INT, temp + 1, b); temp + 1 } else b
+    out += BuilderInstruction22t(imm.opcode, x, if (b == a) x else y, target)
     return Remapped.Insns(out)
 }
 
@@ -415,36 +444,38 @@ private fun narrow22c(imm: ImmutableInstruction22c, remap: (Int) -> Int, temp: I
     val a = remap(imm.registerA)
     val b = remap(imm.registerB)
     if (a <= 15 && b <= 15) return Remapped.Insns(listOf(ImmutableInstruction22c(imm.opcode, a, b, imm.reference)))
-    val kind = moveKindOf(imm.opcode)
+    // The field BASE is always an object; only the data operand carries the
+    // field's own kind, and a wide field needs two slots for the data copy.
+    val dataKind = moveKindOf(imm.opcode)
+    if (a == b) {
+        // `iget p0, p0` style: a single snapshot serves as base and data. It is
+        // taken as an object move because the base is what has to be low.
+        return Remapped.Insns(
+            listOf<Instruction>(copyFromHigh(MoveKind.OBJECT, temp, a), ImmutableInstruction22c(imm.opcode, temp, temp, imm.reference))
+        )
+    }
     val out = mutableListOf<Instruction>()
-    // iput* stores registerA as the data and registerB as the object; iget*
-    // reads the object from registerB into registerA. Both orientations are
-    // snapshotted before the instruction runs.
     if (imm.opcode.name.startsWith("iput")) {
-        if (a > 15 && b > 15) {
-            // Copy the object away first: the data slot's copy destination may
-            // be the object's own register (temp2 == oldParamStart + 1).
-            out += copyFromHigh(kind, temp, b)
-            out += copyFromHigh(kind, temp + 1, a)
-            out += ImmutableInstruction22c(imm.opcode, temp + 1, temp, imm.reference)
-            return Remapped.Insns(out)
+        // Object first, then the data, then store both from the temps.
+        val base = if (b > 15) { out += copyFromHigh(MoveKind.OBJECT, temp, b); temp } else b
+        val data = if (a > 15) {
+            val slot = if (b > 15) temp + 1 else temp
+            out += copyFromHigh(dataKind, slot, a)
+            slot
+        } else {
+            a
         }
-        if (b > 15) {
-            out += copyFromHigh(kind, temp, b)
-            out += ImmutableInstruction22c(imm.opcode, a, temp, imm.reference)
-            return Remapped.Insns(out)
-        }
-        out += copyFromHigh(kind, temp, a)
-        out += ImmutableInstruction22c(imm.opcode, temp, b, imm.reference)
+        out += ImmutableInstruction22c(imm.opcode, data, base, imm.reference)
         return Remapped.Insns(out)
     }
-    if (b > 15) out += copyFromHigh(kind, temp, b)
-    val objectReg = if (b > 15) temp else b
+    // iget*: base is read, the value is written to the data register.
+    val base = if (b > 15) { out += copyFromHigh(MoveKind.OBJECT, temp, b); temp } else b
     if (a > 15) {
-        out += ImmutableInstruction22c(imm.opcode, temp, objectReg, imm.reference)
-        out += BuilderInstruction22x(kind.op22x, a, temp)
+        val slot = if (b > 15) temp + 1 else temp
+        out += ImmutableInstruction22c(imm.opcode, slot, base, imm.reference)
+        out += moveInstruction(dataKind, a, slot)
     } else {
-        out += ImmutableInstruction22c(imm.opcode, a, objectReg, imm.reference)
+        out += ImmutableInstruction22c(imm.opcode, a, base, imm.reference)
     }
     return Remapped.Insns(out)
 }
@@ -460,6 +491,11 @@ private val NoReference: Reference = object : Reference {
  * (receiver first for non-static callees, `J`/`D` two slots).
  */
 private fun spillMoveKinds(registerCount: Int, reference: Reference?): List<MoveKind> {
+    // filled-new-array references the array TYPE, not a method: object elements
+    // have to be gathered with object moves.
+    (reference as? TypeReference)?.type?.let { type ->
+        return List(registerCount) { if (type.startsWith("[L") || type.startsWith("[[")) MoveKind.OBJECT else MoveKind.INT }
+    }
     val methodRef = reference as? MethodReference ?: return List(registerCount) { MoveKind.INT }
     val params = methodRef.parameterTypes
     val paramSlots = params.sumOf { if (it == "J" || it == "D") 2 else 1 }
@@ -570,6 +606,31 @@ private fun toBuilder(insn: Instruction, original: BuilderInstruction): BuilderI
         else -> original
     }
 }
+/**
+ * Local debug items describe window registers by number; those values move
+ * with the window, so their register has to follow the same delta.
+ */
+private fun remapDebugRegisters(impl: MutableMethodImplementation, oldParamStart: Int, delta: Int) {
+    impl.debugItems.forEach { item ->
+        val register = when (item) {
+            is StartLocal -> item.register
+            is EndLocal -> item.register
+            is RestartLocal -> item.register
+            else -> return@forEach
+        }
+        if (register < oldParamStart) return@forEach
+        item.javaClass.getDeclaredField("register").apply { isAccessible = true }.setInt(item, register + delta)
+    }
+}
+
+/** Formats whose register fields are 8 bits wide (max v255). */
+private val BYTE_FORMATS = setOf(
+    Format.Format11x, Format.Format12x, Format.Format21c, Format.Format21ih,
+    Format.Format21lh, Format.Format21s, Format.Format21t, Format.Format22b, Format.Format22c,
+    Format.Format22s, Format.Format22t, Format.Format22x, Format.Format23x, Format.Format31c,
+    Format.Format31i, Format.Format31t,
+)
+
 /** [MutableMethodImplementation] exposes no setter for the frame size. */
 private val REGISTER_COUNT: Field =
     MutableMethodImplementation::class.java.getDeclaredField("registerCount").apply { isAccessible = true }
@@ -653,6 +714,10 @@ internal fun MutableMethod.growFrameWithScratch(): Int {
     val paramWidth = parameterWidth(this)
     val oldParamStart = oldCount - paramWidth
 
+    // Low temp base for the nibble formats: the freed first parameter slot. A
+    // wide local can never own it — locals end before the parameter window does.
+    val temp = oldParamStart
+
     // The spill set depends on how far the window moves (a larger shift can
     // push a formerly fitting operand over the nibble limit) while the
     // required shift depends on the widest spill: iterate to the fixed point.
@@ -662,15 +727,9 @@ internal fun MutableMethod.growFrameWithScratch(): Int {
     var rounds = 0
     while (true) {
         val spills = oldImpl.instructions
-            .mapNotNull { remapForFrameGrow(it, oldParamStart, delta) as? Remapped.SpillInvoke }
+            .mapNotNull { remapForFrameGrow(it, oldParamStart, delta, temp) as? Remapped.SpillInvoke }
         maxSpillWidth = spills.maxOfOrNull { it.registerCount } ?: 0
-        // Two instructions with two high operands each need the low temp pair,
-        // whose second slot only exists once the frame has grown by two.
-        val twoTemps = oldImpl.instructions.any { needsTwoLowTemps(it, oldParamStart, delta) }
-        val needed = maxOf(
-            if (spills.isEmpty()) 1 else paramWidth + 1 + maxSpillWidth,
-            if (twoTemps) 2 else 1,
-        )
+        val needed = if (spills.isEmpty()) 1 else paramWidth + 1 + maxSpillWidth
         if (needed <= delta) break
         check(++rounds < 8) { "Frame growth did not settle in $definingClass->$name" }
         delta = needed
@@ -681,6 +740,22 @@ internal fun MutableMethod.growFrameWithScratch(): Int {
     val newParamStart = newCount - paramWidth
     val blockStart = newParamStart - maxSpillWidth
 
+    // Nibble staging covers the 4-bit formats; the 8-bit ones (21t etc.) cannot
+    // be staged yet, so a register above v255 fails loudly instead.
+    if (newCount - 1 > 0xFF) {
+        val overflowing = oldImpl.instructions.firstOrNull {
+            usesParameterWindow(it, oldParamStart) && it.opcode.format in BYTE_FORMATS
+        }
+        check(overflowing == null) {
+            "${overflowing?.opcode} in $definingClass->$name needs a register above v255"
+        }
+    }
+    val slots = oldImpl.instructions.maxOf { tempSlots(it, oldParamStart, delta) }
+    check(slots == 0 || temp + slots - 1 <= 15) {
+        val culprit = oldImpl.instructions.firstOrNull { tempSlots(it, oldParamStart, delta) == slots }
+        "No low temp v$temp..v${temp + slots - 1} for ${culprit?.opcode} in $definingClass->$name"
+    }
+
     // Rebuild through the mutable builder: it converts the old code addresses
     // into labels, so branch targets, try ranges and debug items follow the
     // inserted instructions instead of staying at stale offsets.
@@ -688,10 +763,12 @@ internal fun MutableMethod.growFrameWithScratch(): Int {
     REGISTER_COUNT.setInt(impl, newCount)
     setImplementation(impl)
 
+    remapDebugRegisters(impl, oldParamStart, delta)
+
     val originals = impl.instructions.toList()
     var index = 0
     for (old in originals) {
-        when (val r = remapForFrameGrow(old, oldParamStart, delta)) {
+        when (val r = remapForFrameGrow(old, oldParamStart, delta, temp)) {
             is Remapped.Insns -> {
                 val built = r.insns.map { toBuilder(it, old) }
                 built.forEachIndexed { k, insn ->
@@ -713,7 +790,7 @@ internal fun MutableMethod.growFrameWithScratch(): Int {
         }
     }
 
-    val scratch = oldCount - paramWidth
+    val scratch = temp
     check(scratch in 0..0xFF) {
         "Scratch register v$scratch does not fit move-result/if-eqz in $definingClass->$name"
     }

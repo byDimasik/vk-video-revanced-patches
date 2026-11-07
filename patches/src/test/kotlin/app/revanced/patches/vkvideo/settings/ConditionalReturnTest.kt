@@ -24,9 +24,7 @@ class ConditionalReturnTest {
     private val enabledMethod = "Lstub/Enabled;->isEnabled()Z"
 
     /** Formats whose register fields are 4 bits wide (max v15). */
-    private val nibbleFormats = setOf(
-        Format.Format11n, Format.Format11x, Format.Format12x, Format.Format22b, Format.Format22s, Format.Format22t, Format.Format22c
-    )
+    private val nibbleFormats = setOf(Format.Format11n, Format.Format12x, Format.Format22t, Format.Format22c)
 
     private fun assertNoNibbleOverflow(method: MutableMethod) {
         method.getInstructions().forEach { insn ->
@@ -635,14 +633,10 @@ class ConditionalReturnTest {
         val instructions = method.getInstructions()
         assertEquals(17, method.implementation!!.registerCount)
 
-        // Guard scratch = 16 - 2 = v14; p1 (v15) remaps to v16, so the return
-        // reads a low copy instead of the high window slot.
+        // 11x holds 8 bits, so p1 (v15 -> v16) is addressed directly.
         assertEquals(14, (instructions[1] as OneRegisterInstruction).registerA)
-        val copy = instructions[5] as TwoRegisterInstruction
-        assertEquals(Opcode.MOVE_OBJECT_FROM16, copy.opcode)
-        assertEquals(14 to 16, copy.registerA to copy.registerB)
-        assertEquals(Opcode.RETURN_OBJECT, instructions[6].opcode)
-        assertEquals(14, (instructions[6] as OneRegisterInstruction).registerA)
+        assertEquals(Opcode.RETURN_OBJECT, instructions[5].opcode)
+        assertEquals(16, (instructions[5] as OneRegisterInstruction).registerA)
         assertNoNibbleOverflow(method)
     }
 
@@ -720,7 +714,7 @@ class ConditionalReturnTest {
     }
 
     @Test
-    fun `iput with two high operands reserves a second low temp`() {
+    fun `iput with identical high operands snapshots once`() {
         // No spilled invoke here, so without the reservation the second temp
         // would be the re-emitted receiver slot and clobber it.
         val smali = """
@@ -742,17 +736,15 @@ class ConditionalReturnTest {
 
         val instructions = method.getInstructions()
         // Guard firewrite is 4 instructions; the iput expansion starts at 4.
-        // Both operands are p1 (v15 -> v16 at growth 1), so the second temp is
-        // needed and the window is pushed one further: p0 = 16, p1 = 17.
-        val copies = instructions.drop(4).take(2).map { it as TwoRegisterInstruction }
-        assertEquals(Opcode.MOVE_OBJECT_FROM16, copies[0].opcode)
-        assertEquals(14 to 17, copies[0].registerA to copies[0].registerB)
-        assertEquals(Opcode.MOVE_OBJECT_FROM16, copies[1].opcode)
-        assertEquals(15 to 17, copies[1].registerA to copies[1].registerB)
-        val iput = instructions[6] as TwoRegisterInstruction
+        // Both operands are the same register, so one snapshot serves as base
+        // and data: p1 is v16 after the single-slot growth.
+        val copy = instructions[4] as TwoRegisterInstruction
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, copy.opcode)
+        assertEquals(14 to 16, copy.registerA to copy.registerB)
+        val iput = instructions[5] as TwoRegisterInstruction
         assertEquals(Opcode.IPUT_OBJECT, iput.opcode)
-        assertEquals(15 to 14, iput.registerA to iput.registerB)
-        assertEquals(18, method.implementation!!.registerCount)
+        assertEquals(14 to 14, iput.registerA to iput.registerB)
+        assertEquals(17, method.implementation!!.registerCount)
         assertNoNibbleOverflow(method)
     }
 
@@ -780,19 +772,18 @@ class ConditionalReturnTest {
         method.prependConditionalReturn(enabledMethod, "return-void")
 
         val instructions = method.getInstructions()
-        assertEquals(18, method.implementation!!.registerCount)
-        // Body starts at 4 with the two snapshots, then the branch on them.
-        // p1 is v15 -> v16; both operands are the same high register.
-        val copies = instructions.drop(4).take(2).map { it as TwoRegisterInstruction }
-        assertEquals(14 to 17, copies[0].registerA to copies[0].registerB)
-        assertEquals(15 to 17, copies[1].registerA to copies[1].registerB)
-        val branch = instructions[6] as Instruction22t
-        assertEquals(14 to 15, branch.registerA to branch.registerB)
+        // p1 is v15 -> v16; both operands are the same high register, so one
+        // snapshot is enough.
+        assertEquals(17, method.implementation!!.registerCount)
+        val copy = instructions[4] as TwoRegisterInstruction
+        assertEquals(14 to 16, copy.registerA to copy.registerB)
+        val branch = instructions[5] as Instruction22t
+        assertEquals(14 to 14, branch.registerA to branch.registerB)
         assertNoNibbleOverflow(method)
     }
 
     @Test
-    fun `lit8 binop with a high destination reads and writes through the temp`() {
+    fun `lit8 binop addresses a high window register directly`() {
         val smali = """
             .class public Lcom/example/Lit;
             .super Ljava/lang/Object;
@@ -810,11 +801,72 @@ class ConditionalReturnTest {
 
         method.prependConditionalReturn(enabledMethod, "return-void")
 
+        // 22b has 8-bit register fields, so no staging is needed at v16.
         val instructions = method.getInstructions()
-        val copy = instructions.first { it.opcode == Opcode.MOVE_FROM16 } as TwoRegisterInstruction
-        assertEquals(15 to 16, copy.registerA to copy.registerB)
         val add = instructions.first { it.opcode == Opcode.ADD_INT_LIT8 } as TwoRegisterInstruction
-        assertEquals(15 to 15, add.registerA to add.registerB)
+        assertEquals(16 to 16, add.registerA to add.registerB)
+        assertNoNibbleOverflow(method)
+    }
+
+    @Test
+    fun `move-exception writes a high destination through the temp`() {
+        val smali = """
+            .class public Lcom/example/Handler;
+            .super Ljava/lang/Object;
+
+            .method public static read(Ljava/lang/Object;)Ljava/lang/Object;
+                .registers 16
+
+                :try_start
+                invoke-virtual {p0}, Ljava/lang/Object;->toString()Ljava/lang/String;
+                :try_end
+                .catch Ljava/lang/Exception; {:try_start .. :try_end} :handler
+
+                move-result-object v0
+                return-object v0
+
+                :handler
+                move-exception p0
+                return-object p0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Handler;", "read")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        val at = instructions.indexOfFirst { it.opcode == Opcode.MOVE_EXCEPTION }
+        // 11x holds 8 bits: the exception goes straight to the re-emitted slot.
+        assertEquals(16, (instructions[at] as OneRegisterInstruction).registerA)
+        assertNoNibbleOverflow(method)
+    }
+
+    @Test
+    fun `primitive field access snapshots the base with an object move`() {
+        val smali = """
+            .class public Lcom/example/Prim;
+            .super Ljava/lang/Object;
+
+            .method public static read(I)I
+                .registers 16
+
+                iget p0, p0, Lcom/example/Prim;->x:I
+                return p0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Prim;", "read")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        // Data (p0 -> v16) is copied with a plain move, the object (also p0,
+        // same register) only once — the base snapshot must be an object move.
+        val copies = instructions.filter { it.opcode == Opcode.MOVE_FROM16 || it.opcode == Opcode.MOVE_OBJECT_FROM16 }
+        assertTrue(copies.any { it.opcode == Opcode.MOVE_OBJECT_FROM16 })
         assertNoNibbleOverflow(method)
     }
 
