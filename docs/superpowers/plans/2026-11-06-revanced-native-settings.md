@@ -87,6 +87,15 @@ Everything in this section was verified by baksmali-ing the stock `vkvideo-1.170
 
 ---
 
+## Implementation deviations (2026-11-06, found and verified on device during Task 6)
+
+1. **Append-scratch growth remaps the parameter window** (corrects the round-1 rule): DEX places incoming arguments in the LAST `paramWidth` registers of the frame, so growing `registerCount` without remapping reads every parameter one register low (the #42 VerifyError class; JVM tests cannot catch it). The shelf patch grows via `growFrameWithScratch` — the same window-remap machinery as `prependConditionalReturn` — and the guard lives in the window slot freed by the remap, not at `oldCount`.
+2. **Toggle polarity:** the plan's "collapses when `isTopShelfAdsEnabled()` is false" contradicts its own "default ON = ads blocked" (getBoolean defaults 1). Device checklist semantics win: toggle ON ⇒ blocking ⇒ collapse; the emitted guard is `if-eqz` (skip collapse when OFF).
+3. **Collapse mechanics live in `AdsSettings.collapseTopShelfView(View)`** (injected helper): DEX field opcodes (`iget-object`/`iput`) are format 22c — 4-bit registers, no `/range` form — so the plan's inline high-register collapse block was not encodable.
+4. **Top-bar back dispatches the activity back stack** (`ComponentActivity.onBackPressed()`), not `FragmentImpl.finish()`: for a MainActivity-hosted fragment the back stack is fragment-manager replace+hide bookkeeping (stack-group size 1 at our depth), where `finish()` finishes the whole activity. System back provably pops the screen; the top bar now mirrors it. The callback returns `const/4 0` — R8 does not retain `kotlin/Unit` in this app (device crash: `NoClassDefFoundError: Lkotlin/Unit;`).
+
+---
+
 ### Task 0: Branch from freshly fetched main
 
 **Files:** none.
