@@ -117,6 +117,7 @@ class InjectedClassesTest {
     fun `onCreateView inflates the chrome, embeds the content, hides the appkit bar`() {
         val chrome = extractToolbarChrome(
             context.classDefs.first { it.type == "Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;" },
+            context.classDefs.toList(),
         )
         val instructions = method(SETTINGS_FRAGMENT_CLASS, "onCreateView")
 
@@ -189,6 +190,7 @@ class InjectedClassesTest {
     fun `onViewCreated builds the VkTopBar chrome with a direct finish back handler`() {
         val chrome = extractToolbarChrome(
             context.classDefs.first { it.type == "Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;" },
+            context.classDefs.toList(),
         )
         val instructions = method(SETTINGS_FRAGMENT_CLASS, "onViewCreated")
 
@@ -261,18 +263,16 @@ class InjectedClassesTest {
         }
         assertTrue(appBarIndex > setBackIndex)
 
-        // The back Function0 calls FragmentImpl.finish() directly (the app's own
-        // reflective onToolbarNavigationClick lookup is verified dead code).
+        // The back Function0 routes through the app's own back dispatch
+        // (g57/a.b -> nav-container pop), like the app's own toolbar screens.
         val backClick = injectedClass("Lapp/revanced/extension/vkvideo/ReVancedBackClick;")
         val invoke = backClick.methods.first { it.name == "invoke" }
         val invokeInstructions = invoke.implementation!!.instructions.toList()
-        val finishIndex = invokeInstructions.indexOfFirst { instruction ->
+        val backDispatchIndex = invokeInstructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
-            reference is MethodReference &&
-                reference.definingClass == "Lcom/vk/core/fragments/FragmentImpl;" &&
-                reference.name == "finish"
+            reference is MethodReference && reference.definingClass == chrome.backHandlerRef.substringBefore("->")
         }
-        assertTrue(finishIndex >= 0, "back click must call FragmentImpl.finish()")
+        assertTrue(backDispatchIndex >= 0, "back click must call the app's back dispatch ${chrome.backHandlerRef}")
     }
 
     @Test

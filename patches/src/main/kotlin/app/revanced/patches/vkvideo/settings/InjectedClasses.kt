@@ -51,6 +51,7 @@ internal data class ToolbarChrome(
     val backCtor: String,
     val backStyleInt: Int,
     val companionFieldRef: String,
+    val backHandlerRef: String,
     val resHelperRef: String,
     val accessibilityBackId: Int,
     val chromeCheckRef: String,
@@ -74,7 +75,7 @@ internal fun injectSettingsClasses(
         START_SETTINGS_CLASS to startSettingsSmali(opener),
         SETTINGS_FRAGMENT_CLASS to settingsFragmentSmali(chrome),
         TOGGLE_LISTENER_CLASS to toggleListenerSmali(switchListenerMethod),
-        BACK_CLICK_CLASS to backClickSmali(),
+        BACK_CLICK_CLASS to backClickSmali(chrome.backHandlerRef),
     )
 
     sources.forEach { (descriptor, source) ->
@@ -430,7 +431,7 @@ private fun toggleListenerSmali(listenerMethod: String): String = """
     .end method
 """.trimIndent()
 
-private fun backClickSmali(): String = """
+private fun backClickSmali(backHandlerRef: String): String = """
     .class public final $BACK_CLICK_CLASS
     .super Ljava/lang/Object;
     .implements Lkotlin/jvm/functions/Function0;
@@ -450,7 +451,7 @@ private fun backClickSmali(): String = """
         .registers 2
 
         iget-object v0, p0, $BACK_CLICK_CLASS->fragment:Lcom/vk/core/fragments/FragmentImpl;
-        invoke-virtual {v0}, Lcom/vk/core/fragments/FragmentImpl;->finish()V
+        invoke-static {v0}, $backHandlerRef
         sget-object v0, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
         return-object v0
     .end method

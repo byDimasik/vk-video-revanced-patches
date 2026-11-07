@@ -537,6 +537,39 @@ object PatchTestUtil {
         .end method
     """.trimIndent()
 
+    /** `g57/a` — the fragment-chrome helper carrying the toolbar-back dispatch. */
+    private val chromeHelperFixture = """
+        .class public final Lg57/a;
+        .super Ljava/lang/Object;
+
+        .method public constructor <init>()V
+            .registers 1
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .method public static final a(Lcom/vk/core/fragments/FragmentImpl;)Z
+            .registers 2
+
+            const/4 v0, 0x1
+            return v0
+        .end method
+
+        .method public static final b(Lcom/vk/core/fragments/FragmentImpl;)V
+            .registers 2
+
+            return-void
+        .end method
+
+        .method public static final f(Lcom/vk/core/fragments/FragmentImpl;Lcom/vk/core/view/components/topbar/VkTopBar;)Z
+            .registers 3
+
+            const/4 v0, 0x0
+            return v0
+        .end method
+    """.trimIndent()
+
     /** The General-settings click lambda shape (1.170: `oi5/d`) opening via `o54/r`. */
     private val navOpenerCallFixture = """
         .class public final Lfixture/menu/OpenerUser;
@@ -577,6 +610,7 @@ object PatchTestUtil {
     private val settingsExtras: List<String> = listOf(
         switchListenerInterfaceFixture,
         toolbarChromeFragmentFixture,
+        chromeHelperFixture,
         navOpenerCallFixture,
         navOpenerClassFixture,
     )

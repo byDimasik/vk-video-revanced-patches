@@ -27,7 +27,10 @@ val revancedSettingsPatch = bytecodePatch(
         // Chrome, opener and listener-method names are resolved from the app's own
         // code, never hardcoded (obfuscated names differ between versions).
         val chromeMethod = toolbarChromeFingerprint.method
-        val chrome = extractToolbarChrome(classDefs.first { it.type == chromeMethod.definingClass })
+        val chrome = extractToolbarChrome(
+            classDefs.first { it.type == chromeMethod.definingClass },
+            classDefs.toList(),
+        )
         val opener = resolveNavOpener(navOpenerFingerprint.method)
         val switchListenerMethod = switchListenerMethodFingerprint.method.name
 
