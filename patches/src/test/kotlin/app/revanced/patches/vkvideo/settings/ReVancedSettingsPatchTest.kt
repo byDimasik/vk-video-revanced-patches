@@ -157,7 +157,9 @@ class ReVancedSettingsPatchTest {
     private val expectedDescriptors = setOf(
         ADS_SETTINGS_CLASS,
         "Lapp/revanced/extension/vkvideo/StartReVancedSettings;",
+        ROOT_FRAGMENT_CLASS,
         SETTINGS_FRAGMENT_CLASS,
+        "Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;",
         "Lapp/revanced/extension/vkvideo/ReVancedToggleListener;",
         "Lapp/revanced/extension/vkvideo/ReVancedBackClick;",
     )

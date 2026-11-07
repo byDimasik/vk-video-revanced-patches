@@ -5,9 +5,25 @@ import com.android.tools.smali.smali.SmaliTestUtils
 
 internal const val ADS_SETTINGS_CLASS = "Lapp/revanced/extension/vkvideo/AdsSettings;"
 private const val START_SETTINGS_CLASS = "Lapp/revanced/extension/vkvideo/StartReVancedSettings;"
-internal const val SETTINGS_FRAGMENT_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedSettingsFragment;"
+internal const val SETTINGS_FRAGMENT_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedAdsSettingsFragment;"
+internal const val ROOT_FRAGMENT_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedRootFragment;"
+private const val GROUP_CLICK_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;"
 private const val TOGGLE_LISTENER_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedToggleListener;"
 private const val BACK_CLICK_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedBackClick;"
+
+/** Root-screen strings. The root is the ReVanced group list (one "Ads" row). */
+internal const val TITLE_ROOT = "ReVanced"
+internal const val TITLE_ADS_GROUP = "Ads"
+
+/**
+ * The "Ads" group row icon and tint, both preexisting app resources (no binary
+ * assets are shipped — the hybrid install keeps stock resources):
+ * `drawable/vk_icon_advertising_outline_24` and the themed
+ * `attr/vk_ui_icon_primary`, which resolves white in dark and near-black in
+ * light and is what the app's own profile rows tint leading icons with.
+ */
+internal const val ADS_GROUP_ICON_ID = 0x7f0816fa
+internal const val ICON_PRIMARY_ATTR = 0x7f040d62
 
 private const val PREF_FILE = "revanced_settings"
 private const val KEY_VIDEO_ADS = "revanced_ads_video"
@@ -72,7 +88,9 @@ internal fun injectSettingsClasses(
     val sources = linkedMapOf(
         ADS_SETTINGS_CLASS to adsSettingsSmali(types),
         START_SETTINGS_CLASS to startSettingsSmali(opener),
-        SETTINGS_FRAGMENT_CLASS to settingsFragmentSmali(chrome),
+        ROOT_FRAGMENT_CLASS to settingsFragmentSmali(chrome, ROOT_FRAGMENT_CLASS, TITLE_ROOT, "buildRootContent"),
+        SETTINGS_FRAGMENT_CLASS to settingsFragmentSmali(chrome, SETTINGS_FRAGMENT_CLASS, TITLE_ADS_GROUP, "buildAdsContent"),
+        GROUP_CLICK_CLASS to groupClickSmali(opener),
         TOGGLE_LISTENER_CLASS to toggleListenerSmali(switchListenerMethod),
         BACK_CLICK_CLASS to backClickSmali(),
     )
@@ -99,10 +117,12 @@ private val requiredMethods = mapOf(
     ADS_SETTINGS_CLASS to listOf(
         "getBoolean", "setEnabled", "isVideoAdsEnabled", "isFeedAdsEnabled",
         "isCatalogAdsEnabled", "isTopShelfAdsEnabled", "collapseTopShelfView",
-        "addMenuEntry", "buildAdsContent",
+        "addMenuEntry", "buildAdsContent", "buildRootContent",
     ),
     START_SETTINGS_CLASS to listOf("<init>", "invoke"),
     SETTINGS_FRAGMENT_CLASS to listOf("<init>", "onCreateView", "onViewCreated"),
+    ROOT_FRAGMENT_CLASS to listOf("<init>", "onCreateView", "onViewCreated"),
+    GROUP_CLICK_CLASS to listOf("<init>", "onClick"),
     TOGGLE_LISTENER_CLASS to listOf("<init>"),
     BACK_CLICK_CLASS to listOf("<init>", "invoke"),
 )
@@ -227,6 +247,101 @@ ${adsRow(LABEL_CATALOG_ADS, KEY_CATALOG_ADS, "isCatalogAdsEnabled")}
 ${adsRow(LABEL_TOPSHELF_ADS, KEY_TOPSHELF_ADS, "isTopShelfAdsEnabled")}
         return-object v7
     .end method
+
+${buildRootContentSmali()}
+""".trimIndent()
+
+/**
+ * The ReVanced root list: a single native `VkCell` row ("Ads") with a leading
+ * themed icon and the cell chevron, opening the toggles screen.
+ *
+ * The row is transcribed from the app's own profile-menu row binder
+ * (`com/vk/video/screens/profile/adapter/holder/j.t3`): same `VkCell`
+ * construction, `VkCell$Left$Main$c` icon slot (`Lp72/j` drawable provider,
+ * `Lp72/b` themed tint attr), title-only middle `VkCell$Middle$e` and the
+ * chevron-bearing `VkCell$Right$d` default slot model.
+ */
+private fun buildRootContentSmali(): String = """
+    .method public static buildRootContent(Landroid/content/Context;)Landroid/view/View;
+        .registers 11
+        .param p0, "context"
+
+        new-instance v9, Landroid/widget/LinearLayout;
+        invoke-direct {v9, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
+        const/4 v0, 0x1
+        invoke-virtual {v9, v0}, Landroid/widget/LinearLayout;->setOrientation(I)V
+
+        new-instance v8, Lcom/vk/core/view/components/cell/VkCell;
+        const/4 v0, 0x0
+        const/4 v1, 0x6
+        const/4 v2, 0x0
+        invoke-direct {v8, p0, v0, v1, v2}, Lcom/vk/core/view/components/cell/VkCell;-><init>(Landroid/content/Context;Landroid/util/AttributeSet;II)V
+
+        new-instance v0, Landroid/view/ViewGroup${'$'}LayoutParams;
+        const/4 v1, -0x1
+        const/4 v2, -0x2
+        invoke-direct {v0, v1, v2}, Landroid/view/ViewGroup${'$'}LayoutParams;-><init>(II)V
+        invoke-virtual {v8, v0}, Landroid/view/View;->setLayoutParams(Landroid/view/ViewGroup${'$'}LayoutParams;)V
+        const/4 v0, 0x1
+        invoke-virtual {v8, v0}, Lcom/vk/core/view/components/cell/VkCell;->setRippleEnabled(Z)V
+
+        new-instance v0, Lp72/j;
+        const v1, 0x${ADS_GROUP_ICON_ID.toString(16)}
+        invoke-direct {v0, v1}, Lp72/j;-><init>(I)V
+        new-instance v1, Lp72/b;
+        const v2, 0x${ICON_PRIMARY_ATTR.toString(16)}
+        invoke-direct {v1, v2}, Lp72/b;-><init>(I)V
+        new-instance v2, Lp72/r${'$'}a;
+        invoke-direct {v2, v1}, Lp72/r${'$'}a;-><init>(Lp72/q;)V
+
+        new-instance v1, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}c;
+        sget-object v3, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}Size;->Medium:Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}Size;
+        const/16 v4, 0x8
+        invoke-direct {v1, v0, v3, v2, v4}, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}c;-><init>(Lp72/g;Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}Size;Lp72/r${'$'}a;I)V
+        new-instance v0, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}b;
+        const/4 v2, 0x0
+        invoke-direct {v0, v1, v2}, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}b;-><init>(Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main;Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}c;)V
+        invoke-virtual {v8, v0}, Lcom/vk/core/view/components/cell/VkCell;->setLeft(Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}b;)V
+
+        new-instance v0, Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e;
+        new-instance v1, Lpx1/a${'$'}h;
+        const-string v2, "$TITLE_ADS_GROUP"
+        invoke-direct {v1, v2}, Lpx1/a${'$'}h;-><init>(Ljava/lang/CharSequence;)V
+        const/4 v2, 0x0
+        const/4 v3, 0x0
+        const/4 v4, 0x0
+        const/16 v5, 0x3e
+        invoke-direct/range {v0 .. v5}, Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e;-><init>(Lpx1/a;ILandroid/text/TextUtils${'$'}TruncateAt;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e${'$'}b${'$'}b;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e${'$'}b;I)V
+        move-object v1, v0
+        sget-object v0, Lcom/vk/core/view/components/cell/VkCell${'$'}Middle;->Companion:Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}a;
+        const/4 v2, 0x0
+        const/4 v3, 0x0
+        const/16 v4, 0xe
+        invoke-static/range {v0 .. v4}, Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}a;->a(Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}a;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}d;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}c;I)Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}b;
+        move-result-object v0
+        invoke-virtual {v8, v0}, Lcom/vk/core/view/components/cell/VkCell;->setMiddle(Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}b;)V
+
+        new-instance v0, Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}b;
+        const/4 v1, 0x0
+        const/4 v2, 0x0
+        const/4 v3, 0x7
+        invoke-direct {v0, v1, v2, v3}, Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}b;-><init>(Lkotlin/jvm/functions/Function1;Lp72/r${'$'}a;I)V
+        new-instance v1, Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}d;
+        const/4 v2, 0x0
+        const/4 v3, 0x0
+        const/4 v4, 0x0
+        move-object v5, v0
+        const/16 v6, 0x17
+        invoke-direct/range {v1 .. v6}, Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}d;-><init>(Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}a;Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}e;Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}ExtraAction${'$'}a;Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}b;I)V
+        invoke-virtual {v8, v1}, Lcom/vk/core/view/components/cell/VkCell;->setRight(Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}d;)V
+
+        new-instance v0, $GROUP_CLICK_CLASS
+        invoke-direct {v0}, $GROUP_CLICK_CLASS-><init>()V
+        invoke-virtual {v8, v0}, Landroid/view/View;->setOnClickListener(Landroid/view/View${'$'}OnClickListener;)V
+
+        invoke-virtual {v9, v8}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
+        return-object v9
+    .end method
 """.trimIndent()
 
 /**
@@ -282,8 +397,13 @@ private fun adsRow(label: String, key: String, enabledGetter: String): String = 
  * shadow hidden through the app's own hide helper, and a `VkTopBar` whose back
  * handler finishes the fragment.
  */
-private fun settingsFragmentSmali(chrome: ToolbarChrome): String = """
-    .class public final $SETTINGS_FRAGMENT_CLASS
+private fun settingsFragmentSmali(
+    chrome: ToolbarChrome,
+    className: String,
+    title: String,
+    contentMethod: String,
+): String = """
+    .class public final $className
     .super Lcom/vk/core/fragments/FragmentImpl;
 
     .method public constructor <init>()V
@@ -306,7 +426,7 @@ private fun settingsFragmentSmali(chrome: ToolbarChrome): String = """
 
         invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->requireContext()Landroid/content/Context;
         move-result-object v1
-        invoke-static {v1}, $ADS_SETTINGS_CLASS->buildAdsContent(Landroid/content/Context;)Landroid/view/View;
+        invoke-static {v1}, $ADS_SETTINGS_CLASS->$contentMethod(Landroid/content/Context;)Landroid/view/View;
         move-result-object v1
 
         const v2, 0x${chrome.contentId.toString(16)}
@@ -351,7 +471,7 @@ private fun settingsFragmentSmali(chrome: ToolbarChrome): String = """
 
         new-instance v3, Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text;
         new-instance v4, Lcom/vk/core/view/components/topbar/VkTopBar${'$'}Middle${'$'}Text${'$'}Title;
-        const-string v5, "ReVanced"
+        const-string v5, "$title"
         const/4 v8, 0x0
         const/16 v9, ${chrome.titleStyleInt}
         const/4 v6, 0x0
@@ -418,13 +538,45 @@ private fun startSettingsSmali(opener: NavOpener): String = """
 
         check-cast p1, Landroid/content/Context;
         new-instance v0, ${opener.instanceType}
-        const-class v1, $SETTINGS_FRAGMENT_CLASS
+        const-class v1, $ROOT_FRAGMENT_CLASS
         const/4 v2, 0x0
         const/4 v3, 0x0
         invoke-direct {v0, v1, v2, v3}, ${opener.ctorOwner}-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
         invoke-virtual {v0, p1}, ${opener.hOwner}->h(Landroid/content/Context;)V
         const/4 v0, 0x0
         return-object v0
+    .end method
+""".trimIndent()
+
+/**
+ * Click of the root "Ads" row: opens the toggles screen through the app's own
+ * fragment opener (the same builder `StartReVancedSettings` uses).
+ */
+private fun groupClickSmali(opener: NavOpener): String = """
+    .class public final $GROUP_CLICK_CLASS
+    .super Ljava/lang/Object;
+    .implements Landroid/view/View${'$'}OnClickListener;
+
+    .method public constructor <init>()V
+        .registers 1
+
+        invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+        return-void
+    .end method
+
+    .method public onClick(Landroid/view/View;)V
+        .registers 4
+        .param p1, "view"
+
+        invoke-virtual {p1}, Landroid/view/View;->getContext()Landroid/content/Context;
+        move-result-object p1
+        new-instance v0, ${opener.instanceType}
+        const-class v1, $SETTINGS_FRAGMENT_CLASS
+        const/4 v2, 0x0
+        const/4 v3, 0x0
+        invoke-direct {v0, v1, v2, v3}, ${opener.ctorOwner}-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
+        invoke-virtual {v0, p1}, ${opener.hOwner}->h(Landroid/content/Context;)V
+        return-void
     .end method
 """.trimIndent()
 

@@ -62,7 +62,9 @@ class InjectedClassesTest {
     private val expectedDescriptors = setOf(
         ADS_SETTINGS_CLASS,
         "Lapp/revanced/extension/vkvideo/StartReVancedSettings;",
+        ROOT_FRAGMENT_CLASS,
         SETTINGS_FRAGMENT_CLASS,
+        "Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;",
         "Lapp/revanced/extension/vkvideo/ReVancedToggleListener;",
         "Lapp/revanced/extension/vkvideo/ReVancedBackClick;",
     )
@@ -88,7 +90,7 @@ class InjectedClassesTest {
         injectedClass(descriptor).methods.first { it.name == name }.implementation!!.instructions.toList()
 
     @Test
-    fun `injects exactly the five classes, idempotently, without the dialog era`() {
+    fun `injects exactly the seven classes, idempotently, without the dialog era`() {
         val types = context.classDefs.map { it.type }.toSet()
         assertTrue(types.containsAll(expectedDescriptors))
         assertFalse(types.any { it in dialogEraDescriptors }, "dialog-era classes must be gone")
@@ -104,13 +106,15 @@ class InjectedClassesTest {
     }
 
     @Test
-    fun `fragment extends FragmentImpl with a public no-arg constructor`() {
-        val fragment = injectedClass(SETTINGS_FRAGMENT_CLASS)
-        assertEquals("Lcom/vk/core/fragments/FragmentImpl;", fragment.superclass)
+    fun `both fragments extend FragmentImpl with a public no-arg constructor`() {
+        for (descriptor in listOf(ROOT_FRAGMENT_CLASS, SETTINGS_FRAGMENT_CLASS)) {
+            val fragment = injectedClass(descriptor)
+            assertEquals("Lcom/vk/core/fragments/FragmentImpl;", fragment.superclass)
 
-        val ctor = fragment.methods.first { it.name == "<init>" }
-        assertEquals("()V", ctor.let { "(${it.parameterTypes.joinToString("")})${it.returnType}" })
-        assertTrue(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(ctor.accessFlags))
+            val ctor = fragment.methods.first { it.name == "<init>" }
+            assertEquals("()V", ctor.let { "(${it.parameterTypes.joinToString("")})${it.returnType}" })
+            assertTrue(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(ctor.accessFlags), descriptor)
+        }
     }
 
     @Test
@@ -118,7 +122,11 @@ class InjectedClassesTest {
         val chrome = extractToolbarChrome(
             context.classDefs.first { it.type == "Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;" },
         )
-        val instructions = method(SETTINGS_FRAGMENT_CLASS, "onCreateView")
+        for ((descriptor, contentMethod) in listOf(
+            ROOT_FRAGMENT_CLASS to "buildRootContent",
+            SETTINGS_FRAGMENT_CLASS to "buildAdsContent",
+        )) {
+        val instructions = method(descriptor, "onCreateView")
 
         // inflate(chrome layout, container, false) -> coordinator root
         val inflateIndex = instructions.indexOfFirst { instruction ->
@@ -134,10 +142,10 @@ class InjectedClassesTest {
             .first { i -> instructions[i] is NarrowLiteralInstruction && (instructions[i] as OneRegisterInstruction).registerA == layoutReg }
         assertEquals(chrome.chromeLayoutId, (instructions[layoutConst] as NarrowLiteralInstruction).narrowLiteral)
 
-        // content built by AdsSettings.buildAdsContent(requireContext())
+        // content built by AdsSettings.<contentMethod>(requireContext())
         val contentIndex = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
-            reference is MethodReference && reference.name == "buildAdsContent"
+            reference is MethodReference && reference.name == contentMethod
         }
         assertTrue(contentIndex > inflateIndex, "content must be built after the chrome root")
         val requireContextIndex = instructions.indexOfFirst { instruction ->
@@ -183,6 +191,7 @@ class InjectedClassesTest {
 
         val returnIndex = instructions.indexOfLast { it.opcode == Opcode.RETURN_OBJECT }
         assertTrue(returnIndex > addViewIndex)
+        }
     }
 
     @Test
@@ -190,7 +199,11 @@ class InjectedClassesTest {
         val chrome = extractToolbarChrome(
             context.classDefs.first { it.type == "Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;" },
         )
-        val instructions = method(SETTINGS_FRAGMENT_CLASS, "onViewCreated")
+        for ((descriptor, title) in listOf(
+            ROOT_FRAGMENT_CLASS to TITLE_ROOT,
+            SETTINGS_FRAGMENT_CLASS to TITLE_ADS_GROUP,
+        )) {
+        val instructions = method(descriptor, "onViewCreated")
 
         fun ctorIndexOf(type: String): Int = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
@@ -212,7 +225,7 @@ class InjectedClassesTest {
         val titleString = instructions.subList(0, titleIndex)
             .filterIsInstance<ReferenceInstruction>()
             .mapNotNull { (it.reference as? StringReference)?.string }
-        assertTrue(titleString.contains("ReVanced"), "title must be the ReVanced string")
+        assertTrue(titleString.contains(title), "screen title is the group title")
 
         val textIndex = ctorIndexOf("Lcom/vk/core/view/components/topbar/VkTopBar\$Middle\$Text;")
         assertTrue(textIndex > titleIndex)
@@ -297,6 +310,7 @@ class InjectedClassesTest {
                 reference.name == "onBackPressed"
         }
         assertTrue(backDispatchIndex >= 0, "back click must dispatch activity onBackPressed")
+        }
     }
 
     @Test
@@ -470,8 +484,8 @@ class InjectedClassesTest {
             .filterIsInstance<ReferenceInstruction>()
             .mapNotNull { (it.reference as? TypeReference)?.type }
         assertTrue(
-            fragmentClassConst.contains(SETTINGS_FRAGMENT_CLASS),
-            "opener must receive the ReVanced settings fragment class",
+            fragmentClassConst.contains(ROOT_FRAGMENT_CLASS),
+            "opener must receive the ReVanced root fragment class",
         )
 
         val openIndex = instructions.indexOfFirst { instruction ->
@@ -494,6 +508,103 @@ class InjectedClassesTest {
             (nullConst as OneRegisterInstruction).registerA,
             "the returned register must hold the null constant",
         )
+    }
+
+    @Test
+    fun `buildRootContent renders one native VkCell Ads row with icon, chevron and click`() {
+        val instructions = method(ADS_SETTINGS_CLASS, "buildRootContent")
+
+        fun indexOfRef(className: String, name: String): Int = instructions.indexOfFirst { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            reference is MethodReference &&
+                reference.definingClass == className &&
+                reference.name == name
+        }
+
+        // A VkCell is constructed into the container and configured as a row.
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell;", "<init>") >= 0)
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell;", "setRippleEnabled") >= 0)
+
+        // Leading icon: provider over the app's own advertising drawable, tinted
+        // through the themed icon-primary attr (no hardcoded color).
+        val iconIndex = indexOfRef("Lp72/j;", "<init>")
+        assertTrue(iconIndex >= 0, "row must carry a leading drawable provider")
+        val iconReg = (instructions[iconIndex] as FiveRegisterInstruction).registerD
+        val iconLiteral = (0..iconIndex).reversed()
+            .first { i -> instructions[i] is NarrowLiteralInstruction && (instructions[i] as OneRegisterInstruction).registerA == iconReg }
+        assertEquals(ADS_GROUP_ICON_ID, (instructions[iconLiteral] as NarrowLiteralInstruction).narrowLiteral)
+
+        val tintIndex = indexOfRef("Lp72/b;", "<init>")
+        assertTrue(tintIndex >= 0, "icon must be tinted with a theme attr")
+        val tintReg = (instructions[tintIndex] as FiveRegisterInstruction).registerD
+        val tintLiteral = (0..tintIndex).reversed()
+            .first { i -> instructions[i] is NarrowLiteralInstruction && (instructions[i] as OneRegisterInstruction).registerA == tintReg }
+        assertEquals(ICON_PRIMARY_ATTR, (instructions[tintLiteral] as NarrowLiteralInstruction).narrowLiteral)
+
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$c;", "<init>") > tintIndex)
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Left\$b;", "<init>") >= 0)
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell;", "setLeft") >= 0)
+
+        // Title-only middle carrying the group title.
+        val middleTitleIndex = indexOfRef("Lpx1/a\$h;", "<init>")
+        assertTrue(middleTitleIndex >= 0)
+        assertEquals(TITLE_ADS_GROUP, (instructions[middleTitleIndex - 1] as ReferenceInstruction).reference
+            .let { (it as StringReference).string })
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Middle\$e;", "<init>") >= 0)
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Middle\$a;", "a") >= 0)
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell;", "setMiddle") >= 0)
+
+        // Chevron slot: VkCell$Right$b defaults inside a VkCell$Right$d (the
+        // app's own nav-row shape).
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Right\$b;", "<init>") >= 0)
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Right\$d;", "<init>") >= 0)
+        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell;", "setRight") >= 0)
+
+        val clickIndex = indexOfRef("Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;", "<init>")
+        assertTrue(clickIndex > 0)
+        assertTrue(indexOfRef("Landroid/view/View;", "setOnClickListener") >= 0)
+
+        // The row must reach the returned container.
+        val addViewIndex = instructions.indexOfFirst { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            reference is MethodReference && reference.name == "addView"
+        }
+        assertTrue(addViewIndex > clickIndex)
+    }
+
+    @Test
+    fun `ads group click opens the toggles screen through the app's opener`() {
+        val opener = resolveNavOpener(navOpenerFingerprint.getMethod(context), context.classDefs.toList())
+        val instructions = method("Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;", "onClick")
+
+        val contextIndex = instructions.indexOfFirst { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            reference is MethodReference &&
+                reference.definingClass == "Landroid/view/View;" &&
+                reference.name == "getContext"
+        }
+        assertTrue(contextIndex >= 0, "the view context is the activity context")
+
+        val ctorIndex = instructions.indexOfFirst { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            reference is MethodReference &&
+                reference.definingClass == opener.ctorOwner &&
+                reference.name == "<init>"
+        }
+        assertTrue(ctorIndex > contextIndex)
+        val fragmentClassConst = instructions.subList(0, ctorIndex)
+            .filterIsInstance<ReferenceInstruction>()
+            .mapNotNull { (it.reference as? TypeReference)?.type }
+        assertTrue(fragmentClassConst.contains(SETTINGS_FRAGMENT_CLASS), "click must open the Ads toggles screen")
+
+        val openIndex = instructions.indexOfFirst { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            reference is MethodReference &&
+                reference.definingClass == opener.hOwner &&
+                reference.name == "h"
+        }
+        assertTrue(openIndex > ctorIndex, "h(Context) must open the group screen")
+        assertEquals(Opcode.RETURN_VOID, instructions.last().opcode)
     }
 
     private fun methodRefString(instructions: List<Instruction>, index: Int): String {

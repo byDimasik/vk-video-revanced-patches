@@ -16,7 +16,7 @@ private const val ITEM_CONSTRUCTOR_TYPES = "Lkotlin/jvm/functions/Function1;"
 
 val revancedSettingsPatch = bytecodePatch(
     name = "ReVanced settings",
-    description = "Adds a ReVanced entry to the profile settings menu with Ads toggles.",
+    description = "Adds a ReVanced entry to the profile settings menu whose Ads group holds the toggle list.",
 ) {
     compatibleWith("com.vk.vkvideo")
 
