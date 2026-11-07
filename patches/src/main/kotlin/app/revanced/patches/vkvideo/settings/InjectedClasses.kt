@@ -456,7 +456,7 @@ private fun backClickSmali(): String = """
         check-cast v0, Landroidx/activity/ComponentActivity;
         invoke-virtual {v0}, Landroidx/activity/ComponentActivity;->onBackPressed()V
         :cond_revanced_back_done
-        sget-object v0, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+        const/4 v0, 0x0
         return-object v0
     .end method
 """.trimIndent()
