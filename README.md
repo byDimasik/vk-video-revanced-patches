@@ -13,6 +13,7 @@ Target distribution is ReVanced Patch Bundle (`.rvp`) format for use in ReVanced
 * Video player ad blocking (pre-roll, mid-roll short-circuiting)
 * Feed and banner ad injection filtering
 * Runtime-toggleable blocking of video ads, feed ads, catalog banners and top-shelf promotions via a native themed ReVanced settings screen (profile menu, above Sign out; an Ads group row leads to the toggles)
+* SponsorSkip: episode-name detection of sponsor, self-promo and intro segments in a video's official episodes, skipped automatically or offered as a skip button per category (per-channel ruleset, first channel Артемий Лебедев)
 * UI and player cleanup
 
 ## Architecture

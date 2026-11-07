@@ -36,6 +36,11 @@ object PatchTestUtil {
             app.revanced.patches.vkvideo.ad.feed.promoPostFingerprint,
             app.revanced.patches.vkvideo.ad.catalog.catalogAdBannerSlotIdFingerprint,
             app.revanced.patches.vkvideo.ad.catalog.catalogSectionAdBannerGetterFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipVideoHandoffFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewAttachedFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewSetupFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipHolderFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint,
         ).forEach { fingerprintMatchField.set(it, null) }
         val tempApk = Files.createTempFile("test-app", ".apk").toFile().apply { deleteOnExit() }
         val tempPatchedDir = Files.createTempDirectory("test-patched").toFile().apply { deleteOnExit() }
