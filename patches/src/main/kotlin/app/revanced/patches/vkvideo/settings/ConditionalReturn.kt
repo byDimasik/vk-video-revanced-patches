@@ -6,12 +6,39 @@ import app.revanced.patcher.extensions.addInstructionsWithLabels
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.BuilderInstruction
+import com.android.tools.smali.dexlib2.builder.BuilderOffsetInstruction
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction10t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction10x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction11n
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction11x
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction12x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction20t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21ih
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21lh
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21s
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22b
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22s
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22t
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction22x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction23x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction30t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction31c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction31i
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction31t
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction32x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction35c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction35mi
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction35ms
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rc
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rmi
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rms
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction45cc
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction4rcc
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction51l
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
@@ -22,11 +49,15 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.Reference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction10t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction10x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction11n
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction11x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction12x
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction20t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21c
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21ih
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21lh
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21s
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22b
@@ -35,6 +66,9 @@ import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstructio
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction23x
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction30t
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction31c
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction31i
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction31t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction32x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction35c
@@ -45,6 +79,8 @@ import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstructio
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction3rms
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction45cc
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction4rcc
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction51l
+import java.lang.reflect.Field
 
 /**
  * Parameter width in DEX register slots: `J` and `D` each occupy two slots,
@@ -165,7 +201,7 @@ private fun classifyInvoke(insn: FiveRegisterInstruction, remap: (Int) -> Int): 
  * Result of remapping one instruction while growing the frame.
  */
 private sealed interface Remapped {
-    /** The replacement instructions, in order (may be empty-neutral single). */
+    /** The replacement instructions in order: at least one, possibly several. */
     data class Insns(val insns: List<Instruction>) : Remapped
 
     /** A 4-bit invoke that needs its operands spilled into a contiguous block. */
@@ -403,32 +439,70 @@ private fun buildSpillMoves(kinds: List<MoveKind>, regs: List<Int>, blockStart: 
 }
 
 /**
- * Applies every spill plan against the mutable implementation: inserts the
- * gather moves right before the invoke and rewrites the invoke as a range form
- * against the scratch block. [MutableMethodImplementation] keeps builder
- * labels, so branch targets and try-block ranges stay correct across the
- * insertions — no hand-patched code offsets.
+ * Rebinds a remapped [insn] into the mutable builder. An immutable copy of an
+ * offset-carrying instruction only keeps a numeric code offset, which goes
+ * stale as soon as instructions are inserted around it, so those formats take
+ * the label of [original] and let the builder resolve the target. Instructions
+ * without registers (switch/array payloads) are reused unchanged.
  */
-private fun applySpills(
-    impl: MutableMethodImplementation,
-    spills: List<Pair<Int, Remapped.SpillInvoke>>,
-    blockStart: Int,
-) {
-    var offset = 0
-    for ((index, spill) in spills) {
-        val at = index + offset
-        val kinds = spillMoveKinds(spill.registerCount, spill.reference)
-        val moves = buildSpillMoves(kinds, spill.registers, blockStart)
-        moves.forEachIndexed { j, move -> impl.addInstruction(at + j, move) }
-        val rangeInsn: BuilderInstruction = if (spill.reference2 != null) {
-            BuilderInstruction4rcc(spill.rangeOpcode, blockStart, spill.registerCount, spill.reference, spill.reference2)
-        } else {
-            BuilderInstruction3rc(spill.rangeOpcode, blockStart, spill.registerCount, spill.reference)
+private fun toBuilder(insn: Instruction, original: BuilderInstruction): BuilderInstruction {
+    // Instructions synthesized by the narrow helpers are already builders and
+    // carry final registers; payloads and other register-less formats are
+    // reused unchanged.
+    if (insn !is ImmutableInstruction) return insn as BuilderInstruction
+    if (original is BuilderOffsetInstruction) {
+        val target = original.target
+        return when (insn) {
+            is ImmutableInstruction10t -> BuilderInstruction10t(insn.opcode, target)
+            is ImmutableInstruction20t -> BuilderInstruction20t(insn.opcode, target)
+            is ImmutableInstruction21t -> BuilderInstruction21t(insn.opcode, insn.registerA, target)
+            is ImmutableInstruction22t -> BuilderInstruction22t(insn.opcode, insn.registerA, insn.registerB, target)
+            is ImmutableInstruction30t -> BuilderInstruction30t(insn.opcode, target)
+            is ImmutableInstruction31t -> BuilderInstruction31t(insn.opcode, insn.registerA, target)
+            else -> error("No builder case for offset format ${insn.opcode}")
         }
-        impl.replaceInstruction(at + moves.size, rangeInsn)
-        offset += moves.size
+    }
+    return when (insn) {
+        is ImmutableInstruction10x -> BuilderInstruction10x(insn.opcode)
+        is ImmutableInstruction11n -> BuilderInstruction11n(insn.opcode, insn.registerA, insn.narrowLiteral)
+        is ImmutableInstruction11x -> BuilderInstruction11x(insn.opcode, insn.registerA)
+        is ImmutableInstruction12x -> BuilderInstruction12x(insn.opcode, insn.registerA, insn.registerB)
+        is ImmutableInstruction21c -> BuilderInstruction21c(insn.opcode, insn.registerA, insn.reference)
+        is ImmutableInstruction21ih -> BuilderInstruction21ih(insn.opcode, insn.registerA, insn.narrowLiteral)
+        is ImmutableInstruction21lh -> BuilderInstruction21lh(insn.opcode, insn.registerA, insn.wideLiteral)
+        is ImmutableInstruction21s -> BuilderInstruction21s(insn.opcode, insn.registerA, insn.narrowLiteral)
+        is ImmutableInstruction22b -> BuilderInstruction22b(insn.opcode, insn.registerA, insn.registerB, insn.narrowLiteral)
+        is ImmutableInstruction22c -> BuilderInstruction22c(insn.opcode, insn.registerA, insn.registerB, insn.reference)
+        is ImmutableInstruction22s -> BuilderInstruction22s(insn.opcode, insn.registerA, insn.registerB, insn.narrowLiteral)
+        is ImmutableInstruction22x -> BuilderInstruction22x(insn.opcode, insn.registerA, insn.registerB)
+        is ImmutableInstruction23x -> BuilderInstruction23x(insn.opcode, insn.registerA, insn.registerB, insn.registerC)
+        is ImmutableInstruction31c -> BuilderInstruction31c(insn.opcode, insn.registerA, insn.reference)
+        is ImmutableInstruction31i -> BuilderInstruction31i(insn.opcode, insn.registerA, insn.narrowLiteral)
+        is ImmutableInstruction32x -> BuilderInstruction32x(insn.opcode, insn.registerA, insn.registerB)
+        is ImmutableInstruction35c -> BuilderInstruction35c(
+            insn.opcode, insn.registerCount, insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG, insn.reference
+        )
+        is ImmutableInstruction35mi -> BuilderInstruction35mi(
+            insn.opcode, insn.registerCount, insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG, insn.inlineIndex
+        )
+        is ImmutableInstruction35ms -> BuilderInstruction35ms(
+            insn.opcode, insn.registerCount, insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG, insn.vtableIndex
+        )
+        is ImmutableInstruction3rc -> BuilderInstruction3rc(insn.opcode, insn.startRegister, insn.registerCount, insn.reference)
+        is ImmutableInstruction3rmi -> BuilderInstruction3rmi(insn.opcode, insn.startRegister, insn.registerCount, insn.inlineIndex)
+        is ImmutableInstruction3rms -> BuilderInstruction3rms(insn.opcode, insn.startRegister, insn.registerCount, insn.vtableIndex)
+        is ImmutableInstruction45cc -> BuilderInstruction45cc(
+            insn.opcode, insn.registerCount, insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG, insn.reference, insn.reference2
+        )
+        is ImmutableInstruction4rcc ->
+            BuilderInstruction4rcc(insn.opcode, insn.startRegister, insn.registerCount, insn.reference, insn.reference2)
+        is ImmutableInstruction51l -> BuilderInstruction51l(insn.opcode, insn.registerA, insn.wideLiteral)
+        else -> original
     }
 }
+/** [MutableMethodImplementation] exposes no setter for the frame size. */
+private val REGISTER_COUNT: Field =
+    MutableMethodImplementation::class.java.getDeclaredField("registerCount").apply { isAccessible = true }
 
 /**
  * Prepends a conditional early-return block at index 0:
@@ -497,6 +571,11 @@ internal fun MutableMethod.prependConditionalReturn(enabledMethod: String, fallb
  * remapped per-register with the same 35c/range/spill discipline as
  * [prependConditionalReturn]; the spill block is placed immediately below the
  * re-emitted window, above every remapped register.
+ *
+ * The body is rebuilt through [MutableMethodImplementation] so the old code
+ * offsets are resolved into labels: branch targets, try ranges and debug items
+ * then track the instructions inserted here instead of pointing at whatever
+ * now sits at the old offset.
  */
 internal fun MutableMethod.growFrameWithScratch(): Int {
     val oldImpl = implementation ?: error("Method has no implementation: $name")
@@ -509,16 +588,12 @@ internal fun MutableMethod.growFrameWithScratch(): Int {
     // required shift depends on the widest spill: iterate to the fixed point.
     // Every round only grows the shift, so this settles immediately in practice.
     var delta = 1
-    var remapped: List<Remapped>
-    var spills: List<Pair<Int, Remapped.SpillInvoke>>
     var maxSpillWidth: Int
     var rounds = 0
     while (true) {
-        remapped = oldImpl.instructions.map { remapForFrameGrow(it, oldParamStart, delta) }
-        spills = remapped.mapIndexedNotNull { index, r ->
-            (r as? Remapped.SpillInvoke)?.let { index to it }
-        }
-        maxSpillWidth = spills.maxOfOrNull { it.second.registerCount } ?: 0
+        val spills = oldImpl.instructions
+            .mapNotNull { remapForFrameGrow(it, oldParamStart, delta) as? Remapped.SpillInvoke }
+        maxSpillWidth = spills.maxOfOrNull { it.registerCount } ?: 0
         val needed = if (spills.isEmpty()) 1 else paramWidth + 1 + maxSpillWidth
         if (needed <= delta) break
         check(++rounds < 8) { "Frame growth did not settle in $definingClass->$name" }
@@ -528,27 +603,38 @@ internal fun MutableMethod.growFrameWithScratch(): Int {
     val newCount = oldCount + delta
     check(newCount <= 0xFFFF) { "Frame of $newCount registers is not addressable in $definingClass->$name" }
     val newParamStart = newCount - paramWidth
+    val blockStart = newParamStart - maxSpillWidth
 
-    // Flatten the remapped body; spilled invokes are parked as NOPs at their
-    // final position and rewritten in place by applySpills once the mutable
-    // implementation (and its builder labels) exists.
-    val flat = ArrayList<Instruction>(oldImpl.instructions.size)
-    val spillPositions = ArrayList<Pair<Int, Remapped.SpillInvoke>>(spills.size)
-    for (r in remapped) {
-        when (r) {
-            is Remapped.Insns -> flat += r.insns
+    // Rebuild through the mutable builder: it converts the old code addresses
+    // into labels, so branch targets, try ranges and debug items follow the
+    // inserted instructions instead of staying at stale offsets.
+    val impl = MutableMethodImplementation(oldImpl)
+    REGISTER_COUNT.setInt(impl, newCount)
+    setImplementation(impl)
+
+    val originals = impl.instructions.toList()
+    var index = 0
+    for (old in originals) {
+        when (val r = remapForFrameGrow(old, oldParamStart, delta)) {
+            is Remapped.Insns -> {
+                val built = r.insns.map { toBuilder(it, old) }
+                built.forEachIndexed { k, insn ->
+                    if (k == 0) impl.replaceInstruction(index, insn) else impl.addInstruction(index + k, insn)
+                }
+                index += built.size
+            }
             is Remapped.SpillInvoke -> {
-                spillPositions += flat.size to r
-                flat += ImmutableInstruction10x(Opcode.NOP)
+                val moves = buildSpillMoves(spillMoveKinds(r.registerCount, r.reference), r.registers, blockStart)
+                moves.forEachIndexed { k, move -> impl.addInstruction(index + k, move) }
+                val rangeInsn: BuilderInstruction = if (r.reference2 != null) {
+                    BuilderInstruction4rcc(r.rangeOpcode, blockStart, r.registerCount, r.reference, r.reference2)
+                } else {
+                    BuilderInstruction3rc(r.rangeOpcode, blockStart, r.registerCount, r.reference)
+                }
+                impl.replaceInstruction(index + moves.size, rangeInsn)
+                index += moves.size + 1
             }
         }
-    }
-
-    val grown = ImmutableMethodImplementation(newCount, flat, oldImpl.tryBlocks, oldImpl.debugItems)
-    setImplementation(MutableMethodImplementation(grown))
-
-    if (spillPositions.isNotEmpty()) {
-        applySpills(implementation!!, spillPositions, newParamStart - maxSpillWidth)
     }
 
     val scratch = oldCount - paramWidth

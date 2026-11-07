@@ -682,4 +682,81 @@ class ConditionalReturnTest {
         assertEquals(15 to 14, iput.registerA to iput.registerB)
         assertNoNibbleOverflow(method)
     }
+
+    private fun offsets(method: MutableMethod): List<Pair<Int, Int>> {
+        var code = 0
+        return method.getInstructions().map { (code to it.codeUnits).also { _ -> code += it.codeUnits } }
+    }
+
+    @Test
+    fun `try range and handler follow the inserted temp copy`() {
+        val smali = """
+            .class public Lcom/example/Try;
+            .super Ljava/lang/Object;
+
+            .method public static read(Ljava/lang/Object;)Ljava/lang/String;
+                .registers 16
+
+                const/4 v0, 0x0
+                :try_start
+                iget-object v0, p0, Lcom/example/Try;->x:Ljava/lang/String;
+                :try_end
+                .catch Ljava/lang/Exception; {:try_start .. :try_end} :handler
+
+                return-object v0
+
+                :handler
+                move-exception v0
+                return-object v0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Try;", "read")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        val offsets = offsets(method)
+        // The temp copy is a plain move and cannot throw, so it stays inside the
+        // protected range right before the iget it feeds. The handler must still
+        // point at move-exception, not at the iget.
+        val copy = instructions.indexOfFirst { it.opcode == Opcode.MOVE_OBJECT_FROM16 }
+        val iget = instructions.indexOfFirst { it.opcode == Opcode.IGET_OBJECT }
+        val handler = instructions.indexOfFirst { it.opcode == Opcode.MOVE_EXCEPTION }
+        val block = method.implementation!!.tryBlocks.single()
+        assertEquals(offsets[copy].first, block.startCodeAddress)
+        assertEquals(offsets[iget].first + offsets[iget].second - offsets[copy].first, block.codeUnitCount)
+        assertEquals(offsets[handler].first, block.exceptionHandlers.single().handlerCodeAddress)
+    }
+
+    @Test
+    fun `branch offset is recomputed across an inserted temp copy`() {
+        val smali = """
+            .class public Lcom/example/Branch;
+            .super Ljava/lang/Object;
+
+            .method public static pick(Ljava/lang/Object;)Ljava/lang/String;
+                .registers 16
+
+                if-eqz p0, :skip
+                iget-object v0, p0, Lcom/example/Branch;->x:Ljava/lang/String;
+                :skip
+                return-object v0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Branch;", "pick")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        // The branch must now jump over the copy as well as the iget.
+        // (The guard's own if-eqz comes first; take the body's one.)
+        val branch = instructions.last { it.opcode == Opcode.IF_EQZ } as Instruction21t
+        val offsets = offsets(method)
+        val target = instructions.lastIndex
+        assertEquals(offsets[target].first, (branch as com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21t).target.codeAddress)
+    }
 }
