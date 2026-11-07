@@ -3,7 +3,9 @@ package app.revanced.patches.vkvideo.settings
 import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod
 import app.revanced.patches.vkvideo.util.PatchTestUtil
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getInstructions
+import com.android.tools.smali.dexlib2.Format
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstruction
@@ -13,11 +15,30 @@ import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction3rc
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ConditionalReturnTest {
 
     private val enabledMethod = "Lstub/Enabled;->isEnabled()Z"
+
+    /** Formats whose register fields are 4 bits wide (max v15). */
+    private val nibbleFormats = setOf(Format.Format11n, Format.Format11x, Format.Format12x, Format.Format22c)
+
+    private fun assertNoNibbleOverflow(method: MutableMethod) {
+        method.getInstructions().forEach { insn ->
+            if (insn.opcode.format !in nibbleFormats) return@forEach
+            val regs = when (insn) {
+                is FiveRegisterInstruction -> listOf(
+                    insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG
+                ).take(insn.registerCount)
+                is TwoRegisterInstruction -> listOf(insn.registerA, insn.registerB)
+                is OneRegisterInstruction -> listOf(insn.registerA)
+                else -> emptyList()
+            }
+            regs.forEach { assertTrue(it <= 15) { "nibble overflow: ${insn.opcode} register v$it" } }
+        }
+    }
 
     private fun method(context: app.revanced.patcher.patch.BytecodePatchContext, type: String, name: String): MutableMethod =
         MutableMethod(context.classDefs.first { it.type == type }.methods.first { it.name == name })
@@ -416,8 +437,9 @@ class ConditionalReturnTest {
         method.prependConditionalReturn(enabledMethod, "return-void")
 
         val instructions = method.getInstructions()
-        // paramWidth = receiver + 1 param = 2; K = 2 spill slots.
-        // newCount = 16 + 2 + 1 + 2 = 21; block = v19..v20 (top of frame).
+        // paramWidth = receiver + 1 param = 2; 2 spill slots -> the frame grows
+        // by guard + param window + spill width = 5, so the param window moves
+        // from v14/v15 to v19/v20 and the spill block sits at v17..v18.
         assertEquals(21, method.implementation!!.registerCount)
 
         // Guard scratch = oldCount - paramWidth = v14.
@@ -426,17 +448,17 @@ class ConditionalReturnTest {
         assertEquals(14, (instructions[2] as OneRegisterInstruction).registerA)
 
         // Body starts at index 4 (guard + fallback return-void). Two gather
-        // moves in OPERAND order: v19 <- v16 (receiver), then v20 <- v15 (arg).
+        // moves in OPERAND order: v17 <- v19 (receiver), then v18 <- v20 (arg).
         val moves = instructions.drop(4).take(2).map { it as TwoRegisterInstruction }
         assertEquals(Opcode.MOVE_OBJECT_FROM16, moves[0].opcode)
-        assertEquals(19 to 16, moves[0].registerA to moves[0].registerB)
+        assertEquals(17 to 20, moves[0].registerA to moves[0].registerB)
         assertEquals(Opcode.MOVE_OBJECT_FROM16, moves[1].opcode)
-        assertEquals(20 to 15, moves[1].registerA to moves[1].registerB)
+        assertEquals(18 to 19, moves[1].registerA to moves[1].registerB)
 
         // The invoke is a range form against the spill block, NOT {v15..v16}.
         val invoke = instructions[6] as Instruction3rc
         assertEquals(Opcode.INVOKE_VIRTUAL_RANGE, invoke.opcode)
-        assertEquals(19, invoke.startRegister)
+        assertEquals(17, invoke.startRegister)
         assertEquals(2, invoke.registerCount)
         (invoke.reference as MethodReference).let {
             assertEquals("Lcom/example/A;", it.definingClass)
@@ -476,8 +498,10 @@ class ConditionalReturnTest {
         method.prependConditionalReturn(enabledMethod, "return-void")
 
         val instructions = method.getInstructions()
-        // paramWidth = receiver + 2 params = 3; K = 5 spill slots.
-        // newCount = 16 + 3 + 1 + 5 = 25; block = v20..v24 (top of frame).
+        // paramWidth = receiver + 2 params = 3; 5 spill slots. The frame grows
+        // by guard + param window + spill width = 9 -> 25 registers; the reused
+        // param window moves from v13..v15 to v22..v24 and the spill block sits
+        // at v17..v21, immediately below the re-emitted window.
         assertEquals(25, method.implementation!!.registerCount)
 
         // Guard scratch stays at oldCount - paramWidth = v13.
@@ -494,16 +518,16 @@ class ConditionalReturnTest {
         val moves = instructions.drop(7).take(5).map { it as TwoRegisterInstruction }
         assertEquals(5, moves.size)
         moves.forEach { assertEquals(Opcode.MOVE_OBJECT_FROM16, it.opcode) }
-        // Argument order preserved: block regs 20..24 gather v0,v1,v2,v15,v16.
-        assertEquals(20 to 0, moves[0].registerA to moves[0].registerB)
-        assertEquals(21 to 1, moves[1].registerA to moves[1].registerB)
-        assertEquals(22 to 2, moves[2].registerA to moves[2].registerB)
-        assertEquals(23 to 15, moves[3].registerA to moves[3].registerB)
-        assertEquals(24 to 16, moves[4].registerA to moves[4].registerB)
+        // Argument order preserved: block regs 17..21 gather v0,v1,v2,v23,v24.
+        assertEquals(17 to 0, moves[0].registerA to moves[0].registerB)
+        assertEquals(18 to 1, moves[1].registerA to moves[1].registerB)
+        assertEquals(19 to 2, moves[2].registerA to moves[2].registerB)
+        assertEquals(20 to 23, moves[3].registerA to moves[3].registerB)
+        assertEquals(21 to 24, moves[4].registerA to moves[4].registerB)
 
         val invoke = instructions[12] as Instruction3rc
         assertEquals(Opcode.INVOKE_STATIC_RANGE, invoke.opcode)
-        assertEquals(20, invoke.startRegister)
+        assertEquals(17, invoke.startRegister)
         assertEquals(5, invoke.registerCount)
         (invoke.reference as MethodReference).let {
             assertEquals("Lg0/a;", it.definingClass)
@@ -512,5 +536,150 @@ class ConditionalReturnTest {
 
         assertEquals(Opcode.RETURN_VOID, instructions[13].opcode)
         assertEquals(14, instructions.size)
+    }
+
+    @Test
+    fun `parameter window is re-emitted at the end of the grown frame`() {
+        // Issue #46 shape: 16-register instance method, params v13..v15, one
+        // scattered 5-operand invoke (5 spill slots). The frame grows to 25, so
+        // the parameter window must be re-emitted at v22..v24 — the LAST
+        // paramWidth registers — and every param read must be rewritten. 4-bit
+        // formats cannot address the high window, so they read a low temp copy.
+        val smali = """
+            .class public Lqo/x;
+            .super Ljava/lang/Object;
+
+            .method public g(Lqo/k;Lqo/hb;)V
+                .registers 16
+
+                iget-object v0, p0, Lqo/x;->h:Ljava/lang/String;
+                iget-object p1, v0, Lqo/x;->e:Ljava/util/List;
+                invoke-static {v0, v1, v2, p1, p2}, Lg0/a;->a(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V
+                return-void
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lqo/x;", "g")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        assertEquals(25, method.implementation!!.registerCount)
+        assertEquals(2, method.parameterTypes.size)
+
+        // Guard: scratch = 16 - 3 = v13.
+        assertEquals(Opcode.INVOKE_STATIC, instructions[0].opcode)
+        assertEquals(13, (instructions[1] as OneRegisterInstruction).registerA)
+        assertEquals(13, (instructions[2] as OneRegisterInstruction).registerA)
+
+        // Body starts at 4. iget-object v0, p0: p0 is now v22, which a 22c
+        // cannot address, so the object is snapshotted into the low temp v13.
+        val copyIn = instructions[4] as TwoRegisterInstruction
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, copyIn.opcode)
+        assertEquals(13 to 22, copyIn.registerA to copyIn.registerB)
+        val iget = instructions[5] as TwoRegisterInstruction
+        assertEquals(Opcode.IGET_OBJECT, iget.opcode)
+        assertEquals(0 to 13, iget.registerA to iget.registerB)
+
+        // iget-object p1 (v23), v0: the destination is high too — run the read
+        // into the temp and copy the result back with move-object/from16.
+        val iget2 = instructions[6] as TwoRegisterInstruction
+        assertEquals(Opcode.IGET_OBJECT, iget2.opcode)
+        assertEquals(13 to 0, iget2.registerA to iget2.registerB)
+        val copyBack = instructions[7] as TwoRegisterInstruction
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, copyBack.opcode)
+        assertEquals(23 to 13, copyBack.registerA to copyBack.registerB)
+
+        // Spill gather moves keep argument order and read the re-emitted window.
+        val moves = instructions.drop(8).take(5).map { it as TwoRegisterInstruction }
+        moves.forEach { assertEquals(Opcode.MOVE_OBJECT_FROM16, it.opcode) }
+        assertEquals(17 to 0, moves[0].registerA to moves[0].registerB)
+        assertEquals(18 to 1, moves[1].registerA to moves[1].registerB)
+        assertEquals(19 to 2, moves[2].registerA to moves[2].registerB)
+        assertEquals(20 to 23, moves[3].registerA to moves[3].registerB)
+        assertEquals(21 to 24, moves[4].registerA to moves[4].registerB)
+
+        val invoke = instructions[13] as Instruction3rc
+        assertEquals(Opcode.INVOKE_STATIC_RANGE, invoke.opcode)
+        assertEquals(17, invoke.startRegister)
+        assertEquals(5, invoke.registerCount)
+        assertEquals(Opcode.RETURN_VOID, instructions[14].opcode)
+        assertEquals(15, instructions.size)
+
+        // Nothing in a 4-bit register field may point above v15.
+        assertNoNibbleOverflow(method)
+    }
+
+    @Test
+    fun `return-object of a high parameter copies through a low temp`() {
+        val smali = """
+            .class public Lcom/example/Ret;
+            .super Ljava/lang/Object;
+
+            .method public static last(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+                .registers 16
+
+                return-object p1
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Ret;", "last")
+
+        method.prependConditionalReturn(enabledMethod, "const/4 v0, 0x0\nreturn-object v0")
+
+        val instructions = method.getInstructions()
+        assertEquals(17, method.implementation!!.registerCount)
+
+        // Guard scratch = 16 - 2 = v14; p1 (v15) remaps to v16, so the return
+        // reads a low copy instead of the high window slot.
+        assertEquals(14, (instructions[1] as OneRegisterInstruction).registerA)
+        val copy = instructions[5] as TwoRegisterInstruction
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, copy.opcode)
+        assertEquals(14 to 16, copy.registerA to copy.registerB)
+        assertEquals(Opcode.RETURN_OBJECT, instructions[6].opcode)
+        assertEquals(14, (instructions[6] as OneRegisterInstruction).registerA)
+        assertNoNibbleOverflow(method)
+    }
+
+    @Test
+    fun `iput with both high operands snapshots data and object before storing`() {
+        val smali = """
+            .class public Lcom/example/Put;
+            .super Ljava/lang/Object;
+
+            .method public static move(Ljava/lang/Object;Ljava/lang/Object;)V
+                .registers 16
+
+                invoke-static {v0, v1, v2, p0, p1}, Lg0/a;->a(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V
+                iput-object p1, p0, Lcom/example/Put;->x:Ljava/lang/Object;
+                return-void
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Put;", "move")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        // 5 spill slots: the frame grows by 2 (params) + 1 + 5 = 8 -> 24, so
+        // both p0 and p1 are above v15 and must both be snapshotted.
+        assertEquals(24, method.implementation!!.registerCount)
+
+        // Body starts at 4 (guard) with the 5 gather moves, then the invoke.
+        // The object (p0 -> v22) is copied out first; the data (p1 -> v23) then
+        // goes into v15, safe because the object slot was already copied.
+        val copyObject = instructions[10] as TwoRegisterInstruction
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, copyObject.opcode)
+        assertEquals(14 to 22, copyObject.registerA to copyObject.registerB)
+        val copyData = instructions[11] as TwoRegisterInstruction
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, copyData.opcode)
+        assertEquals(15 to 23, copyData.registerA to copyData.registerB)
+        assertEquals(Opcode.IPUT_OBJECT, instructions[12].opcode)
+        val iput = instructions[12] as TwoRegisterInstruction
+        assertEquals(15 to 14, iput.registerA to iput.registerB)
+        assertNoNibbleOverflow(method)
     }
 }
