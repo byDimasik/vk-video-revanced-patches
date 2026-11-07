@@ -515,6 +515,7 @@ class InjectedClassesTest {
     fun `buildRootContent renders one native VkCell Ads row with icon, chevron and click`() {
         val instructions = method(ADS_SETTINGS_CLASS, "buildRootContent")
 
+        /** Index of the first call to `className->name`, or -1 when absent. */
         fun indexOfRef(className: String, name: String): Int = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
             reference is MethodReference &&

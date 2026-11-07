@@ -124,6 +124,7 @@ class RealApkSettingsScreenTest {
         // Every method the injected UI calls must exist in the real APK with the
         // emitted owner/name/signature — a transcribed class the 1.170 dexes do not
         // actually carry (or a renamed overload) fails here, not on device.
+        /** Asserts the APK carries `owner->name(params)` so a stale transcription fails in CI. */
         fun assertResolves(owner: String, name: String, params: List<String>) {
             val def = context.classDefs.firstOrNull { it.type == owner }
             assertNotNull(def, "referenced class $owner must exist")
