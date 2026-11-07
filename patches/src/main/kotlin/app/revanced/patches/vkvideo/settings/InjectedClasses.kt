@@ -233,9 +233,10 @@ private fun adsSettingsSmali(types: SettingsMenuTypes): String = """
         return-void
     .end method
 
-    .method public static buildAdsContent(Landroid/content/Context;)Landroid/view/View;
-        .registers 9
+    .method public static buildAdsContent(Landroid/content/Context;Lcom/vk/core/fragments/FragmentImpl;)Landroid/view/View;
+        .registers 10
         .param p0, "context"
+        .param p1, "fragment"
 
         new-instance v7, Landroid/widget/LinearLayout;
         invoke-direct {v7, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
@@ -262,9 +263,10 @@ ${buildRootContentSmali()}
  * chevron-bearing `VkCell$Right$d` default slot model.
  */
 private fun buildRootContentSmali(): String = """
-    .method public static buildRootContent(Landroid/content/Context;)Landroid/view/View;
-        .registers 11
+    .method public static buildRootContent(Landroid/content/Context;Lcom/vk/core/fragments/FragmentImpl;)Landroid/view/View;
+        .registers 12
         .param p0, "context"
+        .param p1, "fragment"
 
         new-instance v9, Landroid/widget/LinearLayout;
         invoke-direct {v9, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
@@ -337,7 +339,7 @@ private fun buildRootContentSmali(): String = """
         invoke-virtual {v8, v1}, Lcom/vk/core/view/components/cell/VkCell;->setRight(Lcom/vk/core/view/components/cell/VkCell${'$'}Right${'$'}d;)V
 
         new-instance v0, $GROUP_CLICK_CLASS
-        invoke-direct {v0}, $GROUP_CLICK_CLASS-><init>()V
+        invoke-direct {v0, p1}, $GROUP_CLICK_CLASS-><init>(Lcom/vk/core/fragments/FragmentImpl;)V
         invoke-virtual {v8, v0}, Landroid/view/View;->setOnClickListener(Landroid/view/View${'$'}OnClickListener;)V
 
         invoke-virtual {v9, v8}, Landroid/widget/LinearLayout;->addView(Landroid/view/View;)V
@@ -427,7 +429,7 @@ private fun settingsFragmentSmali(
 
         invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->requireContext()Landroid/content/Context;
         move-result-object v1
-        invoke-static {v1}, $ADS_SETTINGS_CLASS->$contentMethod(Landroid/content/Context;)Landroid/view/View;
+        invoke-static {v1, p0}, $ADS_SETTINGS_CLASS->$contentMethod(Landroid/content/Context;Lcom/vk/core/fragments/FragmentImpl;)Landroid/view/View;
         move-result-object v1
 
         const v2, 0x${chrome.contentId.toString(16)}
@@ -558,10 +560,14 @@ private fun groupClickSmali(opener: NavOpener): String = """
     .super Ljava/lang/Object;
     .implements Landroid/view/View${'$'}OnClickListener;
 
-    .method public constructor <init>()V
-        .registers 1
+    .field private final fragment:Lcom/vk/core/fragments/FragmentImpl;
+
+    .method public constructor <init>(Lcom/vk/core/fragments/FragmentImpl;)V
+        .registers 2
+        .param p1, "fragment"
 
         invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+        iput-object p1, p0, $GROUP_CLICK_CLASS->fragment:Lcom/vk/core/fragments/FragmentImpl;
         return-void
     .end method
 
@@ -569,14 +575,16 @@ private fun groupClickSmali(opener: NavOpener): String = """
         .registers 4
         .param p1, "view"
 
-        invoke-virtual {p1}, Landroid/view/View;->getContext()Landroid/content/Context;
-        move-result-object p1
+        const-string v0, "ReVanced"
+        const-string v1, "ads group row clicked"
+        invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
         new-instance v0, ${opener.instanceType}
         const-class v1, $SETTINGS_FRAGMENT_CLASS
         const/4 v2, 0x0
         const/4 v3, 0x0
         invoke-direct {v0, v1, v2, v3}, ${opener.ctorOwner}-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
-        invoke-virtual {v0, p1}, ${opener.hOwner}->h(Landroid/content/Context;)V
+        iget-object v1, p0, $GROUP_CLICK_CLASS->fragment:Lcom/vk/core/fragments/FragmentImpl;
+        invoke-virtual {v0, v1}, ${opener.hOwner}->i(Lcom/vk/core/fragments/FragmentImpl;)V
         return-void
     .end method
 """.trimIndent()

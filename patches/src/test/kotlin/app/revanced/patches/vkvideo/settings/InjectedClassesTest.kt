@@ -568,6 +568,8 @@ class InjectedClassesTest {
 
         val clickIndex = indexOfRef("Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;", "<init>")
         assertTrue(clickIndex > 0)
+        val clickRef = (instructions[clickIndex] as ReferenceInstruction).reference as MethodReference
+        assertEquals(listOf("Lcom/vk/core/fragments/FragmentImpl;"), clickRef.parameterTypes.map { it.toString() })
         assertTrue(indexOfRef("Landroid/view/View;", "setOnClickListener") >= 0)
 
         // The row must reach the returned container.
@@ -583,13 +585,16 @@ class InjectedClassesTest {
         val opener = resolveNavOpener(navOpenerFingerprint.getMethod(context), context.classDefs.toList())
         val instructions = method("Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;", "onClick")
 
-        val contextIndex = instructions.indexOfFirst { instruction ->
+        // The fragment-bound opener: the root fragment is read from the field, so
+        // navigation lands in the current fragment's container (the Context overload
+        // silently no-ops on device from a view click).
+        val fieldIndex = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
-            reference is MethodReference &&
-                reference.definingClass == "Landroid/view/View;" &&
-                reference.name == "getContext"
+            instruction.opcode == Opcode.IGET_OBJECT &&
+                reference is FieldReference &&
+                reference.name == "fragment"
         }
-        assertTrue(contextIndex >= 0, "the view context is the activity context")
+        assertTrue(fieldIndex >= 0, "click must read the owning fragment")
 
         val ctorIndex = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
@@ -597,7 +602,7 @@ class InjectedClassesTest {
                 reference.definingClass == opener.ctorOwner &&
                 reference.name == "<init>"
         }
-        assertTrue(ctorIndex > contextIndex)
+        assertTrue(fieldIndex > ctorIndex, "the fragment is read after the opener is built")
         val fragmentClassConst = instructions.subList(0, ctorIndex)
             .filterIsInstance<ReferenceInstruction>()
             .mapNotNull { (it.reference as? TypeReference)?.type }
@@ -607,9 +612,10 @@ class InjectedClassesTest {
             val reference = (instruction as? ReferenceInstruction)?.reference
             reference is MethodReference &&
                 reference.definingClass == opener.hOwner &&
-                reference.name == "h"
+                reference.name == "i" &&
+                reference.parameterTypes == listOf("Lcom/vk/core/fragments/FragmentImpl;")
         }
-        assertTrue(openIndex > ctorIndex, "h(Context) must open the group screen")
+        assertTrue(openIndex > ctorIndex, "i(FragmentImpl) must open the group screen on the fragment host")
         assertEquals(Opcode.RETURN_VOID, instructions.last().opcode)
     }
 
