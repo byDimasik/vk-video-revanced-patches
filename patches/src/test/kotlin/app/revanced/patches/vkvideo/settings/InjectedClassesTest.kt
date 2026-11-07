@@ -277,11 +277,11 @@ class InjectedClassesTest {
             reference is MethodReference && reference.name == "addView"
         }
         assertTrue(barAddViewIndex > addBarFindIndex)
-        assertEquals(
-            barResultReg,
-            (instructions[barAddViewIndex] as FiveRegisterInstruction).registerC,
-            "addView must attach the top bar to the app bar layout",
-        )
+        val barAddView = instructions[barAddViewIndex] as FiveRegisterInstruction
+        assertEquals(barResultReg, barAddView.registerC, "addView must attach the top bar to the app bar layout")
+        // ...and the child must be the constructed VkTopBar (the register holding it).
+        val topBarReg = (instructions[topBarIndex] as FiveRegisterInstruction).registerC
+        assertEquals(topBarReg, barAddView.registerD, "addView's child must be the constructed VkTopBar")
 
         // The back Function0 dispatches through the activity's back stack (the same
         // path as system back, which provably pops the screen on device) — not

@@ -578,12 +578,24 @@ object PatchTestUtil {
         .method public click(Landroid/content/Context;)V
             .registers 5
 
-            new-instance v0, Lfixture/menu/Nav;
+            new-instance v0, Lfixture/menu/NavSub;
             const-class v1, Lcom/vk/video/screens/settings/main/ui/VideoUserSettingsFragment;
             const/4 v2, 0x0
             const/4 v3, 0x0
             invoke-direct {v0, v1, v2, v3}, Lfixture/menu/Nav;-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
             invoke-virtual {v0, p1}, Lfixture/menu/Nav;->h(Landroid/content/Context;)V
+            return-void
+        .end method
+    """.trimIndent()
+
+    private val navOpenerSubclassFixture = """
+        .class public final Lfixture/menu/NavSub;
+        .super Lfixture/menu/Nav;
+
+        .method public constructor <init>()V
+            .registers 1
+
+            invoke-direct {p0}, Lfixture/menu/Nav;-><init>()V
             return-void
         .end method
     """.trimIndent()
@@ -613,6 +625,7 @@ object PatchTestUtil {
         chromeHelperFixture,
         navOpenerCallFixture,
         navOpenerClassFixture,
+        navOpenerSubclassFixture,
     )
 
     val settingsScreenFixture168: List<String> = profileMenuFixture + settingsExtras
