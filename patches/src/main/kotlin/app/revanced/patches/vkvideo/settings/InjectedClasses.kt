@@ -572,7 +572,7 @@ private fun groupClickSmali(opener: NavOpener): String = """
     .end method
 
     .method public onClick(Landroid/view/View;)V
-        .registers 4
+        .registers 6
         .param p1, "view"
 
         const-string v0, "ReVanced"
