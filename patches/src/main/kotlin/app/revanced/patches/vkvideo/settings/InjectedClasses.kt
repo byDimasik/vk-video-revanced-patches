@@ -78,10 +78,34 @@ internal fun injectSettingsClasses(
     )
 
     sources.forEach { (descriptor, source) ->
-        if (context.classDefs.any { it.type == descriptor }) return@forEach
+        val existing = context.classDefs.firstOrNull { it.type == descriptor }
+        if (existing != null) {
+            // An already-patched input may carry an older generation of the helper
+            // (e.g. the dialog-era AdsSettings without the shelf methods). Injection
+            // must not silently keep it: the shelf patch would call methods that
+            // do not exist. Reject loudly instead.
+            val missing = requiredMethods[descriptor].orEmpty()
+                .filter { name -> existing.methods.none { it.name == name } }
+            check(missing.isEmpty()) {
+                "Stale injected class $descriptor is missing $missing; re-patch from the stock APK"
+            }
+            return@forEach
+        }
         context.classDefs.add(SmaliTestUtils.compileSmali(source))
     }
 }
+
+private val requiredMethods = mapOf(
+    ADS_SETTINGS_CLASS to listOf(
+        "getBoolean", "setEnabled", "isVideoAdsEnabled", "isFeedAdsEnabled",
+        "isCatalogAdsEnabled", "isTopShelfAdsEnabled", "collapseTopShelfView",
+        "addMenuEntry", "buildAdsContent",
+    ),
+    START_SETTINGS_CLASS to listOf("<init>", "invoke"),
+    SETTINGS_FRAGMENT_CLASS to listOf("<init>", "onCreateView", "onViewCreated"),
+    TOGGLE_LISTENER_CLASS to listOf("<init>"),
+    BACK_CLICK_CLASS to listOf("<init>", "invoke"),
+)
 
 private fun adsSettingsSmali(types: SettingsMenuTypes): String = """
     .class public final $ADS_SETTINGS_CLASS

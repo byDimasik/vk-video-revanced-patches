@@ -44,10 +44,17 @@ val signOutRowFingerprint = fingerprint {
         !method.accessFlags(AccessFlags.STATIC) &&
             method.implementation?.instructions?.any { instruction ->
                 (instruction as? ReferenceInstruction)?.reference
-                    .let { it is FieldReference && it.name == "LOGOUT" }
+                    .let {
+                        it is FieldReference && it.name == "LOGOUT" &&
+                            it.definingClass == PROFILE_MENU_ITEM_TYPE
+                    }
             } == true
     }
 }
+
+/** Stable, non-obfuscated enum of the profile menu row types. */
+internal const val PROFILE_MENU_ITEM_TYPE =
+    "Lcom/vk/video/screens/profile/adapter/ProfileMenuItemType;"
 
 /**
  * The app-wide fragment opener builder (1.170: `o54/r`): the method that opens the

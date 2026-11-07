@@ -114,7 +114,8 @@ class RealApkTopShelfConditionalTest {
             assertTrue(guardIndex >= 0, "${method.definingClass}->${method.name}: conditional not appended")
 
             assertEquals(Opcode.MOVE_RESULT, insns[guardIndex + 1].opcode)
-            assertEquals(Opcode.IF_NEZ, insns[guardIndex + 2].opcode)
+            // ON (blocking enabled) falls through to the collapse; OFF skips it.
+            assertEquals(Opcode.IF_EQZ, insns[guardIndex + 2].opcode)
             assertEquals(Opcode.INVOKE_STATIC_RANGE, insns[guardIndex + 3].opcode, "collapse invoke must be the range form")
             val collapseRef = (insns[guardIndex + 3] as ReferenceInstruction).reference as MethodReference
             assertEquals(ADS_SETTINGS_CLASS, collapseRef.definingClass)

@@ -261,6 +261,28 @@ class InjectedClassesTest {
         }
         assertTrue(appBarIndex > setBackIndex)
 
+        // The constructed VkTopBar must be attached to the app bar layout.
+        val addBarFindIndex = instructions.indexOfFirst { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            reference is MethodReference && reference.name == "findViewById"
+        }
+        assertTrue(addBarFindIndex > setBackIndex, "the app bar must be looked up after setBack")
+        val barIdReg = (instructions[addBarFindIndex] as FiveRegisterInstruction).registerD
+        val barIdConst = (0..addBarFindIndex).reversed()
+            .first { i -> instructions[i] is NarrowLiteralInstruction && (instructions[i] as OneRegisterInstruction).registerA == barIdReg }
+        assertEquals(chrome.appBarLayoutId, (instructions[barIdConst] as NarrowLiteralInstruction).narrowLiteral)
+        val barResultReg = (instructions[addBarFindIndex + 1] as OneRegisterInstruction).registerA
+        val barAddViewIndex = instructions.indexOfFirst { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            reference is MethodReference && reference.name == "addView"
+        }
+        assertTrue(barAddViewIndex > addBarFindIndex)
+        assertEquals(
+            barResultReg,
+            (instructions[barAddViewIndex] as FiveRegisterInstruction).registerC,
+            "addView must attach the top bar to the app bar layout",
+        )
+
         // The back Function0 dispatches through the activity's back stack (the same
         // path as system back, which provably pops the screen on device) — not
         // FragmentImpl.finish(), which on a MainActivity-hosted fragment with a
@@ -388,9 +410,11 @@ class InjectedClassesTest {
                     if ((instruction as Instruction).opcode == Opcode.CONST_HIGH16 ||
                         instruction.opcode == Opcode.CONST
                     ) {
+                        // Opaque colors are negative Ints; compare in the unsigned range.
+                        val unsigned = literal.toLong() and 0xffffffffL
                         assertFalse(
-                            literal in 0xff000000..0xffffffffL,
-                            "$descriptor->${m.name}: literal color 0x${literal.toString(16)}",
+                            unsigned in 0xff000000..0xffffffffL,
+                            "$descriptor->${m.name}: literal color 0x${unsigned.toString(16)}",
                         )
                     }
                     assertFalse(
@@ -423,7 +447,7 @@ class InjectedClassesTest {
 
     @Test
     fun `opener opens the fragment through the app's nav builder and returns null`() {
-        val opener = resolveNavOpener(navOpenerFingerprint.getMethod(context))
+        val opener = resolveNavOpener(navOpenerFingerprint.getMethod(context), context.classDefs.toList())
 
         val instructions = method("Lapp/revanced/extension/vkvideo/StartReVancedSettings;", "invoke")
         val castIndex = instructions.indexOfFirst { it.opcode == Opcode.CHECK_CAST }
@@ -464,6 +488,12 @@ class InjectedClassesTest {
         val nullConst = instructions[instructions.size - 2]
         assertEquals(Opcode.CONST_4, nullConst.opcode)
         assertEquals(0, (nullConst as NarrowLiteralInstruction).narrowLiteral)
+        // The null must reach the returned register.
+        assertEquals(
+            (returnObject as OneRegisterInstruction).registerA,
+            (nullConst as OneRegisterInstruction).registerA,
+            "the returned register must hold the null constant",
+        )
     }
 
     private fun methodRefString(instructions: List<Instruction>, index: Int): String {

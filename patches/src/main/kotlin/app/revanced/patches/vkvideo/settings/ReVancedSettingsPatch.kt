@@ -28,7 +28,7 @@ val revancedSettingsPatch = bytecodePatch(
         // code, never hardcoded (obfuscated names differ between versions).
         val chromeMethod = toolbarChromeFingerprint.method
         val chrome = extractToolbarChrome(classDefs.first { it.type == chromeMethod.definingClass })
-        val opener = resolveNavOpener(navOpenerFingerprint.method)
+        val opener = resolveNavOpener(navOpenerFingerprint.method, classDefs.toList())
         val switchListenerMethod = switchListenerMethodFingerprint.method.name
 
         injectSettingsClasses(this, types, chrome, opener, switchListenerMethod)
@@ -36,6 +36,15 @@ val revancedSettingsPatch = bytecodePatch(
         // The ReVanced entry is appended by the Sign-out row builder before it appends
         // Sign out / Login, so the entry renders directly above it in both cm(II) branches.
         val signOutMethod = signOutRowFingerprint.method
+        val builderReferencedFromMenu = menuMethod.implementation!!.instructions.any { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            instruction.opcode in setOf(Opcode.INVOKE_VIRTUAL, Opcode.INVOKE_VIRTUAL_RANGE) &&
+                reference is MethodReference &&
+                reference.definingClass == signOutMethod.definingClass
+        }
+        check(builderReferencedFromMenu) {
+            "Sign-out builder ${signOutMethod.definingClass} is not invoked from the profile menu"
+        }
         val listRegister = signOutMethod.implementation!!.registerCount - parameterWidth(signOutMethod) + 1
         val call = if (listRegister > 15) {
             "invoke-static/range {v$listRegister .. v$listRegister}, $ADS_SETTINGS_CLASS->addMenuEntry(Ljava/util/List;)V"

@@ -92,7 +92,7 @@ class RealApkSettingsScreenTest {
         assertEquals("Lcom/vk/core/view/components/switch/VkSwitchItem\$a;", listenerMethod.definingClass)
 
         // The opener resolves to real classes present in the shipped dexes.
-        val opener = resolveNavOpener(navOpenerFingerprint.getMethod(context))
+        val opener = resolveNavOpener(navOpenerFingerprint.getMethod(context), context.classDefs.toList())
         assertTrue(context.classDefs.any { it.type == opener.instanceType }, "opener instance class must exist")
         assertTrue(context.classDefs.any { it.type == opener.ctorOwner }, "opener ctor owner must exist")
         assertTrue(context.classDefs.any { it.type == opener.hOwner }, "opener h owner must exist")
@@ -122,10 +122,14 @@ class RealApkSettingsScreenTest {
         val openerTypes = instructions.filterIsInstance<ReferenceInstruction>()
             .mapNotNull { (it.reference as? TypeReference)?.type }
         assertTrue(openerTypes.contains(opener.instanceType), "opener must be instantiated")
-        assertTrue(
-            instructions.any { it.opcode == com.android.tools.smali.dexlib2.Opcode.CONST_4 } &&
-                instructions.last().opcode == com.android.tools.smali.dexlib2.Opcode.RETURN_OBJECT,
-            "invoke must return null (the #43 device-verified Function1 contract)",
+        val lastReturn = instructions.last()
+        val nullConst = instructions[instructions.size - 2]
+        assertEquals(com.android.tools.smali.dexlib2.Opcode.CONST_4, nullConst.opcode)
+        assertEquals(0, (nullConst as com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction).narrowLiteral)
+        assertEquals(
+            (lastReturn as com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction).registerA,
+            (nullConst as com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction).registerA,
+            "the returned register must hold the null constant",
         )
     }
 }

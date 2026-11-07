@@ -33,14 +33,23 @@ private fun invokeArgRegs(instruction: Instruction): List<Int> = when (instructi
     else -> error("Not an invoke: ${instruction.opcode}")
 }
 
-/** Literal constant feeding [register], scanned backwards from [index]. */
+/**
+ * Literal constant feeding [register], scanned backwards from [index]. Stops at
+ * the first writer of the register so a copy (`move`) can never make an older
+ * constant pass for the reaching value — a non-const writer is rejected loudly.
+ */
 private fun List<Instruction>.constFeeding(index: Int, register: Int): Int {
     for (i in index downTo 0) {
         val instruction = this[i]
-        val reg = (instruction as? OneRegisterInstruction)?.registerA
-        if (instruction is NarrowLiteralInstruction && instruction.opcode in CONST_OPS && reg == register) {
+        val writer = (instruction as? OneRegisterInstruction)?.registerA
+        if (writer != register) continue
+        if (instruction is NarrowLiteralInstruction && instruction.opcode in CONST_OPS) {
             return instruction.narrowLiteral
         }
+        error(
+            "Register v$register is written by ${instruction.opcode} before use at $index; " +
+                "cannot resolve the constant reaching definition"
+        )
     }
     error("No constant found feeding v$register before instruction $index")
 }
@@ -252,7 +261,7 @@ internal data class NavOpener(
     val hOwner: String,
 )
 
-internal fun resolveNavOpener(method: Method): NavOpener {
+internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOpener {
     val instructions = method.instructionList()
 
     // Anchor: the const-class of the app's General settings screen feeds the
@@ -299,6 +308,32 @@ internal fun resolveNavOpener(method: Method): NavOpener {
     }
     if (hIndex < 0) error("nav opener: h(Context) not found on the opener instance")
     val hOwner = ((instructions[hIndex] as ReferenceInstruction).reference as MethodReference).definingClass
+
+    // The injected callback lives in a foreign package: the opener class, its
+    // constructor owner and the h() owner must all be public, and so must the
+    // members themselves, or the menu click fails with IllegalAccessException.
+    fun classDef(type: String) = allClasses.firstOrNull { it.type == type }
+        ?: error("nav opener: class $type not found in the input")
+    val ctorRef = (instructions[ctorIndex] as ReferenceInstruction).reference as MethodReference
+    val hRef = (instructions[hIndex] as ReferenceInstruction).reference as MethodReference
+    for ((label, type) in listOf("instance" to instanceType, "constructor owner" to ctorOwner, "h owner" to hOwner)) {
+        val def = classDef(type)
+        check(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(def.accessFlags)) {
+            "nav opener $label class $type is not public"
+        }
+    }
+    val ctorDef = classDef(ctorOwner).methods.first {
+        it.name == "<init>" && it.parameterTypes == ctorRef.parameterTypes
+    }
+    check(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(ctorDef.accessFlags)) {
+        "nav opener constructor $ctorOwner.<init> is not public"
+    }
+    val hDef = classDef(hOwner).methods.first {
+        it.name == "h" && it.parameterTypes == hRef.parameterTypes
+    }
+    check(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(hDef.accessFlags)) {
+        "nav opener $hOwner.h is not public"
+    }
 
     return NavOpener(instanceType, ctorOwner, hOwner)
 }

@@ -216,7 +216,7 @@ object PatchTestUtil {
         .method public final g(Ljava/util/ArrayList;)V
             .registers 7
 
-            sget-object v1, Lfixture/menu/Type;->LOGOUT:Lfixture/menu/Type;
+            sget-object v1, Lcom/vk/video/screens/profile/adapter/ProfileMenuItemType;->LOGOUT:Lcom/vk/video/screens/profile/adapter/ProfileMenuItemType;
             invoke-virtual {v1}, Lfixture/menu/Type;->ordinal()I
             move-result v1
             new-instance v2, Ljava/lang/Object;

@@ -363,6 +363,37 @@ private fun applySpills(
  * targets and try ranges correct; a scratch above v255 is rejected.
  */
 internal fun MutableMethod.prependConditionalReturn(enabledMethod: String, fallbackSmali: String) {
+    val scratch = growFrameWithScratch()
+
+    // Branch target = the first instruction of the (remapped) original body.
+    // The patcher's addInstructionsWithLabels resolves trailing labels against
+    // ExternalLabel entries, so the continue label points at the first original
+    // instruction instead of a trailing internal label.
+    val continueTarget = implementation!!.instructions.first()
+    addInstructionsWithLabels(
+        0,
+        """
+        invoke-static {}, $enabledMethod
+        move-result v$scratch
+        if-eqz v$scratch, :revanced_continue
+        $fallbackSmali
+        """.trimIndent(),
+        app.revanced.patcher.extensions.ExternalLabel("revanced_continue", continueTarget)
+    )
+}
+
+/**
+ * Grows the frame by one register and remaps the original instructions so the
+ * incoming parameter window stays at the tail of the new frame (DEX places the
+ * arguments in the LAST `paramWidth` registers, so growth without remapping
+ * misaligns every parameter — the ART `Undefined register` VerifyError class).
+ *
+ * The register freed by the window shift (`oldCount - paramWidth`, the old first
+ * parameter slot) is returned as scratch. Window-touching operands are remapped
+ * per-register with the same 35c/range/spill discipline as
+ * [prependConditionalReturn]; spill blocks sit above every remapped register.
+ */
+internal fun MutableMethod.growFrameWithScratch(): Int {
     val oldImpl = implementation ?: error("Method has no implementation: $name")
     val oldCount = oldImpl.registerCount
     val paramWidth = parameterWidth(this)
@@ -391,25 +422,10 @@ internal fun MutableMethod.prependConditionalReturn(enabledMethod: String, fallb
     }
 
     val scratch = oldCount - paramWidth
-    check(scratch <= 0xFF) {
+    check(scratch in 0..0xFF) {
         "Scratch register v$scratch does not fit move-result/if-eqz in $definingClass->$name"
     }
-
-    // Branch target = the first instruction of the (remapped) original body.
-    // The patcher's addInstructionsWithLabels resolves trailing labels against
-    // ExternalLabel entries, so the continue label points at the first original
-    // instruction instead of a trailing internal label.
-    val continueTarget = implementation!!.instructions.first()
-    addInstructionsWithLabels(
-        0,
-        """
-        invoke-static {}, $enabledMethod
-        move-result v$scratch
-        if-eqz v$scratch, :revanced_continue
-        $fallbackSmali
-        """.trimIndent(),
-        app.revanced.patcher.extensions.ExternalLabel("revanced_continue", continueTarget)
-    )
+    return scratch
 }
 
 private fun usesParameterWindow(insn: Instruction, oldParamStart: Int): Boolean = when (insn) {

@@ -170,8 +170,9 @@ class ConditionalTopShelfTest {
                 assertNotNull(fixture.fingerprint.matchOrNull(context))
                 val method = fixture.fingerprint.getMethod(context)
                 val before = method.getInstructions()
-                val insertIndex = shelfInflateIndex(before) + 2
                 val oldRegisterCount = method.implementation!!.registerCount
+                val oldParamStart = oldRegisterCount - parameterWidthOf(method)
+                val insertIndex = shelfInflateIndex(before) + 2
 
                 applyPatches(context, conditionalTopShelfPatch)
 
@@ -179,10 +180,12 @@ class ConditionalTopShelfTest {
                 assertEquals(
                     oldRegisterCount + 1,
                     method.implementation!!.registerCount,
-                    "frame must grow by one scratch register without shifting existing registers",
+                    "frame must grow by one scratch register",
                 )
 
-                // The appended block: guard getter -> move-result -> if-nez -> /range collapse invoke.
+                // The appended block: guard getter -> move-result -> if-eqz -> /range collapse.
+                // Polarity: the toggle ON means blocking enabled, so the collapse FALLS
+                // THROUGH when the guard is true and the branch skips on zero.
                 val blockStart = after.indexOfFirst { instruction ->
                     val reference = (instruction as? ReferenceInstruction)?.reference
                     instruction.opcode == Opcode.INVOKE_STATIC &&
@@ -194,12 +197,12 @@ class ConditionalTopShelfTest {
                 val block = after.subList(blockStart, blockStart + 4)
                 assertEquals(Opcode.MOVE_RESULT, block[1].opcode)
                 assertEquals(
-                    oldRegisterCount,
+                    oldParamStart,
                     (block[1] as OneRegisterInstruction).registerA,
-                    "guard result must live in the new scratch register",
+                    "guard result must live in the window slot freed by the remap",
                 )
-                assertEquals(Opcode.IF_NEZ, block[2].opcode)
-                assertEquals(oldRegisterCount, (block[2] as OneRegisterInstruction).registerA)
+                assertEquals(Opcode.IF_EQZ, block[2].opcode)
+                assertEquals(oldParamStart, (block[2] as OneRegisterInstruction).registerA)
 
                 assertEquals(Opcode.INVOKE_STATIC_RANGE, block[3].opcode, "collapse invoke must be the range form")
                 val collapseRef = (block[3] as ReferenceInstruction).reference as MethodReference
@@ -207,9 +210,9 @@ class ConditionalTopShelfTest {
                 assertEquals("collapseTopShelfView", collapseRef.name)
                 assertEquals("Landroid/view/View;", collapseRef.parameterTypes.single().toString())
                 assertEquals(
-                    shelfViewRegister(before),
+                    remappedShelfViewRegister(before, oldParamStart),
                     (block[3] as RegisterRangeInstruction).startRegister,
-                    "collapse invoke must receive the shelf root view register",
+                    "collapse invoke must receive the (remapped) shelf root view register",
                 )
 
                 // 35c/range discipline: no non-range invoke anywhere may carry a register >= 16.
@@ -229,20 +232,20 @@ class ConditionalTopShelfTest {
                 val branch = block[2] as OffsetInstruction
                 val targetAddress = block[2].location.codeAddress + branch.codeOffset
                 val targetIndex = after.indexOfFirst { it.location.codeAddress == targetAddress }
-                assertEquals(blockStart + 4, targetIndex, "if-nez must skip past the collapse invoke")
+                assertEquals(blockStart + 4, targetIndex, "if-eqz must skip past the collapse invoke")
 
-                // Every original instruction survives unchanged, in order (append-scratch
-                // discipline: no operand remap).
+                // The original instructions survive in order; every register operand that
+                // touched the old parameter window is remapped +1 (the incoming arguments
+                // must stay at the tail of the grown frame), locals are untouched.
                 val originals = before
                 val rebuilt = after.subList(0, blockStart) + after.subList(blockStart + 4, after.size)
                 assertEquals(originals.size, rebuilt.size, "only the 4-instruction block may be added")
                 originals.forEachIndexed { i, original ->
                     assertEquals(original.opcode, rebuilt[i].opcode, "original instruction $i opcode")
-                    assertEquals(
-                        (original as? OneRegisterInstruction)?.registerA,
-                        (rebuilt[i] as? OneRegisterInstruction)?.registerA,
-                        "original instruction $i register",
-                    )
+                    for ((originalReg, remappedReg) in registerOperands(original).zip(registerOperands(rebuilt[i]))) {
+                        val expected = if (originalReg >= oldParamStart) originalReg + 1 else originalReg
+                        assertEquals(expected, remappedReg, "original instruction $i register $originalReg")
+                    }
                     assertEquals(
                         (original as? ReferenceInstruction)?.reference?.toString(),
                         (rebuilt[i] as? ReferenceInstruction)?.reference?.toString(),
@@ -253,6 +256,29 @@ class ConditionalTopShelfTest {
                 assertEquals(insertIndex, blockStart, "block must be appended right after the view acquisition")
             }
         }
+
+    /** Sum of parameter widths + receiver, mirroring the patcher's register layout. */
+    private fun parameterWidthOf(method: com.android.tools.smali.dexlib2.iface.Method): Int =
+        method.parameterTypes.sumOf { if (it == "J" || it == "D") 2 else 1 } + 1
+
+    private fun registerOperands(insn: BuilderInstruction): List<Int> = when (insn) {
+        is com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction ->
+            (insn.startRegister until insn.startRegister + insn.registerCount).toList()
+        is FiveRegisterInstruction ->
+            listOf(insn.registerC, insn.registerD, insn.registerE, insn.registerF, insn.registerG).take(insn.registerCount)
+        is com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstruction ->
+            listOf(insn.registerA, insn.registerB, insn.registerC)
+        is com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction ->
+            listOf(insn.registerA, insn.registerB)
+        is OneRegisterInstruction -> listOf(insn.registerA)
+        else -> emptyList()
+    }
+
+    /** The shelf view register as it stands after the +1 window remap. */
+    private fun remappedShelfViewRegister(before: List<BuilderInstruction>, oldParamStart: Int): Int {
+        val raw = shelfViewRegister(before)
+        return if (raw >= oldParamStart) raw + 1 else raw
+    }
 
     @Test
     fun `collapse helper performs the runtime equivalent of the deleted resource patch`() {
