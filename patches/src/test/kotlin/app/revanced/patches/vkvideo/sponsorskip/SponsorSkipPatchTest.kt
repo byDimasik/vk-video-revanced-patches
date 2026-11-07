@@ -31,6 +31,8 @@ class SponsorSkipPatchTest {
         assertTrue(episodes.contains("Ljava/util/Collections;->sort(Ljava/util/List;Ljava/util/Comparator;)V"))
         assertTrue(episodes.contains("iput-wide v8, v6, $SEGMENT_CLASS->endMs:J"))
         assertTrue(episodes.contains("Lcom/vk/dto/common/VideoEpisode;->a:I"))
+        assertTrue(episodes.contains("if-eq v5, v13, :done"), "duplicate starts are not trimmed")
+        assertTrue(episodes.contains(":no_end"), "a capped list is closed at the duration")
         assertTrue(sponsorSkipSources()[SEGMENT_ORDER_CLASS]!!.contains("Ljava/util/Comparator;"))
     }
 
@@ -44,7 +46,10 @@ class SponsorSkipPatchTest {
                 Category.INTRO -> "intro"
                 else -> "sponsor"
             }
-            assertTrue(rules.contains(":$label"), "missing branch $label")
+            val at = rules.indexOf("const-string v0, \"$name\"")
+            assertTrue(at >= 0, "missing rule $name")
+            val branch = rules.substring(at, minOf(rules.length, at + 200))
+            assertTrue(branch.contains(":$label"), "rule $name does not branch to $label")
         }
         assertTrue(rules.contains("${LebedevRules.OWNER_ID}"))
         assertTrue(rules.contains("${LebedevRules.POSITIONAL_MAX_MS}"))
@@ -74,6 +79,8 @@ class SponsorSkipPatchTest {
 
         assertHook(sponsorSkipVideoHandoffFingerprint.getMethod(context), "onVideoChanged", 3, 4)
         assertHook(sponsorSkipViewAttachedFingerprint.getMethod(context), "onViewAttached", 2, 3)
+        assertHook(sponsorSkipViewSetupFingerprint.getMethod(context), "onViewAttached", 1, 2)
+        assertHook(sponsorSkipHolderFingerprint.getMethod(context), "onViewAttached", 3, 4)
         assertHook(sponsorSkipReleaseFingerprint.getMethod(context), "onRelease", 2, null)
     }
 
@@ -83,6 +90,8 @@ class SponsorSkipPatchTest {
         assertEquals(VIDEO_AUTO_PLAY, sponsorSkipVideoHandoffFingerprint.matchOrNull(context)?.method?.definingClass)
         assertEquals(VIDEO_AUTO_PLAY, sponsorSkipViewAttachedFingerprint.matchOrNull(context)?.method?.definingClass)
         assertEquals(VIDEO_AUTO_PLAY, sponsorSkipReleaseFingerprint.matchOrNull(context)?.method?.definingClass)
+        assertEquals(VIDEO_AUTO_PLAY, sponsorSkipViewSetupFingerprint.matchOrNull(context)?.method?.definingClass)
+        assertEquals(VIDEO_AUTO_PLAY, sponsorSkipHolderFingerprint.matchOrNull(context)?.method?.definingClass)
     }
 
     private fun assertHook(

@@ -244,6 +244,7 @@ private fun episodesSmali(): String = """
         new-instance v2, Ljava/util/ArrayList;
         invoke-direct {v2}, Ljava/util/ArrayList;-><init>()V
         const/4 v3, 0x0
+        const/4 v14, 0x0
 
         :loop
         invoke-interface {v0}, Ljava/util/List;->size()I
@@ -251,8 +252,9 @@ private fun episodesSmali(): String = """
         if-ge v3, v4, :build
         invoke-virtual {v2}, Ljava/util/ArrayList;->size()I
         move-result v4
-        const/16 v5, 0x1f4
+        const/16 v5, 0x1f5
         if-ge v4, v5, :build
+        const/4 v14, 0x1
 
         invoke-interface {v0, v3}, Ljava/util/List;->get(I)Ljava/lang/Object;
         move-result-object v4
@@ -292,11 +294,16 @@ private fun episodesSmali(): String = """
         invoke-direct {v13}, $SEGMENT_ORDER_CLASS-><init>()V
         invoke-static {v2, v13}, Ljava/util/Collections;->sort(Ljava/util/List;Ljava/util/Comparator;)V
 
-        new-array v4, v3, $SEGMENT_ARRAY
+        const/16 v10, 0x1f4
+        move v13, v3
+        if-lt v3, v10, :sized
+        move v13, v10
+
+        :sized
+        new-array v4, v13, $SEGMENT_ARRAY
         const/4 v5, 0x0
         const/4 v6, 0x0
         const-wide/16 v7, -0x1
-        const/4 v13, 0x0
 
         :close
         if-ge v6, v3, :closed
@@ -305,19 +312,20 @@ private fun episodesSmali(): String = """
         check-cast v9, $SEGMENT_CLASS
         iget-wide v10, v9, $SEGMENT_CLASS->startMs:J
         cmp-long v12, v10, v7
-        if-ne v12, v13, :append
+        if-nez v12, :append
         add-int/lit8 v12, v5, -0x1
         aput-object v9, v4, v12
         goto :next
 
         :append
-        if-eqz v5, :put
+        if-eqz v5, :store
         add-int/lit8 v12, v5, -0x1
         aget-object v12, v4, v12
         iput-wide v10, v12, $SEGMENT_CLASS->endMs:J
 
-        :put
+        :store
         move-wide v7, v10
+        if-ge v5, v13, :next
         aput-object v9, v4, v5
         add-int/lit8 v5, v5, 0x1
 
@@ -326,11 +334,14 @@ private fun episodesSmali(): String = """
         goto :close
 
         :closed
+        if-nez v14, :no_end
         move-wide/from16 v8, p1
         add-int/lit8 v6, v5, -0x1
         aget-object v6, v4, v6
         iput-wide v8, v6, $SEGMENT_CLASS->endMs:J
-        if-ne v5, v3, :done
+
+        :no_end
+        if-eq v5, v13, :done
         new-array v6, v5, $SEGMENT_ARRAY
         const/4 v7, 0x0
         invoke-static {v4, v7, v6, v7, v5}, Ljava/lang/System;->arraycopy(Ljava/lang/Object;ILjava/lang/Object;II)V
@@ -484,45 +495,13 @@ private fun behaviorStoreSmali(): String = """
     .end method
 
     .method public static isEnabled()Z
-        .registers 7
+        .registers 4
 
         invoke-static {}, $BEHAVIOR_STORE_CLASS->prefs()Landroid/content/SharedPreferences;
         move-result-object v0
-        new-instance v1, Ljava/lang/StringBuilder;
-        const-string v2, "prefs="
-        invoke-direct {v1, v2}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
-        invoke-interface {v0}, Landroid/content/SharedPreferences;->getAll()Ljava/util/Map;
-        move-result-object v3
-        invoke-virtual {v1, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/Object;)Ljava/lang/StringBuilder;
-        invoke-virtual {v1}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-        move-result-object v1
-        const-string v2, "SponsorSkip"
-        invoke-static {v2, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
         const-string v1, "$KEY_ENABLED"
-        const/4 v0, 0x1
-        return v0
         invoke-interface {v0, v1}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
         move-result v2
-        new-instance v3, Ljava/lang/StringBuilder;
-        const-string v4, "cls="
-        invoke-direct {v3, v4}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
-        invoke-virtual {v0}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
-        move-result-object v4
-        invoke-virtual {v4}, Ljava/lang/Class;->getName()Ljava/lang/String;
-        move-result-object v4
-        invoke-virtual {v3, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        const-string v4, " contains="
-        invoke-virtual {v3, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        invoke-virtual {v3, v2}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
-        const-string v4, " val="
-        invoke-virtual {v3, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        const/4 v4, 0x1
-        invoke-interface {v0, v1, v4}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
-        move-result v4
-        invoke-virtual {v3, v4}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
-        invoke-virtual {v3}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-        move-result-object v3
-        invoke-static {v3}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         if-eqz v2, :default
         const/4 v2, 0x0
         invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
@@ -1007,7 +986,7 @@ private fun skipEngineSmali(): String = """
         cmp-long v7, v4, v6
         if-lez v7, :seek
         cmp-long v7, v4, v2
-        if-ltz v7, :seek
+        if-gez v7, :seek
         move-wide v2, v4
         :seek
         invoke-interface {v0, v2, v3}, Lp73/a;->s(J)V
@@ -1144,9 +1123,6 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v2, v4, v5}, Landroid/widget/TextView;->setTextSize(IF)V
         const/16 v4, 0x11
         invoke-virtual {v2, v4}, Landroid/widget/TextView;->setGravity(I)V
-        new-instance v4, $SKIP_CLICK_CLASS;
-        invoke-direct {v4, p0, p1}, $SKIP_CLICK_CLASS;-><init>($SKIP_STATE_CLASS;I)V
-        invoke-virtual {v2, v4}, Landroid/view/View;->setOnClickListener(Landroid/view/View${'$'}OnClickListener;)V
         iput-object v2, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
 
         invoke-virtual {v0}, Landroid/view/View;->getRootView()Landroid/view/View;
@@ -1177,6 +1153,9 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v5, v2, v4}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup${'$'}LayoutParams;)V
 
         :update
+        new-instance v4, $SKIP_CLICK_CLASS;
+        invoke-direct {v4, p0, p1}, $SKIP_CLICK_CLASS;-><init>($SKIP_STATE_CLASS;I)V
+        invoke-virtual {v2, v4}, Landroid/view/View;->setOnClickListener(Landroid/view/View${'$'}OnClickListener;)V
         iget-object v0, v1, $SEGMENT_CLASS->name:Ljava/lang/String;
         const-string v4, "Пропустить: "
         invoke-virtual {v4, v0}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;

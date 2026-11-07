@@ -13,7 +13,8 @@ internal data class Episode(val time: Int, val text: String?)
  *
  * The API times are seconds; blanks, negatives and starts at or past the duration
  * are dropped, equal starts collapse to the later entry, and the last segment runs
- * to the video's end.
+ * to the video's end. Beyond [MAX_SEGMENTS] the extra entry is still read so the
+ * last kept segment ends at the next start rather than at the video's end.
  */
 internal object Episodes {
     const val MAX_SEGMENTS = 500
@@ -24,7 +25,7 @@ internal object Episodes {
         val kept = ArrayList<Segment>()
         for (episode in episodes) {
             if (episode == null) continue
-            if (kept.size == MAX_SEGMENTS) break
+            if (kept.size == MAX_SEGMENTS + 1) break
             val name = episode.text?.trim()
             if (name.isNullOrEmpty()) continue
             if (episode.time < 0) continue
@@ -35,7 +36,7 @@ internal object Episodes {
         if (kept.isEmpty()) return emptyList()
         kept.sortBy { it.startMs }
 
-        val closed = ArrayList<Segment>(kept.size)
+        val closed = ArrayList<Segment>(MAX_SEGMENTS)
         for (segment in kept) {
             val previous = closed.lastOrNull()
             if (previous != null && previous.startMs == segment.startMs) {
@@ -43,9 +44,10 @@ internal object Episodes {
                 continue
             }
             previous?.endMs = segment.startMs
+            if (closed.size == MAX_SEGMENTS) break
             closed += segment
         }
-        closed.last().endMs = durationMs
+        if (kept.size <= MAX_SEGMENTS) closed.last().endMs = durationMs
         return closed
     }
 }

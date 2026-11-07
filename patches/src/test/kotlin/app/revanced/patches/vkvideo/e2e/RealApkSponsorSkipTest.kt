@@ -5,7 +5,9 @@ import app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipVideoHandoffFingerprint
+import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipHolderFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewAttachedFingerprint
+import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewSetupFingerprint
 import app.revanced.patches.vkvideo.util.PatchTestUtil.applyPatches
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getInstructions
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getMethod
@@ -60,12 +62,16 @@ class RealApkSponsorSkipTest {
 
         assertNotNull(sponsorSkipVideoHandoffFingerprint.matchOrNull(context), "video handoff not found")
         assertNotNull(sponsorSkipViewAttachedFingerprint.matchOrNull(context), "view attach not found")
+        assertNotNull(sponsorSkipViewSetupFingerprint.matchOrNull(context), "view setup not found")
+        assertNotNull(sponsorSkipHolderFingerprint.matchOrNull(context), "preview attach not found")
         assertNotNull(sponsorSkipReleaseFingerprint.matchOrNull(context), "release not found")
 
         applyPatches(context, sponsorSkipPatch)
 
         assertHook(sponsorSkipVideoHandoffFingerprint.getMethod(context), "onVideoChanged", 3, 4)
         assertHook(sponsorSkipViewAttachedFingerprint.getMethod(context), "onViewAttached", 2, 3)
+        assertHook(sponsorSkipViewSetupFingerprint.getMethod(context), "onViewAttached", 1, 2)
+        assertHook(sponsorSkipHolderFingerprint.getMethod(context), "onViewAttached", 3, 4)
         assertHook(sponsorSkipReleaseFingerprint.getMethod(context), "onRelease", 2, null)
     }
 

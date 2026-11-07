@@ -36,7 +36,7 @@ class LebedevRulesTest {
     @Test
     fun `exact names win over the positional rule`() {
         // «Важнейшая новость» opens the 771 episode at 00:00 and stays intro, not sponsor.
-        assertEquals(Category.INTRO, LebedevRules.classify(LebedevRules.OWNER_ID, "Важнейшая новость", 0, 0, 90_000))
+        assertEquals(Category.INTRO, LebedevRules.classify(LebedevRules.OWNER_ID, "Важнейшая новость", 0, 0, 60_000))
     }
 
     @Test
