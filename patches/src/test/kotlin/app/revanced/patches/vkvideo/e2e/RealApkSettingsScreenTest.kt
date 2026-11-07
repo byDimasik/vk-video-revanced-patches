@@ -97,6 +97,7 @@ class RealApkSettingsScreenTest {
         assertTrue(context.classDefs.any { it.type == opener.instanceType }, "opener instance class must exist")
         assertTrue(context.classDefs.any { it.type == opener.ctorOwner }, "opener ctor owner must exist")
         assertTrue(context.classDefs.any { it.type == opener.hOwner }, "opener h owner must exist")
+        assertTrue(context.classDefs.any { it.type == opener.iOwner }, "opener i owner must exist")
 
         applyPatches(context, revancedSettingsPatch)
 
@@ -119,6 +120,47 @@ class RealApkSettingsScreenTest {
             assertTrue(ctor.parameterTypes.isEmpty(), "reflective FragmentEntry.u8() instantiation needs the no-arg ctor")
             assertTrue(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(ctor.accessFlags))
         }
+
+        // Every method the injected UI calls must exist in the real APK with the
+        // emitted owner/name/signature — a transcribed class the 1.170 dexes do not
+        // actually carry (or a renamed overload) fails here, not on device.
+        fun assertResolves(owner: String, name: String, params: List<String>) {
+            val def = context.classDefs.firstOrNull { it.type == owner }
+            assertNotNull(def, "referenced class $owner must exist")
+            assertNotNull(
+                def!!.methods.firstOrNull { it.name == name && it.parameterTypes.toList() == params },
+                "referenced method $owner->$name(${params.joinToString("")}) must exist",
+            )
+        }
+        assertResolves("Lcom/vk/core/view/components/cell/VkCell;", "<init>", listOf(
+            "Landroid/content/Context;", "Landroid/util/AttributeSet;", "I", "I",
+        ))
+        assertResolves("Lcom/vk/core/view/components/cell/VkCell;", "setLeft", listOf(
+            "Lcom/vk/core/view/components/cell/VkCell\$Left\$b;",
+        ))
+        assertResolves("Lcom/vk/core/view/components/cell/VkCell;", "setMiddle", listOf(
+            "Lcom/vk/core/view/components/cell/VkCell\$Middle\$b;",
+        ))
+        assertResolves("Lcom/vk/core/view/components/cell/VkCell;", "setRight", listOf(
+            "Lcom/vk/core/view/components/cell/VkCell\$Right\$d;",
+        ))
+        assertResolves("Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$c;", "<init>", listOf(
+            "Lp72/g;", "Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$Size;", "Lp72/r\$a;", "I",
+        ))
+        assertResolves("Lcom/vk/core/view/components/cell/VkCell\$Middle\$e;", "<init>", listOf(
+            "Lpx1/a;", "I", "Landroid/text/TextUtils\$TruncateAt;",
+            "Lcom/vk/core/view/components/cell/VkCell\$Middle\$e\$b\$b;",
+            "Lcom/vk/core/view/components/cell/VkCell\$Middle\$e\$b;", "I",
+        ))
+        assertResolves("Lcom/vk/core/view/components/cell/VkCell\$Right\$d;", "<init>", listOf(
+            "Lcom/vk/core/view/components/cell/VkCell\$Right\$a;",
+            "Lcom/vk/core/view/components/cell/VkCell\$Right\$e;",
+            "Lcom/vk/core/view/components/cell/VkCell\$Right\$ExtraAction\$a;",
+            "Lcom/vk/core/view/components/cell/VkCell\$Right\$b;", "I",
+        ))
+        assertResolves("Lp72/j;", "<init>", listOf("I"))
+        assertResolves("Lp72/b;", "<init>", listOf("I"))
+        assertResolves(opener.iOwner, "i", listOf("Lcom/vk/core/fragments/FragmentImpl;"))
 
         // StartReVancedSettings opens the screen via the resolved opener and returns null.
         val start = context.classDefs.first { it.type == "Lapp/revanced/extension/vkvideo/StartReVancedSettings;" }

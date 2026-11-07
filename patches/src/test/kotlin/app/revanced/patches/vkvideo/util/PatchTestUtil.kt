@@ -616,6 +616,12 @@ object PatchTestUtil {
 
             return-void
         .end method
+
+        .method public final i(Lcom/vk/core/fragments/FragmentImpl;)V
+            .registers 2
+
+            return-void
+        .end method
     """.trimIndent()
 
     /** Fixture sets covering every fingerprint the settings patch resolves. */

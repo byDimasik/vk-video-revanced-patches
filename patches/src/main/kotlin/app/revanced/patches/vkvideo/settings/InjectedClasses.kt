@@ -584,7 +584,7 @@ private fun groupClickSmali(opener: NavOpener): String = """
         const/4 v3, 0x0
         invoke-direct {v0, v1, v2, v3}, ${opener.ctorOwner}-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
         iget-object v1, p0, $GROUP_CLICK_CLASS->fragment:Lcom/vk/core/fragments/FragmentImpl;
-        invoke-virtual {v0, v1}, ${opener.hOwner}->i(Lcom/vk/core/fragments/FragmentImpl;)V
+        invoke-virtual {v0, v1}, ${opener.iOwner}->i(Lcom/vk/core/fragments/FragmentImpl;)V
         return-void
     .end method
 """.trimIndent()

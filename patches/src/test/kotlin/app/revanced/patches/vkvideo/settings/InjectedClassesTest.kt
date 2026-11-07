@@ -599,7 +599,7 @@ class InjectedClassesTest {
         // v2/v3 — the locals must therefore sit above the parameter window.
         val onClick = injectedClass("Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;")
             .methods.first { it.name == "onClick" }
-        assertTrue(onClick.implementation!!.registerCount > 4, "locals must not overlap p0/p1")
+        assertTrue(onClick.implementation!!.registerCount >= 6, "locals must not overlap p0/p1")
 
         val ctorIndex = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
@@ -616,7 +616,7 @@ class InjectedClassesTest {
         val openIndex = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
             reference is MethodReference &&
-                reference.definingClass == opener.hOwner &&
+                reference.definingClass == opener.iOwner &&
                 reference.name == "i" &&
                 reference.parameterTypes == listOf("Lcom/vk/core/fragments/FragmentImpl;")
         }

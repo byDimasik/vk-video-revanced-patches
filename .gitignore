@@ -10,6 +10,7 @@ build/
 *.klib
 
 # Cache & Local Storage
+.cache
 .cache/
 
 # Android & Bytecode Binaries
