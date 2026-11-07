@@ -11,6 +11,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21t
+import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction22t
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction3rc
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -23,7 +24,9 @@ class ConditionalReturnTest {
     private val enabledMethod = "Lstub/Enabled;->isEnabled()Z"
 
     /** Formats whose register fields are 4 bits wide (max v15). */
-    private val nibbleFormats = setOf(Format.Format11n, Format.Format11x, Format.Format12x, Format.Format22c)
+    private val nibbleFormats = setOf(
+        Format.Format11n, Format.Format11x, Format.Format12x, Format.Format22b, Format.Format22s, Format.Format22t, Format.Format22c
+    )
 
     private fun assertNoNibbleOverflow(method: MutableMethod) {
         method.getInstructions().forEach { insn ->
@@ -680,6 +683,138 @@ class ConditionalReturnTest {
         assertEquals(Opcode.IPUT_OBJECT, instructions[12].opcode)
         val iput = instructions[12] as TwoRegisterInstruction
         assertEquals(15 to 14, iput.registerA to iput.registerB)
+        assertNoNibbleOverflow(method)
+    }
+
+    @Test
+    fun `two-address binop keeps its own value through the low temp`() {
+        val smali = """
+            .class public Lcom/example/TwoAddr;
+            .super Ljava/lang/Object;
+
+            .method public static add(I)I
+                .registers 16
+
+                const/4 v1, 0x2
+                add-int/2addr p0, v1
+                return p0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/TwoAddr;", "add")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        // paramWidth = 1: p0 is v15 -> v16; v15 is the freed temp.
+        val instructions = method.getInstructions()
+        val loadP0 = instructions.first { it.opcode == Opcode.MOVE_FROM16 } as TwoRegisterInstruction
+        assertEquals(15 to 16, loadP0.registerA to loadP0.registerB)
+        val add = instructions.first { it.opcode == Opcode.ADD_INT_2ADDR } as TwoRegisterInstruction
+        assertEquals(15 to 1, add.registerA to add.registerB)
+        val addAt = instructions.indexOfFirst { it.opcode == Opcode.ADD_INT_2ADDR }
+        val copyBack = instructions[addAt + 1] as TwoRegisterInstruction
+        assertEquals(Opcode.MOVE_FROM16, copyBack.opcode)
+        assertEquals(16 to 15, copyBack.registerA to copyBack.registerB)
+        assertNoNibbleOverflow(method)
+    }
+
+    @Test
+    fun `iput with two high operands reserves a second low temp`() {
+        // No spilled invoke here, so without the reservation the second temp
+        // would be the re-emitted receiver slot and clobber it.
+        val smali = """
+            .class public Lcom/example/Put2;
+            .super Ljava/lang/Object;
+
+            .method public static move(Ljava/lang/Object;Ljava/lang/Object;)V
+                .registers 16
+
+                iput-object p1, p1, Lcom/example/Put2;->x:Ljava/lang/Object;
+                return-void
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Put2;", "move")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        // Guard firewrite is 4 instructions; the iput expansion starts at 4.
+        // Both operands are p1 (v15 -> v16 at growth 1), so the second temp is
+        // needed and the window is pushed one further: p0 = 16, p1 = 17.
+        val copies = instructions.drop(4).take(2).map { it as TwoRegisterInstruction }
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, copies[0].opcode)
+        assertEquals(14 to 17, copies[0].registerA to copies[0].registerB)
+        assertEquals(Opcode.MOVE_OBJECT_FROM16, copies[1].opcode)
+        assertEquals(15 to 17, copies[1].registerA to copies[1].registerB)
+        val iput = instructions[6] as TwoRegisterInstruction
+        assertEquals(Opcode.IPUT_OBJECT, iput.opcode)
+        assertEquals(15 to 14, iput.registerA to iput.registerB)
+        assertEquals(18, method.implementation!!.registerCount)
+        assertNoNibbleOverflow(method)
+    }
+
+    @Test
+    fun `if-test with two high operands snapshots both`() {
+        val smali = """
+            .class public Lcom/example/Branch2;
+            .super Ljava/lang/Object;
+
+            .method public static same(Ljava/lang/Object;Ljava/lang/Object;)I
+                .registers 16
+
+                if-eq p1, p1, :same
+                const/4 v0, 0x0
+                return v0
+                :same
+                const/4 v0, 0x1
+                return v0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Branch2;", "same")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        assertEquals(18, method.implementation!!.registerCount)
+        // Body starts at 4 with the two snapshots, then the branch on them.
+        // p1 is v15 -> v16; both operands are the same high register.
+        val copies = instructions.drop(4).take(2).map { it as TwoRegisterInstruction }
+        assertEquals(14 to 17, copies[0].registerA to copies[0].registerB)
+        assertEquals(15 to 17, copies[1].registerA to copies[1].registerB)
+        val branch = instructions[6] as Instruction22t
+        assertEquals(14 to 15, branch.registerA to branch.registerB)
+        assertNoNibbleOverflow(method)
+    }
+
+    @Test
+    fun `lit8 binop with a high destination reads and writes through the temp`() {
+        val smali = """
+            .class public Lcom/example/Lit;
+            .super Ljava/lang/Object;
+
+            .method public static bump(I)I
+                .registers 16
+
+                add-int/lit8 p0, p0, 0x1
+                return p0
+            .end method
+        """.trimIndent()
+
+        val context = PatchTestUtil.createBytecodeContext(smali)
+        val method = method(context, "Lcom/example/Lit;", "bump")
+
+        method.prependConditionalReturn(enabledMethod, "return-void")
+
+        val instructions = method.getInstructions()
+        val copy = instructions.first { it.opcode == Opcode.MOVE_FROM16 } as TwoRegisterInstruction
+        assertEquals(15 to 16, copy.registerA to copy.registerB)
+        val add = instructions.first { it.opcode == Opcode.ADD_INT_LIT8 } as TwoRegisterInstruction
+        assertEquals(15 to 15, add.registerA to add.registerB)
         assertNoNibbleOverflow(method)
     }
 

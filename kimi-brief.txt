@@ -1,0 +1,7 @@
+PR #49, repo byDimasik/vk-video-revanced-patches.
+
+Fix: growFrameWithScratch() must move the DEX parameter window by the FULL frame growth (guard + spill slots), not by the guard alone, because DEX keeps arguments in the last paramWidth registers; the old code left every parameter read on an Undefined register (ART VerifyError, issue #46). Growth is solved to a fixed point, 4-bit register formats snapshot through freed low slots, and the body is rebuilt through MutableMethodImplementation so branch targets, try ranges and debug items follow the inserted instructions.
+
+Evidence: JVM tests added for the #46 shape, return-object, iput, try range and branch offsets; `make test`/`make check` green; CI green; Samsung SM-G998W device test (install -r, cold start, feed, playback, settings toggles persist across relaunch, 0 VerifyError, 0 FATAL).
+
+Question: read review-diff.patch. Any BLOCKING concern for merge? Answer strictly one line "MERGE" or "BLOCK" then one short paragraph.
