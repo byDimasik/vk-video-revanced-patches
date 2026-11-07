@@ -13,6 +13,8 @@ import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 
+private const val FRAGMENT_IMPL = "Lcom/vk/core/fragments/FragmentImpl;"
+
 private val CONST_OPS = setOf(Opcode.CONST, Opcode.CONST_4, Opcode.CONST_16, Opcode.CONST_HIGH16)
 private val DIRECT_OPS = setOf(Opcode.INVOKE_DIRECT, Opcode.INVOKE_DIRECT_RANGE)
 private val VIRTUAL_OPS = setOf(Opcode.INVOKE_VIRTUAL, Opcode.INVOKE_VIRTUAL_RANGE)
@@ -259,6 +261,8 @@ internal data class NavOpener(
     val ctorOwner: String,
     /** Defining class of the `h(Context)` opener. */
     val hOwner: String,
+    /** Defining class of the `i(FragmentImpl)` opener (fragment-bound navigation). */
+    val iOwner: String,
 )
 
 internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOpener {
@@ -316,7 +320,35 @@ internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOp
         ?: error("nav opener: class $type not found in the input")
     val ctorRef = (instructions[ctorIndex] as ReferenceInstruction).reference as MethodReference
     val hRef = (instructions[hIndex] as ReferenceInstruction).reference as MethodReference
-    for ((label, type) in listOf("instance" to instanceType, "constructor owner" to ctorOwner, "h owner" to hOwner)) {
+
+    // Fragment-bound navigation (`i(FragmentImpl)`): the injected row click runs
+    // inside a fragment, where the Context overload silently no-ops on device.
+    // The call site only exercises `h(Context)`, so `i` is looked up along the
+    // opener's own superclass chain instead — and a missing or non-public method
+    // fails the patch loudly rather than shipping a dead row.
+    var searchType: String? = instanceType
+    var iOwner: String? = null
+    while (searchType != null && searchType != "Ljava/lang/Object;") {
+        val def = classDef(searchType)
+        val service = def.methods.firstOrNull {
+            it.name == "i" && it.parameterTypes == listOf(FRAGMENT_IMPL) && it.returnType == "V"
+        }
+        if (service != null) {
+            check(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(service.accessFlags)) {
+                "nav opener $searchType.i(Lcom/vk/core/fragments/FragmentImpl;)V is not public"
+            }
+            iOwner = searchType
+            break
+        }
+        searchType = def.superclass
+    }
+    val iOwnerResolved = iOwner
+        ?: error("nav opener: i(Lcom/vk/core/fragments/FragmentImpl;)V not found on the opener hierarchy")
+    for ((label, type) in listOf(
+        "instance" to instanceType,
+        "constructor owner" to ctorOwner,
+        "h owner" to hOwner,
+    )) {
         val def = classDef(type)
         check(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(def.accessFlags)) {
             "nav opener $label class $type is not public"
@@ -334,6 +366,5 @@ internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOp
     check(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(hDef.accessFlags)) {
         "nav opener $hOwner.h is not public"
     }
-
-    return NavOpener(instanceType, ctorOwner, hOwner)
+    return NavOpener(instanceType, ctorOwner, hOwner, iOwnerResolved)
 }
