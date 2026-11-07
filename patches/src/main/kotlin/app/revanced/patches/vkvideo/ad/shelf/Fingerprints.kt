@@ -102,6 +102,13 @@ internal fun findShelfInflate(method: com.android.tools.smali.dexlib2.iface.Meth
         }
     } ?: error("Shelf layout id const not found before the inflate in ${method.definingClass}->${method.name}"))
 
+    if (layoutId !in LAYOUT_ID_RANGE) {
+        error(
+            "Shelf inflate layout id 0x${layoutId.toString(16)} is outside the layout-id range in " +
+                "${method.definingClass}->${method.name}; the matched inflate is not a layout resource"
+        )
+    }
+
     val moveResult = instructions.getOrNull(inflateIndex + 1)
     if (moveResult?.opcode != Opcode.MOVE_RESULT_OBJECT) {
         error("Shelf inflate result not consumed by move-result-object in ${method.definingClass}->${method.name}")
@@ -112,6 +119,14 @@ internal fun findShelfInflate(method: com.android.tools.smali.dexlib2.iface.Meth
         viewRegister = (moveResult as OneRegisterInstruction).registerA,
     )
 }
+
+/**
+ * Resource-type range check for the resolved layout id (`res/layout` type ids live
+ * in 0x7f0e0000..0x7f0effff in this app). The exact ids cannot be hardcoded in
+ * production (public.xml is an apktool decode artifact, absent from the binary
+ * APK) — the real-APK e2e pins the 1.170 values.
+ */
+internal val LAYOUT_ID_RANGE = 0x7f0e0000..0x7f0effff
 
 internal data class ShelfInflateSite(
     val insertAfterIndex: Int,
