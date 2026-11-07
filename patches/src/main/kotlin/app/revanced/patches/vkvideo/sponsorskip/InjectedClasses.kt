@@ -39,8 +39,10 @@ internal fun injectSponsorSkipClasses(context: BytecodePatchContext) {
     sponsorSkipSources().forEach { (descriptor, source) ->
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
         if (existing != null) {
-            val missing = requiredMethods[descriptor].orEmpty()
-                .filter { name -> existing.methods.none { it.name == name } }
+            val missing = requiredMethods[descriptor].orEmpty().filter { required ->
+                val (name, params) = required.split(':')
+                existing.methods.none { it.name == name && it.parameterTypes.size == params.toInt() }
+            }
             check(missing.isEmpty()) {
                 "Stale injected class $descriptor is missing $missing; re-patch from the stock APK"
             }
@@ -73,21 +75,21 @@ internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
 ).mapValues { (_, source) -> source.replace(";;", ";") }
 
 private val requiredMethods = mapOf(
-    CATEGORY_CLASS to listOf("color", "name"),
-    SEGMENT_CLASS to listOf("<init>"),
-    SEGMENT_ORDER_CLASS to listOf("compare"),
-    EPISODES_CLASS to listOf("read"),
-    RULES_CLASS to listOf("classify"),
-    BEHAVIOR_CLASS to listOf("parse"),
-    BEHAVIOR_STORE_CLASS to listOf("isEnabled", "getBehavior", "key"),
-    SKIP_STATE_CLASS to listOf("<init>"),
-    SKIP_TICK_CLASS to listOf("<init>", "run"),
+    CATEGORY_CLASS to listOf("color:1", "name:1"),
+    SEGMENT_CLASS to listOf("<init>:5"),
+    SEGMENT_ORDER_CLASS to listOf("compare:2"),
+    EPISODES_CLASS to listOf("read:2"),
+    RULES_CLASS to listOf("classify:5"),
+    BEHAVIOR_CLASS to listOf("parse:2"),
+    BEHAVIOR_STORE_CLASS to listOf("isEnabled:0", "getBehavior:1", "key:1"),
+    SKIP_STATE_CLASS to listOf("<init>:4"),
+    SKIP_TICK_CLASS to listOf("<init>:1", "run:0"),
     SKIP_ENGINE_CLASS to listOf(
-        "onVideoChanged", "onViewAttached", "onRelease", "tick", "skip", "rememberView", "viewOf",
-        "stateOf", "put", "clear", "stop",
+        "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "skip:2", "rememberView:2",
+        "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1",
     ),
-    SKIP_BUTTON_CLASS to listOf("show", "hide", "dp"),
-    SKIP_CLICK_CLASS to listOf("<init>", "onClick"),
+    SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2"),
+    SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
 )
 
 private fun categorySmali(): String = """
