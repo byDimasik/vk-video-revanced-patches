@@ -11,6 +11,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
@@ -550,7 +551,12 @@ class InjectedClassesTest {
         assertTrue(middleTitleIndex >= 0)
         assertEquals(TITLE_ADS_GROUP, (instructions[middleTitleIndex - 1] as ReferenceInstruction).reference
             .let { (it as StringReference).string })
-        assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Middle\$e;", "<init>") >= 0)
+        val middleCtorIndex = indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Middle\$e;", "<init>")
+        assertTrue(middleCtorIndex >= 0)
+        // receiver + 6 params: a short range leaves a param register typed as a
+        // constant and ART rejects the whole class (device-verified VerifyError).
+        val middleCtor = instructions[middleCtorIndex] as RegisterRangeInstruction
+        assertEquals(7, middleCtor.registerCount)
         assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell\$Middle\$a;", "a") >= 0)
         assertTrue(indexOfRef("Lcom/vk/core/view/components/cell/VkCell;", "setMiddle") >= 0)
 
