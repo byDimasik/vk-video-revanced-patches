@@ -51,7 +51,6 @@ internal data class ToolbarChrome(
     val backCtor: String,
     val backStyleInt: Int,
     val companionFieldRef: String,
-    val backHandlerRef: String,
     val resHelperRef: String,
     val accessibilityBackId: Int,
     val chromeCheckRef: String,
@@ -75,7 +74,7 @@ internal fun injectSettingsClasses(
         START_SETTINGS_CLASS to startSettingsSmali(opener),
         SETTINGS_FRAGMENT_CLASS to settingsFragmentSmali(chrome),
         TOGGLE_LISTENER_CLASS to toggleListenerSmali(switchListenerMethod),
-        BACK_CLICK_CLASS to backClickSmali(chrome.backHandlerRef),
+        BACK_CLICK_CLASS to backClickSmali(),
     )
 
     sources.forEach { (descriptor, source) ->
@@ -431,7 +430,7 @@ private fun toggleListenerSmali(listenerMethod: String): String = """
     .end method
 """.trimIndent()
 
-private fun backClickSmali(backHandlerRef: String): String = """
+private fun backClickSmali(): String = """
     .class public final $BACK_CLICK_CLASS
     .super Ljava/lang/Object;
     .implements Lkotlin/jvm/functions/Function0;
@@ -451,7 +450,12 @@ private fun backClickSmali(backHandlerRef: String): String = """
         .registers 2
 
         iget-object v0, p0, $BACK_CLICK_CLASS->fragment:Lcom/vk/core/fragments/FragmentImpl;
-        invoke-static {v0}, $backHandlerRef
+        invoke-virtual {v0}, Lcom/vk/core/fragments/FragmentImpl;->getActivity()Landroidx/fragment/app/FragmentActivity;
+        move-result-object v0
+        if-eqz v0, :cond_revanced_back_done
+        check-cast v0, Landroidx/activity/ComponentActivity;
+        invoke-virtual {v0}, Landroidx/activity/ComponentActivity;->onBackPressed()V
+        :cond_revanced_back_done
         sget-object v0, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
         return-object v0
     .end method

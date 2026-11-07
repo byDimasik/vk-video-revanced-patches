@@ -80,7 +80,7 @@ private fun methodRefString(reference: MethodReference): String =
  * `MaterialPreferenceToolbarFragment`'s own onCreateView/onViewCreated — the
  * transcription source verified in the 1.170 APK.
  */
-internal fun extractToolbarChrome(classDef: ClassDef, allClasses: List<ClassDef>): ToolbarChrome {
+internal fun extractToolbarChrome(classDef: ClassDef): ToolbarChrome {
     val onCreateView = classDef.methods.first { it.name == "onCreateView" }
         .instructionList()
     val onViewCreated = classDef.methods.first { it.name == "onViewCreated" }
@@ -215,22 +215,6 @@ internal fun extractToolbarChrome(classDef: ClassDef, allClasses: List<ClassDef>
         }
         .firstOrNull() ?: error("chrome onViewCreated: top-bar chrome check not found")
 
-    // The app's own toolbar-back dispatch (transcribed from the R8-collapsed
-    // CallableReference body): g57/a.b(FragmentImpl) routes through the nav-host
-    // container pop (o54/p.J) and falls back to finish(). Resolved as the unique
-    // `(FragmentImpl)V` method of the same helper class that carries the chrome
-    // check — the obfuscated method name must never be hardcoded.
-    val chromeCheckClassType = chromeCheckRef.substringBefore("->")
-    val backHandlerClass = allClasses.firstOrNull { it.type == chromeCheckClassType }
-    val backHandlerRef = backHandlerClass?.methods
-        ?.filter { method ->
-            method.parameterTypes == listOf("Lcom/vk/core/fragments/FragmentImpl;") &&
-                method.returnType == "V" &&
-                !method.name.startsWith("<")
-        }
-        ?.map { "${chromeCheckClassType}->${it.name}(Lcom/vk/core/fragments/FragmentImpl;)V" }
-        ?.singleOrNull() ?: error("chrome: toolbar-back dispatch method not found on $chromeCheckClassType")
-
     return ToolbarChrome(
         chromeLayoutId = chromeLayoutId,
         contentId = contentId,
@@ -248,7 +232,6 @@ internal fun extractToolbarChrome(classDef: ClassDef, allClasses: List<ClassDef>
         backCtor = methodRefString(backCtor),
         backStyleInt = backStyleInt,
         companionFieldRef = companionFieldRef,
-        backHandlerRef = backHandlerRef,
         resHelperRef = resHelperRef,
         accessibilityBackId = accessibilityBackId,
         chromeCheckRef = chromeCheckRef,

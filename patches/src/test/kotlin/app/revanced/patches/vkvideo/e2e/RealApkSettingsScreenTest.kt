@@ -73,7 +73,6 @@ class RealApkSettingsScreenTest {
         // Chrome ids pinned to the 1.170 res/values/public.xml values.
         val chrome = extractToolbarChrome(
             context.classDefs.first { it.type == "Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;" },
-            context.classDefs.toList(),
         )
         assertEquals(0x7f0e0062, chrome.chromeLayoutId, "appkit_toolbar_fragment_hidable_with_coordinator")
         assertEquals(0x7f0b01a0, chrome.contentId, "appkit_content")
@@ -83,7 +82,6 @@ class RealApkSettingsScreenTest {
         assertEquals(0x7f140052, chrome.accessibilityBackId, "accessibility_back")
         assertEquals("Lty1/i0;->m(Landroid/view/View;)V", chrome.hideHelperRef)
         assertEquals("Lg57/a;->f(Lcom/vk/core/fragments/FragmentImpl;Lcom/vk/core/view/components/topbar/VkTopBar;)Z", chrome.chromeCheckRef)
-        assertEquals("Lg57/a;->b(Lcom/vk/core/fragments/FragmentImpl;)V", chrome.backHandlerRef, "toolbar-back dispatch")
         assertEquals(6, chrome.topBarStyleInt)
         assertEquals(30, chrome.titleStyleInt)
         assertEquals(14, chrome.textStyleInt)

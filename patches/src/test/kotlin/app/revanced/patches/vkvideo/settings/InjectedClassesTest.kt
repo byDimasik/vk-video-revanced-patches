@@ -117,7 +117,6 @@ class InjectedClassesTest {
     fun `onCreateView inflates the chrome, embeds the content, hides the appkit bar`() {
         val chrome = extractToolbarChrome(
             context.classDefs.first { it.type == "Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;" },
-            context.classDefs.toList(),
         )
         val instructions = method(SETTINGS_FRAGMENT_CLASS, "onCreateView")
 
@@ -190,7 +189,6 @@ class InjectedClassesTest {
     fun `onViewCreated builds the VkTopBar chrome with a direct finish back handler`() {
         val chrome = extractToolbarChrome(
             context.classDefs.first { it.type == "Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;" },
-            context.classDefs.toList(),
         )
         val instructions = method(SETTINGS_FRAGMENT_CLASS, "onViewCreated")
 
@@ -263,16 +261,20 @@ class InjectedClassesTest {
         }
         assertTrue(appBarIndex > setBackIndex)
 
-        // The back Function0 routes through the app's own back dispatch
-        // (g57/a.b -> nav-container pop), like the app's own toolbar screens.
+        // The back Function0 dispatches through the activity's back stack (the same
+        // path as system back, which provably pops the screen on device) — not
+        // FragmentImpl.finish(), which on a MainActivity-hosted fragment with a
+        // stack-group of size 1 finishes the whole activity.
         val backClick = injectedClass("Lapp/revanced/extension/vkvideo/ReVancedBackClick;")
         val invoke = backClick.methods.first { it.name == "invoke" }
         val invokeInstructions = invoke.implementation!!.instructions.toList()
         val backDispatchIndex = invokeInstructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
-            reference is MethodReference && reference.definingClass == chrome.backHandlerRef.substringBefore("->")
+            reference is MethodReference &&
+                reference.definingClass == "Landroidx/activity/ComponentActivity;" &&
+                reference.name == "onBackPressed"
         }
-        assertTrue(backDispatchIndex >= 0, "back click must call the app's back dispatch ${chrome.backHandlerRef}")
+        assertTrue(backDispatchIndex >= 0, "back click must dispatch activity onBackPressed")
     }
 
     @Test
