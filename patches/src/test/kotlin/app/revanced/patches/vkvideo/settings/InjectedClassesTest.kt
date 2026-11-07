@@ -595,6 +595,11 @@ class InjectedClassesTest {
                 reference.name == "fragment"
         }
         assertTrue(fieldIndex >= 0, "click must read the owning fragment")
+        // p0/p1 live at v2/v3 under .registers 4 and the closure below writes
+        // v2/v3 — the locals must therefore sit above the parameter window.
+        val onClick = injectedClass("Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;")
+            .methods.first { it.name == "onClick" }
+        assertTrue(onClick.implementation!!.registerCount > 4, "locals must not overlap p0/p1")
 
         val ctorIndex = instructions.indexOfFirst { instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
