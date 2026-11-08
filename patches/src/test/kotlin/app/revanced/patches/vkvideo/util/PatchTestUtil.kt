@@ -823,6 +823,48 @@ object PatchTestUtil {
         """.trimIndent(),
 
         """
+        .class public final Lone/video/controls/view/seekbar/ProgressSeekBarView;
+        .super Landroid/widget/ProgressBar;
+        """.trimIndent(),
+
+        """
+        .class public final Lone/video/controls/view/seekbar/CompositeSeekBarView;
+        .super Landroid/widget/FrameLayout;
+
+        .field public final h:Lone/video/controls/view/seekbar/ProgressSeekBarView;
+
+        .method public final setProgressDrawable(Landroid/graphics/drawable/Drawable;)V
+            .registers 3
+
+            iget-object v0, p0, Lone/video/controls/view/seekbar/CompositeSeekBarView;->h:Lone/video/controls/view/seekbar/ProgressSeekBarView;
+            return-void
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public final Lone/video/controls/views/seek/a;
+        .super Ljava/lang/Object;
+
+        .field public final a:Landroidx/appcompat/widget/AppCompatSeekBar;
+
+        .method public final g(ILjava/util/ArrayList;)V
+            .locals 10
+
+            return-void
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public final Loo7/c;
+        .super Landroid/graphics/drawable/LayerDrawable;
+        """.trimIndent(),
+
+        """
+        .class public final Lyo7/c;
+        .super Landroid/graphics/drawable/LayerDrawable;
+        """.trimIndent(),
+
+        """
         .class public final Lcom/vk/dto/common/id/UserId;
         .super Ljava/lang/Object;
 
