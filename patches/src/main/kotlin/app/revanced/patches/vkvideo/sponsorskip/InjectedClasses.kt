@@ -1456,7 +1456,7 @@ private fun rangesSmali(): String = """
         goto :lane
 
         :laned
-        if-ltz v13, :lane_ok
+        if-gez v13, :lane_ok
         const/4 v13, 0x2
 
         :lane_ok
@@ -1467,7 +1467,7 @@ private fun rangesSmali(): String = """
 
         :gap
         add-int v14, v3, v4
-        if-gt v12, v14, :end_ok
+        if-le v12, v14, :end_ok
         move v12, v14
 
         :end_ok
@@ -1629,6 +1629,9 @@ private fun seekbarOverlaySmali(): String = """
         const/16 v1, 0xb2
         invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setAlpha(I)V
         sget-object v9, $OVERLAY_CLASS->RECT:Landroid/graphics/RectF;
+        move v5, v11
+        move v11, v12
+        move v12, v5
         int-to-float v10, v10
         int-to-float v11, v11
         int-to-float v12, v12

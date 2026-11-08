@@ -14,8 +14,9 @@ class SeekbarPatchTest {
         val ranges = sources[RANGES_CLASS]!!
         assertTrue(ranges.contains("const/4 v13, 0x2"), "the lane fallback is missing")
         assertTrue(ranges.contains("if-ge v15, v11, :lane_next"), "lane admission is missing")
+        assertTrue(ranges.contains("if-gez v13, :lane_ok"), "a negative lane is not replaced")
         assertTrue(ranges.contains("move v13, v14"), "a free lane is not recorded")
-        val fallback = ranges.substringAfter("if-ltz v13, :lane_ok").trimStart()
+        val fallback = ranges.substringAfter("if-gez v13, :lane_ok").trimStart()
         assertTrue(fallback.startsWith("const/4 v13, 0x2"), "lane 2 is not the fallback")
         assertTrue(ranges.contains("move v11, v3"), "the left clamp is missing")
         assertTrue(ranges.contains("move v12, v14"), "the right clamp is missing")

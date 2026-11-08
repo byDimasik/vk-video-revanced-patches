@@ -139,6 +139,8 @@ class RealApkSponsorSkipTest {
             listOf(SEEK_BAR_VIEW_ID, SEEK_BAR_ID).forEach { id ->
                 assertTrue(layouts.any { containsId(it, id) }, "id ${Integer.toHexString(id)} is not used by any layout")
             }
+            assertEquals(SEEK_BAR_VIEW_ID ushr 16, SEEK_BAR_ID ushr 16, "the two ids drifted to different types")
+            assertTrue(SEEK_BAR_VIEW_ID != SEEK_BAR_ID)
         }
     }
 
