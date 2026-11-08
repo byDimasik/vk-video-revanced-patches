@@ -11,6 +11,7 @@ internal data class Band(val xStart: Int, val xEnd: Int, val lane: Int, val cate
 internal object SeekbarRanges {
     const val MAX_LANES = 3
 
+    /** Bands for [segments] inside the track, one lane each at most; empty when gated off or degenerate. */
     fun build(
         segments: List<Segment>,
         behaviors: IntArray,
@@ -38,7 +39,11 @@ internal object SeekbarRanges {
             var lane = laneEnds.indexOfFirst { it < xStart }
             if (lane < 0) lane = MAX_LANES - 1
             xStart = maxOf(xStart, laneEnds[lane] + 1)
-            if (xEnd <= xStart) xEnd = xStart + 1
+            xEnd = minOf(xEnd, right)
+            if (xEnd <= xStart) {
+                xEnd = minOf(xStart + 1, right)
+                xStart = xEnd - 1
+            }
 
             laneEnds[lane] = xEnd
             bands += Band(xStart, xEnd, lane, category)

@@ -1138,13 +1138,21 @@ private fun skipEngineSmali(): String = """
         if-eqz v1, :bar
         invoke-virtual {v1}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
         move-result-object v2
-        if-eqz v2, :return
+        if-nez v2, :return
         const/4 v2, 0x0
         iput-object v2, p0, $SKIP_STATE_CLASS->overlay:Landroid/view/View;
 
         :bar
         iget-object v2, p0, $SKIP_STATE_CLASS->bar:Landroid/view/View;
-        if-nez v2, :have_bar
+        if-eqz v2, :no_bar
+        invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v3
+        if-eqz v3, :no_bar
+        goto :have_bar
+
+        :no_bar
+        const/4 v2, 0x0
+        iput-object v2, p0, $SKIP_STATE_CLASS->bar:Landroid/view/View;
         iget-object v1, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
         if-eqz v1, :return
         const/4 v7, 0x0
@@ -1155,6 +1163,8 @@ private fun skipEngineSmali(): String = """
         invoke-virtual {v1}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
         move-result-object v1
         if-eqz v1, :return
+        instance-of v4, v1, Landroid/view/View;
+        if-eqz v4, :return
         check-cast v1, Landroid/view/View;
         add-int/lit8 v7, v7, 0x1
 
@@ -1167,7 +1177,7 @@ private fun skipEngineSmali(): String = """
         check-cast v3, Lone/video/controls/view/seekbar/OneVideoSeekBarView;
         invoke-virtual {v3}, Lone/video/controls/view/seekbar/OneVideoSeekBarView;->getProgressSeekBarView()Lone/video/controls/view/seekbar/ProgressSeekBarView;
         move-result-object v2
-        if-eqz v2, :have_bar
+        if-nez v2, :have_bar
 
         :second
         const v3, $SEEK_BAR_ID
@@ -1418,11 +1428,11 @@ private fun rangesSmali(): String = """
         move v11, v3
 
         :left_ok
-        if-gt v11, v14, :start_in
+        if-le v11, v14, :start_in
         move v11, v14
 
         :start_in
-        if-ge v12, v14, :right_ok
+        if-le v12, v14, :right_ok
         move v12, v14
 
         :right_ok
@@ -1456,8 +1466,18 @@ private fun rangesSmali(): String = """
         move v11, v14
 
         :gap
+        add-int v14, v3, v4
+        if-gt v12, v14, :end_ok
+        move v12, v14
+
+        :end_ok
         if-gt v12, v11, :gap_ok
         add-int/lit8 v12, v11, 0x1
+        if-gt v12, v14, :min_ok
+        move v12, v14
+
+        :min_ok
+        add-int/lit8 v11, v12, -0x1
 
         :gap_ok
         aput v12, v8, v13

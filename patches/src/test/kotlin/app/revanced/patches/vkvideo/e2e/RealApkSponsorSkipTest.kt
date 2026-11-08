@@ -1,6 +1,8 @@
 package app.revanced.patches.vkvideo.e2e
 
 import app.revanced.patcher.patch.BytecodePatchContext
+import app.revanced.patches.vkvideo.sponsorskip.SEEK_BAR_ID
+import app.revanced.patches.vkvideo.sponsorskip.SEEK_BAR_VIEW_ID
 import app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint
@@ -126,12 +128,24 @@ class RealApkSponsorSkipTest {
         java.util.zip.ZipFile(apkFile).use { zip ->
             val entry = zip.getEntry("resources.arsc")
             assertNotNull(entry, "resources.arsc missing")
-            val bytes = zip.getInputStream(entry).readBytes()
-            val name = "seek_bar_view".toByteArray().toString(Charsets.ISO_8859_1)
-            assertTrue(
-                bytes.toString(Charsets.ISO_8859_1).contains(name),
-                "id/seek_bar_view is gone from the resource table",
-            )
+            val names = zip.getInputStream(entry).readBytes().toString(Charsets.ISO_8859_1)
+            assertTrue(names.contains("seek_bar_view"), "id/seek_bar_view is gone from the resource table")
+            assertTrue(names.contains("seek_bar"), "id/seek_bar is gone from the resource table")
+
+            val layouts = zip.entries().asSequence()
+                .filter { it.name.startsWith("res/layout/") && it.name.endsWith(".xml") }
+                .map { zip.getInputStream(it).readBytes() }
+                .toList()
+            listOf(SEEK_BAR_VIEW_ID, SEEK_BAR_ID).forEach { id ->
+                assertTrue(layouts.any { containsId(it, id) }, "id ${Integer.toHexString(id)} is not used by any layout")
+            }
+        }
+    }
+
+    private fun containsId(bytes: ByteArray, id: Int): Boolean {
+        val needle = byteArrayOf(id.toByte(), (id ushr 8).toByte(), (id ushr 16).toByte(), (id ushr 24).toByte())
+        return (0..bytes.size - needle.size).any { offset ->
+            needle.indices.all { bytes[offset + it] == needle[it] }
         }
     }
 

@@ -107,6 +107,21 @@ class SeekbarRangesTest {
     }
 
     @Test
+    fun `a band at the very end stays inside the track`() {
+        val bands = SeekbarRanges.build(
+            listOf(segment(DURATION, DURATION, Category.SPONSOR)),
+            SHOWN,
+            true,
+            DURATION,
+            0,
+            WIDTH,
+        )
+
+        assertEquals(WIDTH - 1, bands.single().xStart)
+        assertEquals(WIDTH, bands.single().xEnd)
+    }
+
+    @Test
     fun `a zero-length band still gets one pixel`() {
         val bands = SeekbarRanges.build(
             listOf(segment(500_000, 500_000, Category.SPONSOR)),
