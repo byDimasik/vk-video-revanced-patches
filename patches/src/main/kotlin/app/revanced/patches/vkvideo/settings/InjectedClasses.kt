@@ -88,9 +88,9 @@ internal fun injectSettingsClasses(
     val sources = linkedMapOf(
         ADS_SETTINGS_CLASS to adsSettingsSmali(types),
         START_SETTINGS_CLASS to startSettingsSmali(opener),
-        ROOT_FRAGMENT_CLASS to settingsFragmentSmali(chrome, ROOT_FRAGMENT_CLASS, TITLE_ROOT, "buildRootContent"),
-        SETTINGS_FRAGMENT_CLASS to settingsFragmentSmali(chrome, SETTINGS_FRAGMENT_CLASS, TITLE_ADS_GROUP, "buildAdsContent"),
-        GROUP_CLICK_CLASS to groupClickSmali(opener),
+        ROOT_FRAGMENT_CLASS to settingsFragmentSmali(chrome, ROOT_FRAGMENT_CLASS, ADS_SETTINGS_CLASS, TITLE_ROOT, "buildRootContent"),
+        SETTINGS_FRAGMENT_CLASS to settingsFragmentSmali(chrome, SETTINGS_FRAGMENT_CLASS, ADS_SETTINGS_CLASS, TITLE_ADS_GROUP, "buildAdsContent"),
+        GROUP_CLICK_CLASS to groupClickSmali(opener, GROUP_CLICK_CLASS, SETTINGS_FRAGMENT_CLASS, "ads group row clicked"),
         TOGGLE_LISTENER_CLASS to toggleListenerSmali(switchListenerMethod),
         BACK_CLICK_CLASS to backClickSmali(),
     )
@@ -400,9 +400,10 @@ private fun adsRow(label: String, key: String, enabledGetter: String): String = 
  * shadow hidden through the app's own hide helper, and a `VkTopBar` whose back
  * handler finishes the fragment.
  */
-private fun settingsFragmentSmali(
+internal fun settingsFragmentSmali(
     chrome: ToolbarChrome,
     className: String,
+    contentOwner: String,
     title: String,
     contentMethod: String,
 ): String = """
@@ -429,7 +430,7 @@ private fun settingsFragmentSmali(
 
         invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->requireContext()Landroid/content/Context;
         move-result-object v1
-        invoke-static {v1, p0}, $ADS_SETTINGS_CLASS->$contentMethod(Landroid/content/Context;Lcom/vk/core/fragments/FragmentImpl;)Landroid/view/View;
+        invoke-static {v1, p0}, $contentOwner->$contentMethod(Landroid/content/Context;Lcom/vk/core/fragments/FragmentImpl;)Landroid/view/View;
         move-result-object v1
 
         const v2, 0x${chrome.contentId.toString(16)}
@@ -555,8 +556,8 @@ private fun startSettingsSmali(opener: NavOpener): String = """
  * Click of the root "Ads" row: opens the toggles screen through the app's own
  * fragment opener (the same builder `StartReVancedSettings` uses).
  */
-private fun groupClickSmali(opener: NavOpener): String = """
-    .class public final $GROUP_CLICK_CLASS
+internal fun groupClickSmali(opener: NavOpener, className: String, targetClass: String, logLabel: String): String = """
+    .class public final $className
     .super Ljava/lang/Object;
     .implements Landroid/view/View${'$'}OnClickListener;
 
@@ -567,7 +568,7 @@ private fun groupClickSmali(opener: NavOpener): String = """
         .param p1, "fragment"
 
         invoke-direct {p0}, Ljava/lang/Object;-><init>()V
-        iput-object p1, p0, $GROUP_CLICK_CLASS->fragment:Lcom/vk/core/fragments/FragmentImpl;
+        iput-object p1, p0, $className->fragment:Lcom/vk/core/fragments/FragmentImpl;
         return-void
     .end method
 
@@ -576,14 +577,14 @@ private fun groupClickSmali(opener: NavOpener): String = """
         .param p1, "view"
 
         const-string v0, "ReVanced"
-        const-string v1, "ads group row clicked"
+        const-string v1, "$logLabel"
         invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
         new-instance v0, ${opener.instanceType}
-        const-class v1, $SETTINGS_FRAGMENT_CLASS
+        const-class v1, $targetClass
         const/4 v2, 0x0
         const/4 v3, 0x0
         invoke-direct {v0, v1, v2, v3}, ${opener.ctorOwner}-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
-        iget-object v1, p0, $GROUP_CLICK_CLASS->fragment:Lcom/vk/core/fragments/FragmentImpl;
+        iget-object v1, p0, $className->fragment:Lcom/vk/core/fragments/FragmentImpl;
         invoke-virtual {v0, v1}, ${opener.iOwner}->i(Lcom/vk/core/fragments/FragmentImpl;)V
         return-void
     .end method

@@ -15,4 +15,10 @@ internal object Behavior {
         "DISABLED" -> DISABLED
         else -> default
     }
+
+    fun literal(behavior: Int): String = when (behavior) {
+        SKIP_AUTOMATICALLY -> "SKIP_AUTOMATICALLY"
+        DISABLED -> "DISABLED"
+        else -> "SHOW_SKIP_BUTTON"
+    }
 }
