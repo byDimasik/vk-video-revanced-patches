@@ -72,33 +72,35 @@ class RealApkSponsorSkipSettingsTest {
         applyPatches(context, revancedSettingsPatch, sponsorSkipPatch, sponsorSkipSettingsPatch)
 
         // Every transcribed anchor exists in the shipped dexes with the emitted signature.
-        fun assertResolves(owner: String, name: String, params: List<String>) {
+        fun assertResolves(owner: String, name: String, params: List<String>, returnType: String) {
             val def = context.classDefs.firstOrNull { it.type == owner }
             assertNotNull(def, "referenced class $owner must exist")
             assertNotNull(
-                def!!.methods.firstOrNull { it.name == name && it.parameterTypes.toList() == params },
-                "referenced method $owner->$name(${params.joinToString("")}) must exist",
+                def!!.methods.firstOrNull {
+                    it.name == name && it.parameterTypes.toList() == params && it.returnType == returnType
+                },
+                "referenced method $owner->$name(${params.joinToString("")})$returnType must exist",
             )
         }
         assertResolves("Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}d;", "<init>", listOf(
             "Lpx1/a;", "Lbj1/m;", "I", "Landroid/text/TextUtils${'$'}TruncateAt;",
             "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}d${'$'}b${'$'}b;", "I",
-        ))
+        ), "V")
         assertResolves("Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}a;", "a", listOf(
             "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}a;",
             "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e;",
             "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}d;",
             "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}c;", "I",
-        ))
-        assertResolves("Lhy1/c${'$'}a;", "<init>", listOf("Landroid/content/Context;"))
-        assertResolves("Lhy1/c${'$'}a;", "x", listOf("Ljava/lang/CharSequence;"))
+        ), "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}b;")
+        assertResolves("Lhy1/c${'$'}a;", "<init>", listOf("Landroid/content/Context;"), "V")
+        assertResolves("Lhy1/c${'$'}a;", "x", listOf("Ljava/lang/CharSequence;"), "Lhy1/c${'$'}a;")
         assertResolves("Lhy1/c${'$'}a;", "v", listOf(
             "[Ljava/lang/CharSequence;", "I", "Landroid/content/DialogInterface${'$'}OnClickListener;",
-        ))
-        assertResolves("Lhy1/c${'$'}a;", "j", emptyList())
+        ), "Lhy1/c${'$'}a;")
+        assertResolves("Lhy1/c${'$'}a;", "j", emptyList(), "Landroidx/appcompat/app/d;")
         // `show()` is inherited from the framework Dialog, which is not a dexed class.
         assertTrue(context.classDefs.any { it.type == "Landroidx/appcompat/app/d;" })
-        assertResolves("Lpx1/a${'$'}h;", "<init>", listOf("Ljava/lang/CharSequence;"))
+        assertResolves("Lpx1/a${'$'}h;", "<init>", listOf("Ljava/lang/CharSequence;"), "V")
 
         // The icon is a stock resource (public.xml).
         assertEquals(0x7f082020, app.revanced.patches.vkvideo.sponsorskip.settings.ROOT_ROW_ICON_ID)

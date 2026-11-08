@@ -160,6 +160,32 @@ class SponsorSkipSettingsPatchTest {
     }
 
     @Test
+    fun `the master toggle gates the running engine and changes re-arm it`() {
+        val engine = app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSources()[app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS]!!
+        val tick = engine.substringAfter("tick(").substringBefore("end method")
+        assertTrue(tick.contains("isEnabled()Z"), "tick honors the master toggle")
+        assertTrue(tick.contains("if-nez v3, :hide"), "a disabled engine hides the button instead of acting")
+
+        val handoff = engine.substringAfter("onVideoChanged(").substringBefore("end method")
+        assertFalse(handoff.contains("if-lez v2, :disabled"), "a disabled engine still records the segments")
+        assertFalse(handoff.contains("if-eqz v1, :clear"), "all-disabled categories keep the state for a later enable")
+    }
+
+    @Test
+    fun `a second apply inserts the root row once`() {
+        val fixture = Fixture()
+        fixture.apply()
+        fixture.apply()
+
+        val root = rootContentFingerprint.getMethod(fixture.context)
+        val inserts = root.getInstructions().count { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference as? MethodReference
+            instruction.opcode == Opcode.INVOKE_STATIC && reference?.definingClass == ROOT_ROW_CLASS
+        }
+        assertEquals(1, inserts)
+    }
+
+    @Test
     fun `the dialog uses the app builder, the current value and dismisses`() {
         val sources = Fixture().sources
         val dialog = sources[DIALOG_CLASS]!!
@@ -195,12 +221,15 @@ class SponsorSkipSettingsPatchTest {
     @Test
     fun `the store setters write the frozen keys`() {
         val generated = app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSources()[BEHAVIOR_STORE_CLASS]!!
-        assertTrue(generated.contains("setEnabled(Z)V"))
-        assertTrue(generated.contains("setBehavior(ILjava/lang/String;)V"))
-        assertTrue(generated.contains("sponsorskip_enabled"))
-        for (category in Category.SPONSOR..Category.OUTRO) {
-            assertTrue(generated.contains("sponsorskip_settings_behavior_${Category.name(category)}"))
-        }
+        val setEnabled = generated.substringAfter("setEnabled(Z)V").substringBefore("end method")
+        assertTrue(setEnabled.contains("\"sponsorskip_enabled\""), "setEnabled writes the master key")
+        assertTrue(setEnabled.contains("putBoolean(Ljava/lang/String;Z)"), "setEnabled writes a boolean")
+        assertTrue(setEnabled.contains("Editor;->apply()V"), "setEnabled persists")
+
+        val setBehavior = generated.substringAfter("setBehavior(ILjava/lang/String;)V").substringBefore("end method")
+        assertTrue(setBehavior.contains("key(I)Ljava/lang/String;"), "setBehavior resolves the key from the category")
+        assertTrue(setBehavior.contains("putString(Ljava/lang/String;Ljava/lang/String;)"), "setBehavior writes the literal")
+        assertTrue(setBehavior.contains("Editor;->apply()V"), "setBehavior persists")
         val literal = app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSources()[BEHAVIOR_CLASS]!!
         for (behavior in 0..2) {
             assertTrue(literal.contains(Behavior.literal(behavior)))

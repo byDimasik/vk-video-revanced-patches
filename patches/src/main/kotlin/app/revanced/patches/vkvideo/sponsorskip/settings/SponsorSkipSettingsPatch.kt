@@ -53,9 +53,18 @@ val sponsorSkipSettingsPatch = bytecodePatch(
         check((anchor as FiveRegisterInstruction).registerC == 9) {
             "root builder addView receiver is not v9"
         }
-        root.addInstructions(
-            anchorIndex + 1,
-            "invoke-static {v9, v10, v11}, $ROOT_ROW_CLASS->add(Landroid/widget/LinearLayout;Landroid/content/Context;Lcom/vk/core/fragments/FragmentImpl;)V",
-        )
+        // A second apply reaches the same anchor through the fingerprint cache.
+        val next = instructions.getOrNull(anchorIndex + 1)
+        val nextReference = (next as? ReferenceInstruction)?.reference
+        val alreadyInserted = next?.opcode == Opcode.INVOKE_STATIC &&
+            nextReference is MethodReference &&
+            nextReference.definingClass == ROOT_ROW_CLASS &&
+            nextReference.name == "add"
+        if (!alreadyInserted) {
+            root.addInstructions(
+                anchorIndex + 1,
+                "invoke-static {v9, v10, v11}, $ROOT_ROW_CLASS->add(Landroid/widget/LinearLayout;Landroid/content/Context;Lcom/vk/core/fragments/FragmentImpl;)V",
+            )
+        }
     }
 }

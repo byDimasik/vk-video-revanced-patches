@@ -87,6 +87,7 @@ private val requiredMethods = mapOf(
     FRAGMENT_CLASS to listOf("<init>:0", "onCreateView:3", "onViewCreated:2"),
 )
 
+/** The screen content class: category/behavior labels, the row update path and the tab layout. */
 private fun settingsSmali(): String = """
     .class public final $SETTINGS_CLASS
     .super Ljava/lang/Object;
@@ -242,6 +243,7 @@ private fun categoryRow(category: Int): String = """
  * Row factory: the cell build both the initial screen and the update path use,
  * so a value change never loses the title or the chevron.
  */
+/** Row factory shared by the initial build and the update path, so a value change keeps title and chevron. */
 private fun rowsSmali(): String = """
     .class public final $ROWS_CLASS
     .super Ljava/lang/Object;
@@ -337,6 +339,7 @@ private fun rowsSmali(): String = """
     .end method
 """.trimIndent()
 
+/** The behavior popup: an `OnClickListener` on the row that opens the app-styled single-choice dialog. */
 private fun dialogSmali(): String = """
     .class public final $DIALOG_CLASS
     .super Ljava/lang/Object;
@@ -416,6 +419,7 @@ private fun dialogSmali(): String = """
     .end method
 """.trimIndent()
 
+/** Popup selection: writes the literal, refreshes the row and closes the dialog. */
 private fun dialogClickSmali(): String = """
     .class public final $DIALOG_CLICK_CLASS
     .super Ljava/lang/Object;
@@ -449,6 +453,7 @@ private fun dialogClickSmali(): String = """
     .end method
 """.trimIndent()
 
+/** Master switch listener writing the enabled flag. */
 private fun toggleSmali(listenerMethod: String): String = """
     .class public final $TOGGLE_CLASS
     .super Ljava/lang/Object;
