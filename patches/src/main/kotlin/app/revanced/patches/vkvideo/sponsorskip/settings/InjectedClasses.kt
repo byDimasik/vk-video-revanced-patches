@@ -124,11 +124,30 @@ private fun settingsSmali(): String = """
     .end method
 
     .method public static behaviorLabel(I)Ljava/lang/String;
-        .registers 1
+        .registers 2
 
-        invoke-static {p0}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;
-        move-result-object v0
+        packed-switch p0, :table
+        const-string v0, "Show skip button"
         return-object v0
+
+        :skip
+        const-string v0, "Skip automatically"
+        return-object v0
+
+        :button
+        const-string v0, "Show skip button"
+        return-object v0
+
+        :disabled
+        const-string v0, "Disabled"
+        return-object v0
+
+        :table
+        .packed-switch 0x0
+            :skip
+            :button
+            :disabled
+        .end packed-switch
     .end method
 
     .method public static setRowValue(Lcom/vk/core/view/components/cell/VkCell;II)V
@@ -272,9 +291,8 @@ private fun rowsSmali(): String = """
         const/4 v3, 0x0
         const/4 v4, 0x0
         const/4 v5, 0x0
-        const/4 v6, 0x0
-        const/16 v7, 0x3e
-        invoke-direct/range {v0 .. v7}, Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e;-><init>(Lpx1/a;ILandroid/text/TextUtils${'$'}TruncateAt;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e${'$'}b${'$'}b;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e${'$'}b;I)V
+        const/16 v6, 0x3e
+        invoke-direct/range {v0 .. v6}, Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e;-><init>(Lpx1/a;ILandroid/text/TextUtils${'$'}TruncateAt;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e${'$'}b${'$'}b;Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}e${'$'}b;I)V
 
         new-instance v1, Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}d;
         new-instance v2, Lpx1/a${'$'}h;
@@ -324,10 +342,10 @@ private fun dialogSmali(): String = """
     .super Ljava/lang/Object;
     .implements Landroid/view/View${'$'}OnClickListener;
 
-    .field private final context:Landroid/content/Context;
-    .field private final fragment:Lcom/vk/core/fragments/FragmentImpl;
-    .field private final row:Lcom/vk/core/view/components/cell/VkCell;
-    .field private final category:I
+    .field final context:Landroid/content/Context;
+    .field final fragment:Lcom/vk/core/fragments/FragmentImpl;
+    .field final row:Lcom/vk/core/view/components/cell/VkCell;
+    .field final category:I
 
     .method public constructor <init>(Landroid/content/Context;Lcom/vk/core/fragments/FragmentImpl;Lcom/vk/core/view/components/cell/VkCell;I)V
         .registers 5

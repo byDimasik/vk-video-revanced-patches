@@ -84,12 +84,13 @@ class SponsorSkipSettingsPatchTest {
         assertEquals(setOf("isEnabled", "getBehavior", "setEnabled", "setBehavior"), storeMethods)
 
         assertTrue(
-            sources.count { it.contains("$BEHAVIOR_CLASS->literal(") } >= 2,
+            sources.count { it.contains("$BEHAVIOR_CLASS->literal(") } >= 1,
             "behavior literals come from Behavior.literal",
         )
-        for (behavior in 0..2) {
-            assertTrue(sources.any { it.contains("0x$behavior") })
-        }
+        assertTrue(
+            sources.any { it.contains("invoke-static {p2}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;") },
+            "the written literal comes from Behavior.literal",
+        )
     }
 
     @Test
@@ -97,6 +98,11 @@ class SponsorSkipSettingsPatchTest {
         assertEquals("SKIP_AUTOMATICALLY", Behavior.literal(Behavior.SKIP_AUTOMATICALLY))
         assertEquals("SHOW_SKIP_BUTTON", Behavior.literal(Behavior.SHOW_SKIP_BUTTON))
         assertEquals("DISABLED", Behavior.literal(Behavior.DISABLED))
+
+        val settings = Fixture().sources[SETTINGS_CLASS]!!
+        for (label in listOf("\"Skip automatically\"", "\"Show skip button\"", "\"Disabled\"")) {
+            assertTrue(settings.contains(label), "missing popup label $label")
+        }
 
         val dialog = Fixture().sources[DIALOG_CLASS]!!
         val arrayBlock = dialog.substringAfter("new-array v1, v1, [Ljava/lang/CharSequence;")
