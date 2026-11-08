@@ -1420,3 +1420,15 @@ Inserting `return-void` at line 1 of `p6.f` short-circuits ad fetching/parsing f
 
 ### Caller Null-Safety & Early-Return Analysis
 Method `wo/b.c(String section)` triggers playback for named ad sections (`"preroll"`, `"midroll"`). Short-circuiting `c(String)` with an early `return-void` at line 1 prevents section playback initiation without throwing exceptions.
+
+## Seekbar surface
+
+The player seekbar is a two-level FrameLayout: `OneVideoSeekBarView` (`id/seek_bar_view` = `0x7f0b222b`, used by `one_video_simple_controls_view.xml` inside `SimpleControlsView`) holds a `CompositeSeekBarView`, which inflates `one_video_composite_seek_bar_view` and binds `progress_seek_bar` and `thumb_seek_bar`.
+
+The drawable bar chain is `ProgressSeekBarView` → `CustomSeekBar` → `AppCompatSeekBar`. `AppCompatSeekBar.onDraw(Canvas)` is `public final declared-synchronized` and neither subclass overrides it, so a subclass override never dispatches; decoration goes into a sibling `View` added to the `CompositeSeekBarView`.
+
+- Two bar hosts exist: `OneVideoSeekBarView` (`id/seek_bar_view` = `0x7f0b222b`, the simple-controls layout) and a bare `AppCompatSeekBar` (`id/seek_bar` = `0x7f0b2224`) inside `VideoSeekViewOld`, which the page player uses. The binding walks up from the player view and accepts either.
+- `SeekbarOverlay` (MATCH_PARENT, not clickable, `setWillNotDraw(false)`) is added above the bar and replays `SkipEngine$State.bands` in `onDraw`. The bar is only laid out while the controls are visible, so the overlay accepts it while its width is still zero and rebuilds when the width changes.
+- Bands come from `Ranges.build(segments, durationMs, trackLeft, trackWidth)`: master switch and `BehaviorStore` gating, clamping, greedy lanes capped at three.
+- Track geometry is `getLeft() + getPaddingLeft() + getThumbOffset()` to `getLeft() + getWidth() - getPaddingRight() - getThumbOffset()`, all in the composite's coordinate space.
+- The variant switch calls `removeAllViews()` on the composite, so the overlay rebinds from `State.view` on the next tick when its parent is gone.

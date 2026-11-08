@@ -79,4 +79,13 @@ class EpisodesTest {
         val many = (0 until 600).map { Episode(it, "chapter $it") }
         assertEquals(Episodes.MAX_SEGMENTS, Episodes.read(many, 1_000_000).size)
     }
+
+    @Test
+    fun `the last segment closes at the duration unless the cap truncated the list`() {
+        val few = (0 until 3).map { Episode(it * 10, "chapter $it") }
+        assertEquals(60_000L, Episodes.read(few, 60_000).last().endMs)
+
+        val many = (0 until 600).map { Episode(it, "chapter $it") }
+        assertTrue(Episodes.read(many, 1_000_000).last().endMs < 1_000_000)
+    }
 }
