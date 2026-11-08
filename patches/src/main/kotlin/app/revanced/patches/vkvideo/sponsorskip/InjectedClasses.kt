@@ -18,6 +18,16 @@ internal const val SKIP_STATE_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipEngine\$State;
 internal const val SKIP_TICK_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipEngine\$Tick;"
 internal const val SKIP_BUTTON_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipButton;"
 internal const val SKIP_CLICK_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipButton\$Click;"
+internal const val BAND_CLASS = "${SPONSOR_SKIP_PACKAGE}Band;"
+internal const val BAND_ARRAY = "[$BAND_CLASS"
+internal const val RANGES_CLASS = "${SPONSOR_SKIP_PACKAGE}Ranges;"
+internal const val OVERLAY_CLASS = "${SPONSOR_SKIP_PACKAGE}SeekbarOverlay;"
+
+/** The `OneVideoSeekBarView` id from `one_video_simple_controls_view.xml`. */
+internal const val SEEK_BAR_VIEW_ID = 0x7f0b222b
+
+/** The plain `AppCompatSeekBar` inside `VideoSeekViewOld`, used by the page player. */
+internal const val SEEK_BAR_ID = 0x7f0b2224
 
 private const val PREF_FILE = "sponsorskip_settings"
 private const val KEY_ENABLED = "sponsorskip_enabled"
@@ -43,8 +53,12 @@ internal fun injectSponsorSkipClasses(context: BytecodePatchContext) {
                 val (name, params) = required.split(':')
                 existing.methods.none { it.name == name && it.parameterTypes.size == params.toInt() }
             }
-            check(missing.isEmpty()) {
-                "Stale injected class $descriptor is missing $missing; re-patch from the stock APK"
+            val missingFields = requiredFields[descriptor].orEmpty().filter { name ->
+                existing.fields.none { it.name == name }
+            }
+            check(missing.isEmpty() && missingFields.isEmpty()) {
+                "Stale injected class $descriptor is missing methods $missing, fields $missingFields; " +
+                    "re-patch from the stock APK"
             }
             return@forEach
         }
@@ -72,6 +86,9 @@ internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
     SKIP_ENGINE_CLASS to skipEngineSmali(),
     SKIP_BUTTON_CLASS to skipButtonSmali(),
     SKIP_CLICK_CLASS to skipClickSmali(),
+    BAND_CLASS to bandSmali(),
+    RANGES_CLASS to rangesSmali(),
+    OVERLAY_CLASS to seekbarOverlaySmali(),
 ).mapValues { (_, source) -> source.replace(";;", ";") }
 
 private val requiredMethods = mapOf(
@@ -90,6 +107,14 @@ private val requiredMethods = mapOf(
     ),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2"),
     SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
+    BAND_CLASS to listOf("<init>:4"),
+    RANGES_CLASS to listOf("build:4"),
+    OVERLAY_CLASS to listOf("<init>:2", "onDraw:1"),
+)
+
+/** Added fields that a stale generation of the class can miss; methods alone do not catch them. */
+private val requiredFields = mapOf(
+    SKIP_STATE_CLASS to listOf("bar", "overlay", "dirty", "bands", "stamp"),
 )
 
 private fun categorySmali(): String = """
@@ -246,7 +271,6 @@ private fun episodesSmali(): String = """
         new-instance v2, Ljava/util/ArrayList;
         invoke-direct {v2}, Ljava/util/ArrayList;-><init>()V
         const/4 v3, 0x0
-        const/4 v14, 0x0
 
         :loop
         invoke-interface {v0}, Ljava/util/List;->size()I
@@ -256,7 +280,6 @@ private fun episodesSmali(): String = """
         move-result v4
         const/16 v5, 0x1f5
         if-ge v4, v5, :build
-        const/4 v14, 0x1
 
         invoke-interface {v0, v3}, Ljava/util/List;->get(I)Ljava/lang/Object;
         move-result-object v4
@@ -336,7 +359,8 @@ private fun episodesSmali(): String = """
         goto :close
 
         :closed
-        if-nez v14, :no_end
+        const/16 v10, 0x1f4
+        if-gt v3, v10, :no_end
         move-wide/from16 v8, p1
         add-int/lit8 v6, v5, -0x1
         aget-object v6, v4, v6
@@ -639,6 +663,11 @@ private fun skipStateSmali(): String = """
     .field public tick:Ljava/lang/Runnable;
     .field public button:Landroid/widget/TextView;
     .field public view:Landroid/view/View;
+    .field public bar:Landroid/view/View;
+    .field public overlay:Landroid/view/View;
+    .field public dirty:Z
+    .field public bands:$BAND_ARRAY
+    .field public stamp:I
 
     .method public constructor <init>(Lp73/a;$SEGMENT_ARRAY[ZLandroid/os/Handler;Ljava/lang/Runnable;)V
         .registers 7
@@ -942,9 +971,10 @@ private fun skipEngineSmali(): String = """
         iput-object v2, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
 
         :viewed
+        invoke-static {p0}, $SKIP_ENGINE_CLASS;->refreshOverlay($SKIP_STATE_CLASS;)V
         invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
         move-result v3
-        if-nez v3, :hide
+        if-eqz v3, :hide
         invoke-interface {v0}, Lp73/a;->isPlaying()Z
         move-result v1
         if-eqz v1, :repost
@@ -1015,6 +1045,165 @@ private fun skipEngineSmali(): String = """
         if-eqz v1, :return
         const-wide/16 v2, 0xfa
         invoke-virtual {v0, v1, v2, v3}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
+
+        :return
+        return-void
+    .end method
+
+    .method private static refreshOverlay($SKIP_STATE_CLASS;)V
+        .registers 16
+        .param p0, "state"
+
+        if-eqz p0, :return
+        iget-object v1, p0, $SKIP_STATE_CLASS->segments:$SEGMENT_ARRAY
+        if-eqz v1, :return
+        array-length v2, v1
+        if-eqz v2, :return
+        iget-object v3, p0, $SKIP_STATE_CLASS->overlay:Landroid/view/View;
+        if-eqz v3, :need_bind
+        invoke-virtual {v3}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v10
+        if-nez v10, :bound
+
+        :need_bind
+        invoke-static {p0}, $SKIP_ENGINE_CLASS;->bind($SKIP_STATE_CLASS;)V
+        iget-object v3, p0, $SKIP_STATE_CLASS->overlay:Landroid/view/View;
+        if-eqz v3, :return
+
+        :bound
+        iget-object v4, p0, $SKIP_STATE_CLASS->bar:Landroid/view/View;
+        if-eqz v4, :return
+        add-int/lit8 v10, v2, -0x1
+        aget-object v10, v1, v10
+        iget-wide v7, v10, $SEGMENT_CLASS->endMs:J
+        invoke-static {v4}, $OVERLAY_CLASS;->trackLeft(Landroid/view/View;)I
+        move-result v5
+        invoke-static {v4}, $OVERLAY_CLASS;->trackWidth(Landroid/view/View;)I
+        move-result v6
+
+        invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
+        move-result v10
+        move v9, v10
+        const/4 v11, 0x0
+
+        :stamp
+        const/4 v12, 0x4
+        if-ge v11, v12, :stamped
+        invoke-static {v11}, $BEHAVIOR_STORE_CLASS;->getBehavior(I)I
+        move-result v12
+        mul-int/lit8 v9, v9, 0x1f
+        add-int/2addr v9, v12
+        add-int/lit8 v11, v11, 0x1
+        goto :stamp
+
+        :stamped
+        invoke-static {v1}, Ljava/lang/System;->identityHashCode(Ljava/lang/Object;)I
+        move-result v10
+        mul-int/lit8 v9, v9, 0x1f
+        add-int/2addr v9, v10
+        long-to-int v10, v7
+        mul-int/lit8 v9, v9, 0x1f
+        add-int/2addr v9, v10
+        mul-int/lit8 v9, v9, 0x1f
+        add-int/2addr v9, v6
+        mul-int/lit8 v9, v9, 0x1f
+        add-int/2addr v9, v5
+
+        iget v10, p0, $SKIP_STATE_CLASS->stamp:I
+        if-eq v9, v10, :same
+        iput v9, p0, $SKIP_STATE_CLASS->stamp:I
+        const/4 v10, 0x1
+        iput-boolean v10, p0, $SKIP_STATE_CLASS->dirty:Z
+
+        :same
+        iget-boolean v10, p0, $SKIP_STATE_CLASS->dirty:Z
+        if-eqz v10, :return
+        invoke-static {v1, v7, v8, v5, v6}, $RANGES_CLASS;->build($SEGMENT_ARRAY;JII)$BAND_ARRAY
+        move-result-object v10
+        iput-object v10, p0, $SKIP_STATE_CLASS->bands:$BAND_ARRAY
+        const/4 v10, 0x0
+        iput-boolean v10, p0, $SKIP_STATE_CLASS->dirty:Z
+        invoke-virtual {v3}, Landroid/view/View;->invalidate()V
+
+        :return
+        return-void
+    .end method
+
+    .method private static bind($SKIP_STATE_CLASS;)V
+        .registers 9
+        .param p0, "state"
+
+        if-eqz p0, :return
+        iget-object v1, p0, $SKIP_STATE_CLASS->overlay:Landroid/view/View;
+        if-eqz v1, :bar
+        invoke-virtual {v1}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v2
+        if-nez v2, :return
+        const/4 v2, 0x0
+        iput-object v2, p0, $SKIP_STATE_CLASS->overlay:Landroid/view/View;
+
+        :bar
+        iget-object v2, p0, $SKIP_STATE_CLASS->bar:Landroid/view/View;
+        if-eqz v2, :no_bar
+        invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v3
+        if-eqz v3, :no_bar
+        goto :have_bar
+
+        :no_bar
+        const/4 v2, 0x0
+        iput-object v2, p0, $SKIP_STATE_CLASS->bar:Landroid/view/View;
+        iget-object v1, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        if-eqz v1, :return
+        const/4 v7, 0x0
+
+        :ascend
+        const/16 v3, 0xc
+        if-ge v7, v3, :return
+        invoke-virtual {v1}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v1
+        if-eqz v1, :return
+        instance-of v4, v1, Landroid/view/View;
+        if-eqz v4, :return
+        check-cast v1, Landroid/view/View;
+        add-int/lit8 v7, v7, 0x1
+
+        const v3, $SEEK_BAR_VIEW_ID
+        invoke-virtual {v1, v3}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v3
+        if-eqz v3, :second
+        instance-of v4, v3, Lone/video/controls/view/seekbar/OneVideoSeekBarView;
+        if-eqz v4, :second
+        check-cast v3, Lone/video/controls/view/seekbar/OneVideoSeekBarView;
+        invoke-virtual {v3}, Lone/video/controls/view/seekbar/OneVideoSeekBarView;->getProgressSeekBarView()Lone/video/controls/view/seekbar/ProgressSeekBarView;
+        move-result-object v2
+        if-nez v2, :have_bar
+
+        :second
+        const v3, $SEEK_BAR_ID
+        invoke-virtual {v1, v3}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v3
+        if-eqz v3, :ascend
+        instance-of v4, v3, Landroidx/appcompat/widget/AppCompatSeekBar;
+        if-eqz v4, :ascend
+        move-object v2, v3
+
+        :have_bar
+        if-eqz v2, :return
+        invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v3
+        if-eqz v3, :return
+        instance-of v4, v3, Landroid/view/ViewGroup;
+        if-eqz v4, :return
+        invoke-virtual {v2}, Landroid/view/View;->getContext()Landroid/content/Context;
+        move-result-object v4
+        new-instance v5, $OVERLAY_CLASS;
+        invoke-direct {v5, v4, p0}, $OVERLAY_CLASS;-><init>(Landroid/content/Context;$SKIP_STATE_CLASS;)V
+        check-cast v3, Landroid/view/ViewGroup;
+        invoke-virtual {v3, v5}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
+        iput-object v2, p0, $SKIP_STATE_CLASS->bar:Landroid/view/View;
+        iput-object v5, p0, $SKIP_STATE_CLASS->overlay:Landroid/view/View;
+        invoke-virtual {v5}, Landroid/view/View;->invalidate()V
 
         :return
         return-void
@@ -1117,12 +1306,340 @@ private fun skipEngineSmali(): String = """
 
         :button
         iget-object v0, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
-        if-eqz v0, :return
+        if-eqz v0, :overlay
         invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
         move-result-object v1
-        if-eqz v1, :return
+        if-eqz v1, :overlay
         check-cast v1, Landroid/view/ViewGroup;
         invoke-virtual {v1, v0}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V
+
+        :overlay
+        iget-object v0, p0, $SKIP_STATE_CLASS->overlay:Landroid/view/View;
+        if-eqz v0, :clean
+        invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v1
+        if-eqz v1, :clean
+        check-cast v1, Landroid/view/ViewGroup;
+        invoke-virtual {v1, v0}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V
+
+        :clean
+        const/4 v0, 0x0
+        iput-object v0, p0, $SKIP_STATE_CLASS->overlay:Landroid/view/View;
+        iput-object v0, p0, $SKIP_STATE_CLASS->bar:Landroid/view/View;
+        iput-object v0, p0, $SKIP_STATE_CLASS->bands:$BAND_ARRAY;
+
+        :return
+        return-void
+    .end method
+""".trimIndent()
+
+private fun bandSmali(): String = """
+    .class public final $BAND_CLASS
+    .super Ljava/lang/Object;
+
+    .field public final xStart:I
+    .field public final xEnd:I
+    .field public final lane:I
+    .field public final category:I
+
+    .method public constructor <init>(IIII)V
+        .registers 5
+
+        invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+        iput p1, p0, $BAND_CLASS->xStart:I
+        iput p2, p0, $BAND_CLASS->xEnd:I
+        iput p3, p0, $BAND_CLASS->lane:I
+        iput p4, p0, $BAND_CLASS->category:I
+        return-void
+    .end method
+""".trimIndent()
+
+private fun rangesSmali(): String = """
+    .class public final $RANGES_CLASS
+    .super Ljava/lang/Object;
+
+    .method public static build($SEGMENT_ARRAY;JII)$BAND_ARRAY
+        .registers 16
+        .param p0, "segments"
+        .param p1, "durationMs"
+        .param p3, "trackLeft"
+        .param p4, "trackWidth"
+
+        move-object v0, p0
+        move-wide v1, p1
+        move v3, p3
+        move v4, p4
+
+        if-eqz v0, :empty
+        array-length v6, v0
+        if-eqz v6, :empty
+        const-wide/16 v14, 0x0
+        cmp-long v15, v1, v14
+        if-lez v15, :empty
+        if-lez v4, :empty
+        invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
+        move-result v15
+        if-eqz v15, :empty
+
+        new-instance v5, Ljava/util/ArrayList;
+        invoke-direct {v5}, Ljava/util/ArrayList;-><init>()V
+        const/4 v15, 0x3
+        new-array v8, v15, [I
+        const/4 v14, -0x1
+        const/4 v7, 0x0
+
+        :init
+        if-ge v7, v15, :inited
+        aput v14, v8, v7
+        add-int/lit8 v7, v7, 0x1
+        goto :init
+
+        :inited
+        const/4 v7, 0x0
+
+        :loop
+        if-ge v7, v6, :done
+        aget-object v9, v0, v7
+        iget v10, v9, $SEGMENT_CLASS->category:I
+        if-ltz v10, :next
+        invoke-static {v10}, $BEHAVIOR_STORE_CLASS;->getBehavior(I)I
+        move-result v15
+        const/4 v14, 0x2
+        if-eq v15, v14, :next
+
+        iget-wide v14, v9, $SEGMENT_CLASS->startMs:J
+        int-to-long v11, v4
+        mul-long/2addr v14, v11
+        div-long/2addr v14, v1
+        long-to-int v15, v14
+        add-int/2addr v15, v3
+        move v11, v15
+
+        iget-wide v14, v9, $SEGMENT_CLASS->endMs:J
+        int-to-long v12, v4
+        mul-long/2addr v14, v12
+        div-long/2addr v14, v1
+        long-to-int v15, v14
+        add-int/2addr v15, v3
+        move v12, v15
+
+        add-int v14, v3, v4
+        if-ge v11, v3, :left_ok
+        move v11, v3
+
+        :left_ok
+        if-le v11, v14, :start_in
+        move v11, v14
+
+        :start_in
+        if-le v12, v14, :right_ok
+        move v12, v14
+
+        :right_ok
+        if-gt v12, v11, :width_ok
+        add-int/lit8 v12, v11, 0x1
+
+        :width_ok
+        const/4 v13, -0x1
+        const/4 v14, 0x0
+
+        :lane
+        const/4 v15, 0x3
+        if-ge v14, v15, :laned
+        aget v15, v8, v14
+        if-ge v15, v11, :lane_next
+        move v13, v14
+        goto :laned
+
+        :lane_next
+        add-int/lit8 v14, v14, 0x1
+        goto :lane
+
+        :laned
+        if-gez v13, :lane_ok
+        const/4 v13, 0x2
+
+        :lane_ok
+        aget v14, v8, v13
+        add-int/lit8 v14, v14, 0x1
+        if-ge v11, v14, :gap
+        move v11, v14
+
+        :gap
+        add-int v14, v3, v4
+        if-le v12, v14, :end_ok
+        move v12, v14
+
+        :end_ok
+        if-gt v12, v11, :gap_ok
+        add-int/lit8 v12, v11, 0x1
+        if-gt v12, v14, :min_ok
+        move v12, v14
+
+        :min_ok
+        add-int/lit8 v11, v12, -0x1
+
+        :gap_ok
+        aput v12, v8, v13
+        new-instance v14, $BAND_CLASS;
+        invoke-direct {v14, v11, v12, v13, v10}, $BAND_CLASS;-><init>(IIII)V
+        invoke-virtual {v5, v14}, Ljava/util/ArrayList;->add(Ljava/lang/Object;)Z
+
+        :next
+        add-int/lit8 v7, v7, 0x1
+        goto :loop
+
+        :done
+        invoke-virtual {v5}, Ljava/util/ArrayList;->size()I
+        move-result v6
+        new-array v8, v6, $BAND_ARRAY
+        invoke-virtual {v5, v8}, Ljava/util/ArrayList;->toArray([Ljava/lang/Object;)[Ljava/lang/Object;
+        move-result-object v6
+        check-cast v6, $BAND_ARRAY
+        return-object v6
+
+        :empty
+        const/4 v6, 0x0
+        new-array v6, v6, $BAND_ARRAY
+        return-object v6
+    .end method
+""".trimIndent()
+
+private fun seekbarOverlaySmali(): String = """
+    .class public final $OVERLAY_CLASS
+    .super Landroid/view/View;
+
+    .field private static COLORS:[I
+    .field private static PAINT:Landroid/graphics/Paint;
+    .field private static RECT:Landroid/graphics/RectF;
+    .field private final state:$SKIP_STATE_CLASS;
+
+    .method static constructor <clinit>()V
+        .registers 2
+
+        invoke-static {}, $CATEGORY_CLASS;->colors()[I
+        move-result-object v0
+        sput-object v0, $OVERLAY_CLASS->COLORS:[I
+        new-instance v0, Landroid/graphics/Paint;
+        invoke-direct {v0}, Landroid/graphics/Paint;-><init>()V
+        const/4 v1, 0x0
+        invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setAntiAlias(Z)V
+        sget-object v1, Landroid/graphics/Paint${'$'}Style;->FILL:Landroid/graphics/Paint${'$'}Style;
+        invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setStyle(Landroid/graphics/Paint${'$'}Style;)V
+        sput-object v0, $OVERLAY_CLASS->PAINT:Landroid/graphics/Paint;
+        new-instance v0, Landroid/graphics/RectF;
+        invoke-direct {v0}, Landroid/graphics/RectF;-><init>()V
+        sput-object v0, $OVERLAY_CLASS->RECT:Landroid/graphics/RectF;
+        return-void
+    .end method
+
+    .method public constructor <init>(Landroid/content/Context;$SKIP_STATE_CLASS;)V
+        .registers 6
+
+        invoke-direct {p0, p1}, Landroid/view/View;-><init>(Landroid/content/Context;)V
+        iput-object p2, p0, $OVERLAY_CLASS->state:$SKIP_STATE_CLASS;
+        const/4 v0, 0x0
+        invoke-virtual {p0, v0}, Landroid/view/View;->setWillNotDraw(Z)V
+        invoke-virtual {p0, v0}, Landroid/view/View;->setClickable(Z)V
+        const/4 v1, -0x1
+        new-instance v2, Landroid/widget/FrameLayout${'$'}LayoutParams;
+        invoke-direct {v2, v1, v1}, Landroid/widget/FrameLayout${'$'}LayoutParams;-><init>(II)V
+        invoke-virtual {p0, v2}, Landroid/view/View;->setLayoutParams(Landroid/view/ViewGroup${'$'}LayoutParams;)V
+        return-void
+    .end method
+
+    .method public static trackLeft(Landroid/view/View;)I
+        .registers 3
+
+        invoke-virtual {p0}, Landroid/view/View;->getLeft()I
+        move-result v0
+        invoke-virtual {p0}, Landroid/view/View;->getPaddingLeft()I
+        move-result v1
+        add-int/2addr v0, v1
+        check-cast p0, Landroid/widget/AbsSeekBar;
+        invoke-virtual {p0}, Landroid/widget/AbsSeekBar;->getThumbOffset()I
+        move-result v1
+        add-int/2addr v0, v1
+        return v0
+    .end method
+
+    .method public static trackWidth(Landroid/view/View;)I
+        .registers 3
+
+        invoke-virtual {p0}, Landroid/view/View;->getWidth()I
+        move-result v0
+        invoke-virtual {p0}, Landroid/view/View;->getPaddingLeft()I
+        move-result v1
+        sub-int/2addr v0, v1
+        invoke-virtual {p0}, Landroid/view/View;->getPaddingRight()I
+        move-result v1
+        sub-int/2addr v0, v1
+        check-cast p0, Landroid/widget/AbsSeekBar;
+        invoke-virtual {p0}, Landroid/widget/AbsSeekBar;->getThumbOffset()I
+        move-result v1
+        sub-int/2addr v0, v1
+        return v0
+    .end method
+
+    .method public onDraw(Landroid/graphics/Canvas;)V
+        .registers 16
+        .param p1, "canvas"
+
+        iget-object v0, p0, $OVERLAY_CLASS->state:$SKIP_STATE_CLASS;
+        if-eqz v0, :return
+        iget-object v1, v0, $SKIP_STATE_CLASS->bar:Landroid/view/View;
+        if-eqz v1, :return
+        iget-object v2, v0, $SKIP_STATE_CLASS->bands:$BAND_ARRAY
+        if-eqz v2, :return
+        array-length v3, v2
+        if-eqz v3, :return
+
+        invoke-virtual {v1}, Landroid/view/View;->getTop()I
+        move-result v5
+        invoke-virtual {v1}, Landroid/view/View;->getHeight()I
+        move-result v6
+        div-int/lit8 v6, v6, 0x6
+        const/4 v4, 0x1
+        if-nez v6, :lane_height
+        move v6, v4
+
+        :lane_height
+        invoke-virtual {v1}, Landroid/view/View;->getHeight()I
+        move-result v7
+        mul-int/lit8 v7, v7, 0x19
+        div-int/lit8 v7, v7, 0x64
+        add-int/2addr v7, v5
+
+        const/4 v8, 0x0
+
+        :loop
+        if-ge v8, v3, :return
+        aget-object v9, v2, v8
+        iget v10, v9, $BAND_CLASS->xStart:I
+        iget v11, v9, $BAND_CLASS->xEnd:I
+        iget v12, v9, $BAND_CLASS->lane:I
+        mul-int/2addr v12, v6
+        add-int/2addr v12, v7
+        add-int v13, v12, v6
+        iget v0, v9, $BAND_CLASS->category:I
+        sget-object v1, $OVERLAY_CLASS->COLORS:[I
+        aget v1, v1, v0
+        sget-object v0, $OVERLAY_CLASS->PAINT:Landroid/graphics/Paint;
+        invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setColor(I)V
+        const/16 v1, 0xb2
+        invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setAlpha(I)V
+        sget-object v9, $OVERLAY_CLASS->RECT:Landroid/graphics/RectF;
+        move v5, v11
+        move v11, v12
+        move v12, v5
+        int-to-float v10, v10
+        int-to-float v11, v11
+        int-to-float v12, v12
+        int-to-float v13, v13
+        invoke-virtual/range {v9 .. v13}, Landroid/graphics/RectF;->set(FFFF)V
+        invoke-virtual {p1, v9, v0}, Landroid/graphics/Canvas;->drawRect(Landroid/graphics/RectF;Landroid/graphics/Paint;)V
+        add-int/lit8 v8, v8, 0x1
+        goto :loop
 
         :return
         return-void

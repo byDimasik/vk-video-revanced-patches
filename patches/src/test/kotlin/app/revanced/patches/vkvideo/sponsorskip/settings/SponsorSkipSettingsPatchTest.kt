@@ -164,7 +164,7 @@ class SponsorSkipSettingsPatchTest {
         val engine = app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSources()[app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS]!!
         val tick = engine.substringAfter("tick(").substringBefore("end method")
         assertTrue(tick.contains("isEnabled()Z"), "tick honors the master toggle")
-        assertTrue(tick.contains("if-nez v3, :hide"), "a disabled engine hides the button instead of acting")
+        assertTrue(tick.contains("if-eqz v3, :hide"), "a disabled engine hides the button instead of acting")
 
         val handoff = engine.substringAfter("onVideoChanged(").substringBefore("end method")
         assertFalse(handoff.contains("if-lez v2, :disabled"), "a disabled engine still records the segments")
