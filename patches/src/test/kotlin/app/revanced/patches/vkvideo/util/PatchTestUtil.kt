@@ -41,6 +41,7 @@ object PatchTestUtil {
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewSetupFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipHolderFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.settings.rootContentFingerprint,
         ).forEach { fingerprintMatchField.set(it, null) }
         val tempApk = Files.createTempFile("test-app", ".apk").toFile().apply { deleteOnExit() }
         val tempPatchedDir = Files.createTempDirectory("test-patched").toFile().apply { deleteOnExit() }
@@ -643,4 +644,210 @@ object PatchTestUtil {
 
     val settingsScreenFixture170: List<String> = profileMenuFixture170 + settingsExtras
 
+
+    private const val VIDEO_AUTO_PLAY = "Lcom/vk/libvideo/autoplay/VideoAutoPlay;"
+    private const val EMPTY_AUTO_PLAY = "Lcom/vk/libvideo/autoplay/e;"
+
+    /**
+     * Core SponsorSkip fixture set: the `p73/a` implementations, `VideoFile`,
+     * `UserId` and the preference accessor the engine fingerprints resolve.
+     */
+    val sponsorCoreFixture: List<String> = listOf(
+        """
+        .class public interface abstract Lp73/a;
+        .super Ljava/lang/Object;
+
+        .method public abstract D(Lcom/vk/dto/common/VideoFile;)V
+        .end method
+
+        .method public abstract W(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
+        .end method
+
+        .method public abstract getPosition()J
+        .end method
+
+        .method public abstract getDuration()J
+        .end method
+
+        .method public abstract isPlaying()Z
+        .end method
+
+        .method public abstract release()V
+        .end method
+
+        .method public abstract s(J)V
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public final Lcom/vk/libvideo/autoplay/VideoAutoPlay;
+        .super Ljava/lang/Object;
+        .implements Lp73/a;
+
+        .field public C:Lcom/vk/dto/common/VideoFile;
+        .field public K:Ljava/lang/ref/WeakReference;
+        .field public W:Ljava/lang/Object;
+        .field public t0:Ljava/lang/Object;
+        .field public r0:Z
+
+        .method public final D(Lcom/vk/dto/common/VideoFile;)V
+            .locals 3
+
+            iput-object p1, p0, ${VIDEO_AUTO_PLAY}->C:Lcom/vk/dto/common/VideoFile;
+            invoke-virtual {p0, p1}, ${VIDEO_AUTO_PLAY}->y1(Lcom/vk/dto/common/VideoFile;)Ljava/lang/Object;
+            move-result-object v0
+            return-void
+        .end method
+
+        .method public final W(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
+            .locals 2
+
+            iget-object v0, p0, ${VIDEO_AUTO_PLAY}->K:Ljava/lang/ref/WeakReference;
+            const/4 v1, 0x0
+            if-eqz v0, :cond_0
+            invoke-virtual {v0, p1}, Ljava/lang/ref/WeakReference;->get()Ljava/lang/Object;
+            :cond_0
+            return-void
+        .end method
+
+        .method public final release()V
+            .locals 2
+
+            iget-object v0, p0, ${VIDEO_AUTO_PLAY}->W:Ljava/lang/Object;
+            if-eqz v0, :cond_1
+            const/4 v1, 0x0
+            iput-object v1, p0, ${VIDEO_AUTO_PLAY}->W:Ljava/lang/Object;
+            :cond_1
+            return-void
+        .end method
+
+        .method public final h0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)Z
+            .locals 1
+
+            if-eqz p1, :cond_0
+            const/4 v0, 0x1
+            return v0
+
+            :cond_0
+            const/4 v0, 0x0
+            return v0
+        .end method
+
+        .method public final x0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;Lcom/vk/libvideo/autoplay/a;Landroidx/recyclerview/widget/RecyclerView${'$'}c0;)V
+            .locals 3
+
+            iget-object v0, p0, ${VIDEO_AUTO_PLAY}->K:Ljava/lang/ref/WeakReference;
+            new-instance v1, Ljava/lang/ref/WeakReference;
+            invoke-direct {v1, p1}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
+            iput-object v1, p0, ${VIDEO_AUTO_PLAY}->K:Ljava/lang/ref/WeakReference;
+            return-void
+        .end method
+
+        .method public final getPosition()J
+            .locals 2
+
+            const-wide/16 v0, 0x0
+            return-wide v0
+        .end method
+
+        .method public final getDuration()J
+            .locals 2
+
+            const-wide/16 v0, 0x0
+            return-wide v0
+        .end method
+
+        .method public final isPlaying()Z
+            .locals 1
+
+            const/4 v0, 0x1
+            return v0
+        .end method
+
+        .method public final s(J)V
+            .locals 1
+
+            return-void
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public final ${EMPTY_AUTO_PLAY}
+        .super Ljava/lang/Object;
+        .implements Lp73/a;
+
+        .field public a:Lcom/vk/dto/common/VideoFile;
+
+        .method public final D(Lcom/vk/dto/common/VideoFile;)V
+            .registers 2
+
+            iput-object p1, p0, ${EMPTY_AUTO_PLAY}->a:Lcom/vk/dto/common/VideoFile;
+            return-void
+        .end method
+
+        .method public final W(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
+            .registers 2
+
+            return-void
+        .end method
+
+        .method public final release()V
+            .registers 1
+
+            return-void
+        .end method
+
+        .method public final getPosition()J
+            .registers 2
+
+            const-wide/16 v0, 0x0
+            return-wide v0
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public interface abstract Lcom/vk/dto/common/VideoFile;
+        .super Ljava/lang/Object;
+
+        .method public abstract Y0()Ljava/lang/String;
+        .end method
+
+        .method public abstract k3()Ljava/util/List;
+        .end method
+
+        .method public abstract P0()Lcom/vk/dto/common/id/UserId;
+        .end method
+
+        .method public abstract getDuration()I
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public final Lcom/vk/dto/common/id/UserId;
+        .super Ljava/lang/Object;
+
+        .method public final c()J
+            .registers 2
+
+            const-wide/16 v0, 0x0
+            return-wide v0
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public final Lcom/vk/core/preference/Preference;
+        .super Ljava/lang/Object;
+
+        .method public static final f(Ljava/lang/String;)Landroid/content/SharedPreferences;
+            .registers 2
+
+            const/4 v0, 0x0
+            return-object v0
+        .end method
+        """.trimIndent(),
+
+    )
+
+    /** Settings screen fixtures plus the core SponsorSkip classes its patch depends on. */
+    val sponsorSettingsFixture170: List<String> = settingsScreenFixture170 + sponsorCoreFixture
 }

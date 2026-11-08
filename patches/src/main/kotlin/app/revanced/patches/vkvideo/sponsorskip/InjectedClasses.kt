@@ -76,13 +76,13 @@ internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
 
 private val requiredMethods = mapOf(
     CATEGORY_CLASS to listOf("color:1", "name:1"),
-    SEGMENT_CLASS to listOf("<init>:5"),
+    SEGMENT_CLASS to listOf("<init>:4"),
     SEGMENT_ORDER_CLASS to listOf("compare:2"),
     EPISODES_CLASS to listOf("read:2"),
     RULES_CLASS to listOf("classify:5"),
-    BEHAVIOR_CLASS to listOf("parse:2"),
-    BEHAVIOR_STORE_CLASS to listOf("isEnabled:0", "getBehavior:1", "key:1"),
-    SKIP_STATE_CLASS to listOf("<init>:4"),
+    BEHAVIOR_CLASS to listOf("parse:2", "literal:1"),
+    BEHAVIOR_STORE_CLASS to listOf("isEnabled:0", "getBehavior:1", "key:1", "setEnabled:1", "setBehavior:2"),
+    SKIP_STATE_CLASS to listOf("<init>:5"),
     SKIP_TICK_CLASS to listOf("<init>:1", "run:0"),
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "skip:2", "rememberView:2",
@@ -475,6 +475,33 @@ private fun behaviorSmali(): String = """
         const/4 v0, 0x2
         return v0
     .end method
+
+    .method public static literal(I)Ljava/lang/String;
+        .registers 2
+
+        packed-switch p0, :table
+        const-string v0, "SHOW_SKIP_BUTTON"
+        return-object v0
+
+        :skip
+        const-string v0, "SKIP_AUTOMATICALLY"
+        return-object v0
+
+        :button
+        const-string v0, "SHOW_SKIP_BUTTON"
+        return-object v0
+
+        :disabled
+        const-string v0, "DISABLED"
+        return-object v0
+
+        :table
+        .packed-switch 0x0
+            :skip
+            :button
+            :disabled
+        .end packed-switch
+    .end method
 """.trimIndent()
 
 private fun behaviorStoreSmali(): String = """
@@ -566,6 +593,38 @@ private fun behaviorStoreSmali(): String = """
 
         :forced
         return v3
+    .end method
+
+    .method public static setEnabled(Z)V
+        .registers 4
+        .param p0, "enabled"
+
+        invoke-static {}, $BEHAVIOR_STORE_CLASS->prefs()Landroid/content/SharedPreferences;
+        move-result-object v0
+        invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences${'$'}Editor;
+        move-result-object v0
+        const-string v1, "$KEY_ENABLED"
+        invoke-interface {v0, v1, p0}, Landroid/content/SharedPreferences${'$'}Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences${'$'}Editor;
+        move-result-object v0
+        invoke-interface {v0}, Landroid/content/SharedPreferences${'$'}Editor;->apply()V
+        return-void
+    .end method
+
+    .method public static setBehavior(ILjava/lang/String;)V
+        .registers 6
+        .param p0, "category"
+        .param p1, "behavior"
+
+        invoke-static {p0}, $BEHAVIOR_STORE_CLASS->key(I)Ljava/lang/String;
+        move-result-object v0
+        invoke-static {}, $BEHAVIOR_STORE_CLASS->prefs()Landroid/content/SharedPreferences;
+        move-result-object v1
+        invoke-interface {v1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences${'$'}Editor;
+        move-result-object v1
+        invoke-interface {v1, v0, p1}, Landroid/content/SharedPreferences${'$'}Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences${'$'}Editor;
+        move-result-object v0
+        invoke-interface {v0}, Landroid/content/SharedPreferences${'$'}Editor;->apply()V
+        return-void
     .end method
 """.trimIndent()
 
@@ -672,7 +731,6 @@ private fun skipEngineSmali(): String = """
         invoke-virtual {v10}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
         move-result-object v10
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        if-lez v2, :disabled
         const-string v10, "enabled"
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         invoke-interface {v1}, Lcom/vk/dto/common/VideoFile;->getDuration()I
@@ -751,7 +809,6 @@ private fun skipEngineSmali(): String = """
         move-result-object v10
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         if-eqz v2, :clear
-        if-eqz v1, :clear
 
         new-instance v2, Landroid/os/Handler;
         invoke-static {}, Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;
@@ -792,10 +849,6 @@ private fun skipEngineSmali(): String = """
         const-string v10, "v1null"
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         goto :clear
-
-        :disabled
-        const-string v10, "disabled"
-        invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
 
         :clear
         const-string v10, "clear"
@@ -889,6 +942,9 @@ private fun skipEngineSmali(): String = """
         iput-object v2, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
 
         :viewed
+        invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
+        move-result v3
+        if-nez v3, :hide
         invoke-interface {v0}, Lp73/a;->isPlaying()Z
         move-result v1
         if-eqz v1, :repost
