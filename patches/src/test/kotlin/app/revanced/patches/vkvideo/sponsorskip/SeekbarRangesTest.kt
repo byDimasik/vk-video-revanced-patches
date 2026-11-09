@@ -20,6 +20,7 @@ class SeekbarRangesTest {
                 segment(900_000, DURATION, Category.OUTRO),
             ),
             DURATION,
+            SHOWN,
         )
 
         assertEquals(0f, bands[0].xStart)
@@ -32,7 +33,7 @@ class SeekbarRangesTest {
 
     @Test
     fun `starts before and ends after the duration clamp into the track`() {
-        val bands = SeekbarRanges.build(listOf(segment(-5_000, DURATION + 5_000, Category.INTRO)), DURATION)
+        val bands = SeekbarRanges.build(listOf(segment(-5_000, DURATION + 5_000, Category.INTRO)), DURATION, SHOWN)
 
         assertEquals(0f, bands.single().xStart)
         assertEquals(1f, bands.single().xEnd)
@@ -48,6 +49,7 @@ class SeekbarRangesTest {
                 segment(300_000, 700_000, Category.OUTRO),
             ),
             DURATION,
+            SHOWN,
         )
 
         assertEquals(listOf(0, 1, 2, 2), bands.map { it.lane })
@@ -62,6 +64,7 @@ class SeekbarRangesTest {
                 segment(200_000, 300_000, Category.SELFPROMO),
             ),
             DURATION,
+            SHOWN,
         )
 
         assertTrue(SeekbarRanges.visible(bands, SHOWN, false).isEmpty())
@@ -73,8 +76,8 @@ class SeekbarRangesTest {
 
     @Test
     fun `degenerate inputs draw nothing`() {
-        assertTrue(SeekbarRanges.build(emptyList(), DURATION).isEmpty())
-        assertTrue(SeekbarRanges.build(listOf(segment(0, 1, Category.SPONSOR)), 0).isEmpty())
+        assertTrue(SeekbarRanges.build(emptyList(), DURATION, SHOWN).isEmpty())
+        assertTrue(SeekbarRanges.build(listOf(segment(0, 1, Category.SPONSOR)), 0, SHOWN).isEmpty())
     }
 
     @Test
@@ -82,6 +85,7 @@ class SeekbarRangesTest {
         val bands = SeekbarRanges.build(
             listOf(segment(0, 100_000, -1), segment(200_000, 300_000, Category.SPONSOR)),
             DURATION,
+            SHOWN,
         )
 
         assertEquals(listOf(Category.SPONSOR), bands.map { it.category })
@@ -89,7 +93,7 @@ class SeekbarRangesTest {
 
     @Test
     fun `a band at the very end stays inside the track`() {
-        val bands = SeekbarRanges.build(listOf(segment(DURATION, DURATION, Category.SPONSOR)), DURATION)
+        val bands = SeekbarRanges.build(listOf(segment(DURATION, DURATION, Category.SPONSOR)), DURATION, SHOWN)
 
         assertEquals(1f - SeekbarRanges.GAP, bands.single().xStart, 1e-6f)
         assertEquals(1f, bands.single().xEnd)
@@ -97,7 +101,7 @@ class SeekbarRangesTest {
 
     @Test
     fun `a zero-length band still gets the minimum gap`() {
-        val bands = SeekbarRanges.build(listOf(segment(500_000, 500_000, Category.SPONSOR)), DURATION)
+        val bands = SeekbarRanges.build(listOf(segment(500_000, 500_000, Category.SPONSOR)), DURATION, SHOWN)
 
         assertEquals(SeekbarRanges.GAP, bands.single().xEnd - bands.single().xStart, 1e-6f)
     }

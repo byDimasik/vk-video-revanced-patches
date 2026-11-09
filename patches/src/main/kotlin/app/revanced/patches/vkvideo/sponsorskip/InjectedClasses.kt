@@ -1201,12 +1201,13 @@ private fun rangesSmali(): String = """
     .super Ljava/lang/Object;
 
     .method public static build($SEGMENT_ARRAY;J)$BAND_ARRAY
-        .registers 25
+        .registers 26
         .param p0, "segments"
         .param p1, "durationMs"
 
         move-object/from16 v0, p0
         move-wide/from16 v1, p1
+        sget-object v16, $SECTIONS_DRAWABLE_CLASS;->BEHAVIORS:[I
 
         if-eqz v0, :empty
         array-length v3, v0
@@ -1240,6 +1241,9 @@ private fun rangesSmali(): String = """
         aget-object v8, v0, v7
         iget v9, v8, $SEGMENT_CLASS->category:I
         if-ltz v9, :next
+        aget v6, v16, v9
+        const/4 v10, 0x2
+        if-eq v6, v10, :next
 
         iget-wide v13, v8, $SEGMENT_CLASS->startMs:J
         long-to-float v13, v13
@@ -1369,24 +1373,25 @@ private fun sectionsDrawableSmali(): String = """
     .class public final $SECTIONS_DRAWABLE_CLASS
     .super Landroid/graphics/drawable/Drawable;
 
-    .field private static PAINT:Landroid/graphics/Paint;
-    .field private static BOUNDS:Landroid/graphics/Rect;
+    .field private paint:Landroid/graphics/Paint;
+    .field private alpha:I
     .field private static CACHE_STAMP:I
+    .field public static BEHAVIORS:[I
     .field private static CACHE_BANDS:$BAND_ARRAY
 
-    .method static constructor <clinit>()V
-        .registers 2
+    .method public constructor <init>()V
+        .registers 4
 
+        invoke-direct {p0}, Landroid/graphics/drawable/Drawable;-><init>()V
+        const/16 v0, 0xff
+        iput v0, p0, $SECTIONS_DRAWABLE_CLASS;->alpha:I
         new-instance v0, Landroid/graphics/Paint;
         invoke-direct {v0}, Landroid/graphics/Paint;-><init>()V
         const/4 v1, 0x0
         invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setAntiAlias(Z)V
         sget-object v1, Landroid/graphics/Paint${'$'}Style;->FILL:Landroid/graphics/Paint${'$'}Style;
         invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setStyle(Landroid/graphics/Paint${'$'}Style;)V
-        sput-object v0, $SECTIONS_DRAWABLE_CLASS;->PAINT:Landroid/graphics/Paint;
-        new-instance v0, Landroid/graphics/Rect;
-        invoke-direct {v0}, Landroid/graphics/Rect;-><init>()V
-        sput-object v0, $SECTIONS_DRAWABLE_CLASS;->BOUNDS:Landroid/graphics/Rect;
+        iput-object v0, p0, $SECTIONS_DRAWABLE_CLASS;->paint:Landroid/graphics/Paint;
         return-void
     .end method
 
@@ -1421,21 +1426,35 @@ private fun sectionsDrawableSmali(): String = """
     .end method
 
     .method public setAlpha(I)V
-        .registers 2
+        .registers 3
 
+        move-object v0, p0
+        iput p1, v0, $SECTIONS_DRAWABLE_CLASS;->alpha:I
+        invoke-virtual {v0}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
         return-void
     .end method
 
-    .method public setColorFilter(Landroid/graphics/ColorFilter;)V
+    .method public getAlpha()I
         .registers 2
 
+        iget v0, p0, $SECTIONS_DRAWABLE_CLASS;->alpha:I
+        return v0
+    .end method
+
+    .method public setColorFilter(Landroid/graphics/ColorFilter;)V
+        .registers 3
+
+        move-object v0, p0
+        iget-object v1, v0, $SECTIONS_DRAWABLE_CLASS;->paint:Landroid/graphics/Paint;
+        invoke-virtual {v1, p1}, Landroid/graphics/Paint;->setColorFilter(Landroid/graphics/ColorFilter;)V
+        invoke-virtual {v0}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
         return-void
     .end method
 
     .method public getOpacity()I
         .registers 1
 
-        const/4 v0, -0x1
+        const/4 v0, -0x3
         return v0
     .end method
 
@@ -1469,6 +1488,8 @@ private fun sectionsDrawableSmali(): String = """
         cmp-long v2, v4, v6
         if-lez v2, :return
 
+        const/4 v3, 0x4
+        new-array v15, v3, [I
         const/4 v7, 0x0
         const/4 v9, 0x0
 
@@ -1477,6 +1498,7 @@ private fun sectionsDrawableSmali(): String = """
         if-ge v9, v3, :stamped
         invoke-static {v9}, $BEHAVIOR_STORE_CLASS;->getBehavior(I)I
         move-result v3
+        aput v3, v15, v9
         mul-int/lit8 v7, v7, 0x1f
         add-int/2addr v7, v3
         add-int/lit8 v9, v9, 0x1
@@ -1494,6 +1516,7 @@ private fun sectionsDrawableSmali(): String = """
         sget v3, $SECTIONS_DRAWABLE_CLASS;->CACHE_STAMP:I
         if-eq v7, v3, :cached
         sput v7, $SECTIONS_DRAWABLE_CLASS;->CACHE_STAMP:I
+        sput-object v15, $SECTIONS_DRAWABLE_CLASS;->BEHAVIORS:[I
         invoke-static {v1, v4, v5}, $RANGES_CLASS;->build($SEGMENT_ARRAY;J)$BAND_ARRAY
         move-result-object v3
         sput-object v3, $SECTIONS_DRAWABLE_CLASS;->CACHE_BANDS:$BAND_ARRAY
@@ -1527,6 +1550,10 @@ private fun sectionsDrawableSmali(): String = """
         const v10, 0x40400000
         div-float v4, v9, v10
 
+        iget-object v13, p0, $SECTIONS_DRAWABLE_CLASS;->paint:Landroid/graphics/Paint;
+        iget v15, p0, $SECTIONS_DRAWABLE_CLASS;->alpha:I
+        mul-int/lit16 v15, v15, 0xb2
+        div-int/lit16 v15, v15, 0xff
         const/4 v6, 0x0
 
         :loop
@@ -1552,10 +1579,8 @@ private fun sectionsDrawableSmali(): String = """
         iget v14, v7, $BAND_CLASS->category:I
         invoke-static {v14}, $CATEGORY_CLASS;->color(I)I
         move-result v14
-        sget-object v13, $SECTIONS_DRAWABLE_CLASS;->PAINT:Landroid/graphics/Paint;
         invoke-virtual {v13, v14}, Landroid/graphics/Paint;->setColor(I)V
-        const/16 v14, 0xb2
-        invoke-virtual {v13, v14}, Landroid/graphics/Paint;->setAlpha(I)V
+        invoke-virtual {v13, v15}, Landroid/graphics/Paint;->setAlpha(I)V
         invoke-virtual/range {v8 .. v13}, Landroid/graphics/Canvas;->drawRect(FFFFLandroid/graphics/Paint;)V
 
         :next
@@ -1593,7 +1618,7 @@ private fun seekbarSectionsSmali(): String = """
 
         if-eqz p1, :return
         instance-of v0, p1, Loo7/c;
-        if-eqz v0, :family
+        if-nez v0, :family
         instance-of v0, p1, Lyo7/c;
         if-eqz v0, :return
 

@@ -86,6 +86,26 @@ class SponsorSkipPatchTest {
     }
 
     @Test
+    fun `the page hook is inserted before every return`() {
+        val context = createBytecodeContext(*fixtures.toTypedArray())
+        sponsorSkipPatch.execute(context)
+
+        val instructions = sponsorSkipSectionListFingerprint.getMethod(context).implementation!!.instructions.toList()
+        val hookIndexes = instructions.withIndex()
+            .filter { (it.value as? ReferenceInstruction)?.reference?.toString()?.contains("/SeekbarSections;->apply") == true }
+            .map { it.index }
+        assertEquals(2, hookIndexes.size, "the hook is not inserted at both returns")
+        hookIndexes.forEach { hook ->
+            assertEquals(Opcode.RETURN_VOID, instructions[hook + 1].opcode, "hook at $hook is not before a return")
+            assertEquals(Opcode.IGET_OBJECT, instructions[hook - 3].opcode)
+            assertEquals(
+                "Lone/video/controls/views/seek/a;->a:Landroidx/appcompat/widget/AppCompatSeekBar;",
+                (instructions[hook - 3] as ReferenceInstruction).reference.toString(),
+            )
+        }
+    }
+
+    @Test
     fun `the locator skips EmptyAutoPlay`() {
         val context = createBytecodeContext(*fixtures.toTypedArray())
         assertEquals(VIDEO_AUTO_PLAY, sponsorSkipVideoHandoffFingerprint.matchOrNull(context)?.method?.definingClass)

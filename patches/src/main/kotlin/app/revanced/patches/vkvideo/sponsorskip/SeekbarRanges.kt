@@ -12,8 +12,12 @@ internal object SeekbarRanges {
     const val MAX_LANES = 3
     const val GAP = 0.001f
 
-    /** Bands for [segments], sorted into lanes; empty when degenerate. */
-    fun build(segments: List<Segment>, durationMs: Long): List<Band> {
+    /**
+     * Bands for the [behaviors]-enabled [segments], sorted into lanes; empty when
+     * degenerate. Disabled categories are dropped before lanes so they cannot push
+     * an enabled band out of its interval.
+     */
+    fun build(segments: List<Segment>, durationMs: Long, behaviors: IntArray): List<Band> {
         if (durationMs <= 0) return emptyList()
 
         val laneEnds = FloatArray(MAX_LANES) { -1f }
@@ -21,6 +25,7 @@ internal object SeekbarRanges {
         for (segment in segments) {
             val category = segment.category
             if (category < 0) continue
+            if (behaviors.getOrElse(category) { Behavior.SHOW_SKIP_BUTTON } == Behavior.DISABLED) continue
 
             var xStart = (segment.startMs.toFloat() / durationMs).coerceIn(0f, 1f)
             var xEnd = (segment.endMs.toFloat() / durationMs).coerceIn(0f, 1f)

@@ -41,6 +41,8 @@ object PatchTestUtil {
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewSetupFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipHolderFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionDrawableFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionListFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.settings.rootContentFingerprint,
         ).forEach { fingerprintMatchField.set(it, null) }
         val tempApk = Files.createTempFile("test-app", ".apk").toFile().apply { deleteOnExit() }
@@ -850,6 +852,12 @@ object PatchTestUtil {
         .method public final g(ILjava/util/ArrayList;)V
             .locals 10
 
+            invoke-virtual {p2}, Ljava/util/ArrayList;->isEmpty()Z
+            move-result v0
+            if-eqz v0, :end
+            return-void
+
+            :end
             return-void
         .end method
         """.trimIndent(),
