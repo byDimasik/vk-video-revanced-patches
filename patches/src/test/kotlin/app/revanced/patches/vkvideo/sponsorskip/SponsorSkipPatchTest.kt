@@ -1,5 +1,6 @@
 package app.revanced.patches.vkvideo.sponsorskip
 
+import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod
 import app.revanced.patches.vkvideo.util.PatchTestUtil
 import app.revanced.patches.vkvideo.util.PatchTestUtil.createBytecodeContext
 import app.revanced.patches.vkvideo.util.PatchTestUtil.execute
@@ -7,7 +8,10 @@ import app.revanced.patches.vkvideo.util.PatchTestUtil.getInstructions
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getMethod
 import app.revanced.patches.vkvideo.util.PatchTestUtil.matchOrNull
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -61,6 +65,62 @@ class SponsorSkipPatchTest {
     fun `the category colors match the epic table`() {
         val category = sponsorSkipSources()[CATEGORY_CLASS]!!
         Category.COLORS.forEach { assertTrue(category.contains(it.toString()), "missing color $it") }
+    }
+
+    @Test
+    fun `the toast labels mirror the RU button strings`() {
+        val label = sponsorSkipSources()[CATEGORY_CLASS]!!.substringAfter(".method public static label")
+        Category.LABELS.forEach { assertTrue(label.contains("\"$it\""), "missing label $it") }
+        assertTrue(label.substringBefore(".end method").contains("\"unknown\""), "no unknown fallback")
+    }
+
+    @Test
+    fun `auto-skip toasts once per segment with the 1200 ms floor`() {
+        val context = createBytecodeContext(*fixtures.toTypedArray())
+        sponsorSkipPatch.execute(context)
+        val skip = context.classDefs.first { it.type == SKIP_ENGINE_CLASS }.methods
+            .first { it.name == "skip" }
+        assertEquals(listOf(SKIP_STATE_CLASS, "I", "Z"), skip.parameterTypes.map { it.toString() })
+        assertEquals(12, skip.implementation!!.registerCount)
+
+        val instructions = skip.implementation!!.instructions.toList()
+        val consumed = instructions.indexOfFirst { it.opcode == Opcode.APUT_BOOLEAN }
+        val hide = instructions.indexOfFirst {
+            it.opcode == Opcode.INVOKE_STATIC &&
+                (it as ReferenceInstruction).reference.toString().contains("SkipButton;->hide")
+        }
+        assertTrue(hide >= 0, "the hide call is missing")
+        assertEquals(Opcode.IF_EQZ, instructions[hide + 1].opcode, "the flag is not the first check of the toast block")
+        assertEquals(11, (instructions[hide + 1] as OneRegisterInstruction).registerA, "the flag is not read from p2")
+
+        val block = instructions.subList(hide + 1, instructions.size)
+        assertNullGuard(instructions, hide + 2, "view")
+        assertNullGuard(instructions, hide + 5, "context")
+        assertTrue(consumed < hide, "the toast block precedes the consumed flip")
+
+        val floor = hide + 1 + block.indexOfFirst { it.opcode == Opcode.CONST_WIDE_16 }
+        assertTrue(floor > hide, "no 1200 ms floor")
+        assertEquals(1200L, (instructions[floor] as NarrowLiteralInstruction).narrowLiteral.toLong())
+
+        val show = instructions.indexOfFirst {
+            it.opcode == Opcode.INVOKE_VIRTUAL &&
+                (it as ReferenceInstruction).reference.toString().contains("Toast;->show")
+        }
+        assertTrue(show > floor, "the toast is not shown after the floor")
+        val stored = instructions.indexOfFirst { it.opcode == Opcode.IPUT_WIDE }
+        assertTrue(stored > show, "lastToastMs is stored before show()")
+    }
+
+    @Test
+    fun `the flag splits auto skips from button skips`() {
+        val context = createBytecodeContext(*fixtures.toTypedArray())
+        sponsorSkipPatch.execute(context)
+        val tick = context.classDefs.first { it.type == SKIP_ENGINE_CLASS }.methods
+            .first { it.name == "tick" }
+        assertSkipFlag(tick, 1)
+        val click = context.classDefs.first { it.type == SKIP_CLICK_CLASS }.methods
+            .first { it.name == "onClick" }
+        assertSkipFlag(click, 0)
     }
 
     @Test
@@ -179,9 +239,39 @@ class SponsorSkipPatchTest {
     fun `the guards cover the added members`() {
         assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("place:1"))
         assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("onSeek:2"))
+        assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("skip:3"))
+        assertTrue(requiredMethods.getValue(CATEGORY_CLASS).contains("label:1"))
+        assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).contains("lastToastMs"))
         assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9", "watch:3")))
         assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("view", "button", "listener", "listenerView", "buttonView")))
         assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
+    }
+
+    /** Asserts `fetch → move-result R → if-eqz R, :return` at [at]. */
+    private fun assertNullGuard(
+        instructions: List<com.android.tools.smali.dexlib2.iface.instruction.Instruction>,
+        at: Int,
+        what: String,
+    ) {
+        assertEquals(Opcode.MOVE_RESULT_OBJECT, instructions[at + 1].opcode, "the $what result is not kept")
+        val result = (instructions[at + 1] as OneRegisterInstruction).registerA
+        val guard = instructions[at + 2]
+        assertEquals(Opcode.IF_EQZ, guard.opcode, "the $what is not null-checked")
+        assertEquals(result, (guard as OneRegisterInstruction).registerA, "the $what guard reads another register")
+    }
+
+    private fun assertSkipFlag(method: Method, value: Int) {
+        val instructions = method.implementation!!.instructions.toList()
+        val call = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.endsWith("SkipEngine;->skip(${SKIP_STATE_CLASS}IZ)V") == true
+        }
+        assertTrue(call > 0, "no skip call in ${method.name}")
+        val registers = instructions[call] as FiveRegisterInstruction
+        val flag = registers.registerE
+        val moved = instructions[call - 1]
+        assertEquals(Opcode.CONST_4, moved.opcode, "the flag is not a constant")
+        assertEquals(flag, (moved as OneRegisterInstruction).registerA, "the constant does not feed the flag")
+        assertEquals(value, (moved as NarrowLiteralInstruction).narrowLiteral.toInt())
     }
 
     private fun assertHook(

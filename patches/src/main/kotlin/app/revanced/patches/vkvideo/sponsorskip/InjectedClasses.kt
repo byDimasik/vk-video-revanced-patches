@@ -99,7 +99,7 @@ internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
 ).mapValues { (_, source) -> source.replace(";;", ";") }
 
 internal val requiredMethods = mapOf(
-    CATEGORY_CLASS to listOf("color:1", "name:1"),
+    CATEGORY_CLASS to listOf("color:1", "name:1", "label:1"),
     SEGMENT_CLASS to listOf("<init>:4"),
     SEGMENT_ORDER_CLASS to listOf("compare:2"),
     EPISODES_CLASS to listOf("read:2"),
@@ -109,7 +109,7 @@ internal val requiredMethods = mapOf(
     SKIP_STATE_CLASS to listOf("<init>:5"),
     SKIP_TICK_CLASS to listOf("<init>:1", "run:0"),
     SKIP_ENGINE_CLASS to listOf(
-        "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:2",
+        "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
         "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0",
     ),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "place:1"),
@@ -123,7 +123,7 @@ internal val requiredMethods = mapOf(
 
 /** Added fields that a stale generation of the class can miss; methods alone do not catch them. */
 internal val requiredFields = mapOf(
-    SKIP_STATE_CLASS to listOf("view", "button", "listener", "listenerView", "buttonView"),
+    SKIP_STATE_CLASS to listOf("view", "button", "listener", "listenerView", "buttonView", "lastToastMs"),
 )
 
 private fun categorySmali(): String = """
@@ -190,6 +190,38 @@ private fun categorySmali(): String = """
 
         :outro
         const-string v0, "outro"
+        return-object v0
+
+        :table
+        .packed-switch 0x0
+            :sponsor
+            :selfpromo
+            :intro
+            :outro
+        .end packed-switch
+    .end method
+
+    .method public static label(I)Ljava/lang/String;
+        .registers 1
+
+        packed-switch p0, :table
+        const-string v0, "unknown"
+        return-object v0
+
+        :sponsor
+        const-string v0, "Спонсор"
+        return-object v0
+
+        :selfpromo
+        const-string v0, "Самореклама"
+        return-object v0
+
+        :intro
+        const-string v0, "Интро"
+        return-object v0
+
+        :outro
+        const-string v0, "Аутро"
         return-object v0
 
         :table
@@ -675,6 +707,7 @@ private fun skipStateSmali(): String = """
     .field public listener:Landroid/view/View${'$'}OnLayoutChangeListener;
     .field public listenerView:Landroid/view/View;
     .field public buttonView:Landroid/view/View;
+    .field public lastToastMs:J
 
     .method public constructor <init>(Lp73/a;$SEGMENT_ARRAY[ZLandroid/os/Handler;Ljava/lang/Runnable;)V
         .registers 7
@@ -685,6 +718,8 @@ private fun skipStateSmali(): String = """
         iput-object p3, p0, $SKIP_STATE_CLASS->consumed:[Z
         iput-object p4, p0, $SKIP_STATE_CLASS->handler:Landroid/os/Handler;
         iput-object p5, p0, $SKIP_STATE_CLASS->tick:Ljava/lang/Runnable;
+        const-wide/16 p1, 0x0
+        iput-wide p1, p0, $SKIP_STATE_CLASS->lastToastMs:J
         return-void
     .end method
 """.trimIndent()
@@ -996,7 +1031,8 @@ private fun skipEngineSmali(): String = """
         invoke-interface {v0}, Lp73/a;->isPlaying()Z
         move-result v8
         if-eqz v8, :repost
-        invoke-static {p0, v7}, $SKIP_ENGINE_CLASS;->skip($SKIP_STATE_CLASS;I)V
+        const/4 v14, 0x1
+        invoke-static {p0, v7, v14}, $SKIP_ENGINE_CLASS;->skip($SKIP_STATE_CLASS;IZ)V
         goto :repost
 
         :hide
@@ -1108,10 +1144,11 @@ private fun skipEngineSmali(): String = """
         return-void
     .end method
 
-    .method public static skip($SKIP_STATE_CLASS;I)V
-        .registers 10
+    .method public static skip($SKIP_STATE_CLASS;IZ)V
+        .registers 12
         .param p0, "state"
         .param p1, "index"
+        .param p2, "toast"
 
         if-eqz p0, :return
         iget-object v0, p0, $SKIP_STATE_CLASS->segments:$SEGMENT_ARRAY
@@ -1137,6 +1174,40 @@ private fun skipEngineSmali(): String = """
         :seek
         invoke-interface {v0, v2, v3}, Lp73/a;->s(J)V
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V
+
+        if-eqz p2, :return
+        invoke-static {p0}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
+        move-result-object v0
+        if-eqz v0, :return
+        invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
+        move-result-object v1
+        if-eqz v1, :return
+        iget-object v2, p0, $SKIP_STATE_CLASS->segments:$SEGMENT_ARRAY
+        aget-object v2, v2, p1
+        iget v2, v2, $SEGMENT_CLASS->category:I
+        invoke-static {v2}, $CATEGORY_CLASS;->label(I)Ljava/lang/String;
+        move-result-object v3
+        const-string v4, "Пропущено: "
+        invoke-virtual {v4, v3}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
+        move-result-object v3
+        invoke-static {}, Landroid/os/SystemClock;->elapsedRealtime()J
+        move-result-wide v4
+        iget-wide v6, p0, $SKIP_STATE_CLASS->lastToastMs:J
+        sub-long v6, v4, v6
+        const-wide/16 v4, 0x4b0
+        cmp-long v8, v6, v4
+        if-gtz v8, :toast_go
+        goto :return
+
+        :toast_go
+        invoke-static {v3}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        const/4 v2, 0x0
+        invoke-static {v1, v3, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+        move-result-object v3
+        invoke-virtual {v3}, Landroid/widget/Toast;->show()V
+        invoke-static {}, Landroid/os/SystemClock;->elapsedRealtime()J
+        move-result-wide v6
+        iput-wide v6, p0, $SKIP_STATE_CLASS->lastToastMs:J
 
         :return
         return-void
@@ -2130,7 +2201,8 @@ private fun skipClickSmali(): String = """
 
         iget-object v0, p0, $SKIP_CLICK_CLASS->state:$SKIP_STATE_CLASS;
         iget v1, p0, $SKIP_CLICK_CLASS->index:I
-        invoke-static {v0, v1}, $SKIP_ENGINE_CLASS;->skip($SKIP_STATE_CLASS;I)V
+        const/4 v2, 0x0
+        invoke-static {v0, v1, v2}, $SKIP_ENGINE_CLASS;->skip($SKIP_STATE_CLASS;IZ)V
         return-void
     .end method
 """.trimIndent()
