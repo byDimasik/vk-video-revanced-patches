@@ -94,7 +94,8 @@ class SponsorSkipPatchTest {
         assertEquals(11, (instructions[hide + 1] as OneRegisterInstruction).registerA, "the flag is not read from p2")
 
         val block = instructions.subList(hide + 1, instructions.size)
-        assertEquals(3, block.count { it.opcode == Opcode.IF_EQZ }, "missing a view or context null guard")
+        assertNullGuard(instructions, hide + 2, "view")
+        assertNullGuard(instructions, hide + 5, "context")
         assertTrue(consumed < hide, "the toast block precedes the consumed flip")
 
         val floor = hide + 1 + block.indexOfFirst { it.opcode == Opcode.CONST_WIDE_16 }
@@ -244,6 +245,19 @@ class SponsorSkipPatchTest {
         assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9", "watch:3")))
         assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("view", "button", "listener", "listenerView", "buttonView")))
         assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
+    }
+
+    /** Asserts `fetch → move-result R → if-eqz R, :return` at [at]. */
+    private fun assertNullGuard(
+        instructions: List<com.android.tools.smali.dexlib2.iface.instruction.Instruction>,
+        at: Int,
+        what: String,
+    ) {
+        assertEquals(Opcode.MOVE_RESULT_OBJECT, instructions[at + 1].opcode, "the $what result is not kept")
+        val result = (instructions[at + 1] as OneRegisterInstruction).registerA
+        val guard = instructions[at + 2]
+        assertEquals(Opcode.IF_EQZ, guard.opcode, "the $what is not null-checked")
+        assertEquals(result, (guard as OneRegisterInstruction).registerA, "the $what guard reads another register")
     }
 
     private fun assertSkipFlag(method: Method, value: Int) {
