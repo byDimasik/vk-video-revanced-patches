@@ -7,6 +7,7 @@ import app.revanced.patches.vkvideo.util.PatchTestUtil.getInstructions
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getMethod
 import app.revanced.patches.vkvideo.util.PatchTestUtil.matchOrNull
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -113,6 +114,74 @@ class SponsorSkipPatchTest {
         assertEquals(VIDEO_AUTO_PLAY, sponsorSkipReleaseFingerprint.matchOrNull(context)?.method?.definingClass)
         assertEquals(VIDEO_AUTO_PLAY, sponsorSkipViewSetupFingerprint.matchOrNull(context)?.method?.definingClass)
         assertEquals(VIDEO_AUTO_PLAY, sponsorSkipHolderFingerprint.matchOrNull(context)?.method?.definingClass)
+    }
+
+    @Test
+    fun `the button clamps inside the player surface`() {
+        val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+        val place = button.substring(button.indexOf(".method public static place"))
+        assertEquals(2, Regex("getLocationInWindow").findAll(place).count(), "place does not read both locations")
+        assertTrue(place.contains("->leftMargin:I") && place.contains("->topMargin:I"))
+        assertTrue(place.contains("0x800030"), "place does not pin the gravity")
+        assertTrue(place.contains("if-eqz v1, :fallback"), "a null surface does not route to the fallback")
+        assertEquals(3, Regex("if-eqz v1, :frame").findAll(place).count(), "the frame is not the terminal fallback")
+        assertTrue(place.contains("setMaxWidth") && place.contains("setMaxHeight"), "the button is not capped to the surface")
+        assertTrue(place.contains("if-eqz v3, :return"), "the layout is requested even when nothing changed")
+        assertTrue(button.replace(";;", ";").contains("invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V".replace(";;", ";")))
+    }
+
+    @Test
+    fun `the layout listener follows the surface and the button, then detaches`() {
+        val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+        assertTrue(
+            button.replace(";;", ";")
+                .contains("$SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;)V".replace(";;", ";")),
+        )
+        val layout = sponsorSkipSources()[SKIP_LAYOUT_CLASS]!!
+        assertEquals(2, Regex("addOnLayoutChangeListener").findAll(layout).count(), "both slots are not watched")
+        assertTrue(layout.contains("if-nez v0, :created") && layout.contains(":created"), "the listener is not created on demand")
+        assertTrue(layout.contains("if-eq v1, p1"), "the surface slot does not skip the same view")
+        assertTrue(layout.contains("if-eq v1, p2"), "the button slot does not skip the same view")
+        val stop = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!.substringAfter(".method private static stop")
+        assertEquals(2, Regex("removeOnLayoutChangeListener").findAll(stop).count(), "stop leaves a listener attached")
+        assertTrue(stop.contains("->listenerView:Landroid/view/View;"))
+        assertTrue(stop.contains("->buttonView:Landroid/view/View;"))
+    }
+
+    @Test
+    fun `the tick evaluates while paused and gates only the skip`() {
+        val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
+        val tick = engine.substring(engine.indexOf(".method public static tick"), engine.indexOf(".method private static evaluate"))
+        val evaluateAt = tick.indexOf("->evaluate(")
+        val playingAt = tick.indexOf("->isPlaying()")
+        val skipAt = tick.indexOf("->skip(")
+        assertTrue(evaluateAt >= 0 && evaluateAt < playingAt, "the scan is still gated by playback")
+        assertTrue(skipAt > playingAt, "skip is not gated by playback")
+        assertTrue(tick.substring(playingAt, skipAt).contains("if-eqz v8, :repost"), "the playing result does not guard the skip")
+    }
+
+    @Test
+    fun `the seek hook re-evaluates before the return`() {
+        val context = createBytecodeContext(*fixtures.toTypedArray())
+        sponsorSkipPatch.execute(context)
+        val instructions = sponsorSkipSeekFingerprint.getMethod(context).implementation!!.instructions.toList()
+        val at = instructions.indexOfFirst { it.opcode == Opcode.RETURN_VOID } - 1
+        assertEquals(Opcode.INVOKE_STATIC, instructions[at].opcode)
+        val hook = instructions[at] as ReferenceInstruction
+        assertEquals("$SKIP_ENGINE_CLASS->onSeek(Ljava/lang/Object;J)V", hook.reference.toString())
+        val registers = hook as FiveRegisterInstruction
+        assertEquals(3, registers.registerC)
+        assertEquals(4, registers.registerD)
+        assertEquals(5, registers.registerE)
+    }
+
+    @Test
+    fun `the guards cover the added members`() {
+        assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("place:1"))
+        assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("onSeek:2"))
+        assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9", "watch:3")))
+        assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("view", "button", "listener", "listenerView", "buttonView")))
+        assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
     }
 
     private fun assertHook(

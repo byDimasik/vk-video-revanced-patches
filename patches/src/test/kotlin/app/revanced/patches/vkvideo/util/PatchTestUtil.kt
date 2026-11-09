@@ -38,6 +38,7 @@ object PatchTestUtil {
             app.revanced.patches.vkvideo.ad.catalog.catalogSectionAdBannerGetterFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipVideoHandoffFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewAttachedFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSeekFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewSetupFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipHolderFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint,
@@ -804,6 +805,25 @@ object PatchTestUtil {
 
             const-wide/16 v0, 0x0
             return-wide v0
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public abstract Lone/video/player/BaseVideoPlayer;
+        .super Ljava/lang/Object;
+        .implements Lp73/a;
+
+        .field public u0:J
+
+        .method public final a(J)V
+            .locals 3
+
+            iput-wide p1, p0, Lone/video/player/BaseVideoPlayer;->u0:J
+            invoke-virtual {p0, p1, p2}, Lone/video/player/BaseVideoPlayer;->E0(J)V
+            return-void
+        .end method
+
+        .method public abstract E0(J)V
         .end method
         """.trimIndent(),
 

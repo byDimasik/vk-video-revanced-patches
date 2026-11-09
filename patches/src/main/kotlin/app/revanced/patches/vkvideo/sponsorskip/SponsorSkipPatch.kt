@@ -34,6 +34,9 @@ val sponsorSkipPatch = bytecodePatch(
         sponsorSkipReleaseFingerprint.method.insertCall(
             "$SKIP_ENGINE_CLASS->onRelease(Lp73/a;)V",
         )
+        sponsorSkipSeekFingerprint.method.insertBeforeReturns(
+            "invoke-static {v3, v4, v5}, $SKIP_ENGINE_CLASS->onSeek(Ljava/lang/Object;J)V",
+        )
         sponsorSkipSectionDrawableFingerprint.method.insertBeforeReturns(
             "invoke-static {p0, p1}, $SEEK_SECTIONS_CLASS->apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V",
         )

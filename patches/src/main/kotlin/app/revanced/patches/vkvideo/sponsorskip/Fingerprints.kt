@@ -46,6 +46,22 @@ val sponsorSkipReleaseFingerprint = fingerprint {
     }
 }
 
+/**
+ * `BaseVideoPlayer.a(J)` — the single seek entry: user scrub, media keys and our own
+ * skip all end here. It stores the target and delegates to the abstract `E0(J)`, so the
+ * hook only narrows the paused re-evaluation window; the tick is the guarantee.
+ */
+val sponsorSkipSeekFingerprint = fingerprint {
+    returns("V")
+    parameters("J")
+    custom { method, classDef ->
+        classDef.type == "Lone/video/player/BaseVideoPlayer;" &&
+            method.name == "a" &&
+            method.implementation?.registerCount == 6 &&
+            method.implementation?.instructions?.count { it.opcode == Opcode.RETURN_VOID } == 1
+    }
+}
+
 /** `VideoAutoPlay.h0(VideoTextureView)` — the texture-view attach of the embedded player. */
 val sponsorSkipViewSetupFingerprint = fingerprint {
     returns("Z")
