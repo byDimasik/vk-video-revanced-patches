@@ -1953,6 +1953,7 @@ private fun skipButtonSmali(): String = """
         new-array v7, v4, [I
         invoke-virtual {v1, v6}, Landroid/view/View;->getLocationInWindow([I)V
         invoke-virtual {v3, v7}, Landroid/view/View;->getLocationInWindow([I)V
+        const/4 v3, 0x0
         const/4 v4, 0x0
         aget v8, v6, v4
         aget v5, v7, v4
@@ -1987,7 +1988,13 @@ private fun skipButtonSmali(): String = """
         move v4, v5
 
         :w_max
+        invoke-virtual {v0}, Landroid/widget/TextView;->getMaxWidth()I
+        move-result v5
+        if-eq v5, v4, :w_set
         invoke-virtual {v0, v4}, Landroid/widget/TextView;->setMaxWidth(I)V
+        const/4 v3, 0x1
+
+        :w_set
         sub-int v4, v11, v9
         add-int v5, v6, v6
         sub-int v4, v4, v5
@@ -1996,7 +2003,13 @@ private fun skipButtonSmali(): String = """
         move v4, v5
 
         :h_max
+        invoke-virtual {v0}, Landroid/widget/TextView;->getMaxHeight()I
+        move-result v5
+        if-eq v5, v4, :h_set
         invoke-virtual {v0, v4}, Landroid/widget/TextView;->setMaxHeight(I)V
+        const/4 v3, 0x1
+
+        :h_set
         sub-int v14, v10, v12
         sub-int/2addr v14, v7
         sub-int v5, v10, v12
@@ -2029,13 +2042,34 @@ private fun skipButtonSmali(): String = """
         move v12, v5
 
         :y_done
+        iget v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->leftMargin:I
+        if-eq v5, v14, :margins
         iput v14, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->leftMargin:I
+        const/4 v3, 0x1
+
+        :margins
+        iget v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->topMargin:I
+        if-eq v5, v12, :zero
         iput v12, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->topMargin:I
+        const/4 v3, 0x1
+
+        :zero
+        iget v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->rightMargin:I
+        if-eqz v5, :gravity
         const/4 v5, 0x0
         iput v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->rightMargin:I
         iput v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->bottomMargin:I
-        const v5, 0x800030
-        iput v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->gravity:I
+        const/4 v3, 0x1
+
+        :gravity
+        iget v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->gravity:I
+        const v4, 0x800030
+        if-eq v5, v4, :changed
+        iput v4, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->gravity:I
+        const/4 v3, 0x1
+
+        :changed
+        if-eqz v3, :return
         invoke-virtual {v0}, Landroid/view/View;->requestLayout()V
 
         :return

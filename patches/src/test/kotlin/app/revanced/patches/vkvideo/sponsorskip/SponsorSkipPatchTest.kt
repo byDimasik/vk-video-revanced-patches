@@ -126,6 +126,7 @@ class SponsorSkipPatchTest {
         assertTrue(place.contains("if-eqz v1, :fallback"), "a null surface does not route to the fallback")
         assertEquals(3, Regex("if-eqz v1, :frame").findAll(place).count(), "the frame is not the terminal fallback")
         assertTrue(place.contains("setMaxWidth") && place.contains("setMaxHeight"), "the button is not capped to the surface")
+        assertTrue(place.contains("if-eqz v3, :return"), "the layout is requested even when nothing changed")
         assertTrue(button.replace(";;", ";").contains("invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V".replace(";;", ";")))
     }
 
@@ -138,6 +139,7 @@ class SponsorSkipPatchTest {
         )
         val layout = sponsorSkipSources()[SKIP_LAYOUT_CLASS]!!
         assertEquals(2, Regex("addOnLayoutChangeListener").findAll(layout).count(), "both slots are not watched")
+        assertTrue(layout.contains("if-nez v0, :created") && layout.contains(":created"), "the listener is not created on demand")
         assertTrue(layout.contains("if-eq v1, p1"), "the surface slot does not skip the same view")
         assertTrue(layout.contains("if-eq v1, p2"), "the button slot does not skip the same view")
         val stop = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!.substringAfter(".method private static stop")
@@ -178,7 +180,7 @@ class SponsorSkipPatchTest {
         assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("place:1"))
         assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("onSeek:2"))
         assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9", "watch:3")))
-        assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("listener", "listenerView")))
+        assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("view", "button", "listener", "listenerView", "buttonView")))
         assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
     }
 
