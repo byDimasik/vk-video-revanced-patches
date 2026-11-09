@@ -10,6 +10,7 @@ internal const val ROOT_FRAGMENT_CLASS = "Lapp/revanced/extension/vkvideo/ReVanc
 private const val GROUP_CLICK_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedAdsGroupClick;"
 private const val TOGGLE_LISTENER_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedToggleListener;"
 private const val BACK_CLICK_CLASS = "Lapp/revanced/extension/vkvideo/ReVancedBackClick;"
+internal const val CONTENT_ADD_CLASS = "Lapp/revanced/extension/vkvideo/ContentAdd;"
 
 /** Root-screen strings. The root is the ReVanced group list (one "Ads" row). */
 internal const val TITLE_ROOT = "ReVanced"
@@ -90,6 +91,7 @@ internal fun injectSettingsClasses(
         START_SETTINGS_CLASS to startSettingsSmali(opener),
         ROOT_FRAGMENT_CLASS to settingsFragmentSmali(chrome, ROOT_FRAGMENT_CLASS, ADS_SETTINGS_CLASS, TITLE_ROOT, "buildRootContent"),
         SETTINGS_FRAGMENT_CLASS to settingsFragmentSmali(chrome, SETTINGS_FRAGMENT_CLASS, ADS_SETTINGS_CLASS, TITLE_ADS_GROUP, "buildAdsContent"),
+        CONTENT_ADD_CLASS to contentAddSmali(),
         GROUP_CLICK_CLASS to groupClickSmali(opener, GROUP_CLICK_CLASS, SETTINGS_FRAGMENT_CLASS, "ads group row clicked"),
         TOGGLE_LISTENER_CLASS to toggleListenerSmali(switchListenerMethod),
         BACK_CLICK_CLASS to backClickSmali(),
@@ -125,7 +127,39 @@ private val requiredMethods = mapOf(
     GROUP_CLICK_CLASS to listOf("<init>", "onClick"),
     TOGGLE_LISTENER_CLASS to listOf("<init>"),
     BACK_CLICK_CLASS to listOf("<init>", "invoke"),
+    CONTENT_ADD_CLASS to listOf("<init>", "run"),
 )
+
+/** Defers the content `addView` out of the layout pass it may be joining. */
+internal fun contentAddSmali(): String = """
+    .class public final $CONTENT_ADD_CLASS
+    .super Ljava/lang/Object;
+    .implements Ljava/lang/Runnable;
+
+    .field private final frame:Landroid/view/ViewGroup;
+
+    .field private final content:Landroid/view/View;
+
+    .method public constructor <init>(Landroid/view/ViewGroup;Landroid/view/View;)V
+        .registers 3
+        .param p1, "frame"
+        .param p2, "content"
+
+        invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+        iput-object p1, p0, $CONTENT_ADD_CLASS->frame:Landroid/view/ViewGroup;
+        iput-object p2, p0, $CONTENT_ADD_CLASS->content:Landroid/view/View;
+        return-void
+    .end method
+
+    .method public run()V
+        .registers 2
+
+        iget-object v0, p0, $CONTENT_ADD_CLASS->frame:Landroid/view/ViewGroup;
+        iget-object v1, p0, $CONTENT_ADD_CLASS->content:Landroid/view/View;
+        invoke-virtual {v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
+        return-void
+    .end method
+""".trimIndent()
 
 private fun adsSettingsSmali(types: SettingsMenuTypes): String = """
     .class public final $ADS_SETTINGS_CLASS
@@ -437,7 +471,20 @@ internal fun settingsFragmentSmali(
         invoke-virtual {v0, v2}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v2
         check-cast v2, Landroid/view/ViewGroup;
+        if-eqz v2, :cond_revanced_content_added
+        invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v3
+        if-eqz v3, :cond_revanced_content_direct
+        new-instance v3, $CONTENT_ADD_CLASS
+        invoke-direct {v3, v2, v1}, $CONTENT_ADD_CLASS-><init>(Landroid/view/ViewGroup;Landroid/view/View;)V
+        invoke-virtual {v2, v3}, Landroid/view/View;->post(Ljava/lang/Runnable;)Z
+        move-result v4
+        goto :cond_revanced_content_added
+
+        :cond_revanced_content_direct
         invoke-virtual {v2, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
+
+        :cond_revanced_content_added
 
         const v2, 0x${chrome.legacyToolbarId.toString(16)}
         invoke-virtual {v0, v2}, Landroid/view/View;->findViewById(I)Landroid/view/View;

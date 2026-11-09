@@ -209,6 +209,41 @@ class SponsorSkipPatchTest {
     }
 
     @Test
+    fun `stop drops the button and show re-attaches a detached one`() {
+        val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
+        val stop = engine.substringAfter(".method private static stop")
+        assertTrue(stop.contains("if-eqz v0, :overlay"), "stop does not skip a missing button")
+        assertTrue(
+            stop.contains("invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
+            "stop does not detach through the view's own parent",
+        )
+        assertTrue(stop.contains("move-result-object v1\n    if-eqz v1, :overlay"), "stop does not skip a null parent")
+        assertTrue(stop.contains("if-eqz v0, :overlay\n    invoke-virtual {v0}, Landroid/view/View;->getParent()"), "the missing-button branch skips the parent read")
+        assertTrue(
+            stop.contains("check-cast v1, Landroid/view/ViewGroup;\n    invoke-virtual {v1, v0}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V"),
+            "stop does not remove from the resolved parent",
+        )
+        val cleared = stop.substringAfter(":overlay")
+        assertTrue(
+            cleared.contains("iput-object v0, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;"),
+            "the null-parent path leaves a stale button behind",
+        )
+
+        val show = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+            .substringAfter(".method public static show")
+            .substringBefore(".method public static hide")
+        assertTrue(show.contains("if-nez v2, :create"), "show does not create only for a missing button")
+        val existing = show.substringAfter("if-nez v2, :create").substringBefore(":create\n")
+        assertTrue(
+            existing.contains("invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
+            "show does not check for a detached button",
+        )
+        assertTrue(existing.contains("if-eqz v4, :update"), "an attached button re-attaches anyway")
+        assertTrue(existing.contains("goto :attach"), "a detached button does not fall into the attach block")
+        assertTrue(!show.substringAfter("\n    :create").substringBefore(":attach").contains("getParent"), "the create block reads the parent")
+    }
+
+    @Test
     fun `the tick evaluates while paused and gates only the skip`() {
         val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
         val tick = engine.substring(engine.indexOf(".method public static tick"), engine.indexOf(".method private static evaluate"))

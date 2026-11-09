@@ -2,6 +2,8 @@ package app.revanced.patches.vkvideo.sponsorskip.settings
 
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patches.vkvideo.settings.ToolbarChrome
+import app.revanced.patches.vkvideo.settings.CONTENT_ADD_CLASS
+import app.revanced.patches.vkvideo.settings.contentAddSmali
 import app.revanced.patches.vkvideo.settings.groupClickSmali
 import app.revanced.patches.vkvideo.settings.settingsFragmentSmali
 import app.revanced.patches.vkvideo.sponsorskip.BEHAVIOR_CLASS
@@ -72,6 +74,7 @@ internal fun settingsSources(
     GROUP_CLICK_CLASS to groupClickSmali(opener, GROUP_CLICK_CLASS, FRAGMENT_CLASS, "sponsorskip group row clicked"),
     ROOT_ROW_CLASS to rootRowSmali(),
     FRAGMENT_CLASS to settingsFragmentSmali(chrome, FRAGMENT_CLASS, SETTINGS_CLASS, TITLE_SPONSOR_SKIP, "buildSponsorSkipContent"),
+    CONTENT_ADD_CLASS to contentAddSmali(),
 )
 
 private val requiredMethods = mapOf(
@@ -85,6 +88,7 @@ private val requiredMethods = mapOf(
     GROUP_CLICK_CLASS to listOf("<init>:1", "onClick:1"),
     ROOT_ROW_CLASS to listOf("add:3"),
     FRAGMENT_CLASS to listOf("<init>:0", "onCreateView:3", "onViewCreated:2"),
+    CONTENT_ADD_CLASS to listOf("<init>:2", "run:0"),
 )
 
 /** The screen content class: category/behavior labels, the row update path and the tab layout. */
