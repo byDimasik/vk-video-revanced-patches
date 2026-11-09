@@ -1917,16 +1917,16 @@ private fun skipButtonSmali(): String = """
 
         :fallback
         iget-object v1, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
-        if-eqz v1, :return
+        if-eqz v1, :frame
         check-cast v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
         iget-object v1, v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->K:Ljava/lang/ref/WeakReference;
-        if-eqz v1, :return
+        if-eqz v1, :frame
         invoke-virtual {v1}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
         move-result-object v1
         check-cast v1, Landroid/view/View;
         invoke-static {v1}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
         move-result-object v1
-        if-nez v1, :frame
+        if-eqz v1, :frame
         goto :live
 
         :frame
@@ -2144,14 +2144,14 @@ private fun skipLayoutSmali(): String = """
 
         if-eqz p0, :return
         iget-object v0, p0, $SKIP_STATE_CLASS->listener:Landroid/view/View${'$'}OnLayoutChangeListener;
-        if-eqz v0, :created
+        if-nez v0, :created
         new-instance v0, $SKIP_LAYOUT_CLASS
         invoke-direct {v0, p0}, $SKIP_LAYOUT_CLASS;-><init>($SKIP_STATE_CLASS;)V
         iput-object v0, p0, $SKIP_STATE_CLASS->listener:Landroid/view/View${'$'}OnLayoutChangeListener;
 
         :created
         iget-object v1, p0, $SKIP_STATE_CLASS->listenerView:Landroid/view/View;
-        if-ne v1, p1, :surface
+        if-eq v1, p1, :surface
         if-eqz v1, :surface_add
         invoke-virtual {v1, v0}, Landroid/view/View;->removeOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
 
@@ -2162,7 +2162,7 @@ private fun skipLayoutSmali(): String = """
 
         :surface
         iget-object v1, p0, $SKIP_STATE_CLASS->buttonView:Landroid/view/View;
-        if-ne v1, p2, :return
+        if-eq v1, p2, :return
         if-eqz v1, :button_add
         invoke-virtual {v1, v0}, Landroid/view/View;->removeOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
 
