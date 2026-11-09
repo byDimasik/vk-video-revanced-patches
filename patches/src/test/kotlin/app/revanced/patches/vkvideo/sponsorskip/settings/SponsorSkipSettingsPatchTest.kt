@@ -1,5 +1,6 @@
 package app.revanced.patches.vkvideo.sponsorskip.settings
 
+import app.revanced.patches.vkvideo.settings.CONTENT_ADD_CLASS
 import app.revanced.patches.vkvideo.settings.extractToolbarChrome
 import app.revanced.patches.vkvideo.settings.navOpenerFingerprint
 import app.revanced.patches.vkvideo.settings.resolveNavOpener
@@ -234,5 +235,69 @@ class SponsorSkipSettingsPatchTest {
         for (behavior in 0..2) {
             assertTrue(literal.contains(Behavior.literal(behavior)))
         }
+    }
+
+    private val nonWriting = setOf(
+        "check-cast", "throw", "return", "return-object", "return-wide", "return-void",
+        "filled-new-array", "filled-new-array/range",
+    )
+
+    private fun writes(instruction: com.android.tools.smali.dexlib2.iface.instruction.Instruction, register: Int): Boolean =
+        instruction.opcode.toString() !in nonWriting &&
+            (instruction as? com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction)?.registerA == register
+
+    private fun assertAddArgumentsComeFromConstructors(
+        method: com.android.tools.smali.dexlib2.iface.Method,
+        expectedSites: Int,
+    ) {
+        val instructions = method.implementation!!.instructions.toList()
+        var sites = 0
+        instructions.forEachIndexed { index, instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            if (instruction.opcode != Opcode.INVOKE_VIRTUAL || (reference as? MethodReference)?.name != "addView") return@forEachIndexed
+            val argument = (instruction as FiveRegisterInstruction).registerD
+            val definition = instructions.take(index).asReversed().firstOrNull { writes(it, argument) }
+            assertNotNull(definition, "addView argument v$argument at $index has no writer")
+            assertTrue(
+                definition!!.opcode == Opcode.NEW_INSTANCE || definition.opcode == Opcode.MOVE_RESULT_OBJECT,
+                "addView argument v$argument at $index is defined by ${definition.opcode}",
+            )
+            sites++
+        }
+        assertEquals(expectedSites, sites, "add sites in ${method.name}")
+    }
+
+    @Test
+    fun `every injected addView gets a constructed child`() {
+        val fixture = Fixture()
+        fixture.apply()
+        val fragment = fixture.context.classDefs.first { it.type == FRAGMENT_CLASS }
+        val onCreateView = fragment.methods.first { it.name == "onCreateView" }
+        val onViewCreated = fragment.methods.first { it.name == "onViewCreated" }
+
+        assertAddArgumentsComeFromConstructors(onCreateView, 1)
+        assertAddArgumentsComeFromConstructors(onViewCreated, 1)
+    }
+
+    @Test
+    fun `content is added after the layout pass and only into an existing frame`() {
+        val sources = Fixture().sources
+        val fragment = sources[FRAGMENT_CLASS]!!
+        val content = fragment.substringAfter("findViewById(I)Landroid/view/View;")
+            .substringBefore(":cond_revanced_toolbar_hidden")
+
+        assertTrue(content.contains("if-eqz v2, :cond_revanced_content_added"), "the frame lookup is unguarded")
+        assertTrue(content.contains("getParent()Landroid/view/ViewParent;"), "attachment is not consulted")
+        assertTrue(content.contains("new-instance v3, $CONTENT_ADD_CLASS"), "the deferred add is not posted")
+        assertTrue(content.contains("post(Ljava/lang/Runnable;)Z"), "the content is not deferred to post")
+        assertTrue(
+            content.contains("invoke-virtual {v2, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V"),
+            "the detached frame does not get the direct add",
+        )
+
+        val add = sources[CONTENT_ADD_CLASS]!!
+        assertTrue(add.contains(".implements Ljava/lang/Runnable;"), "the deferred add is not a Runnable")
+        assertTrue(add.contains("->frame:Landroid/view/ViewGroup;"))
+        assertTrue(add.contains("->content:Landroid/view/View;"))
     }
 }

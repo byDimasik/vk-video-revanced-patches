@@ -1302,6 +1302,8 @@ private fun skipEngineSmali(): String = """
         if-eqz v1, :overlay
         check-cast v1, Landroid/view/ViewGroup;
         invoke-virtual {v1, v0}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V
+        const/4 v0, 0x0
+        iput-object v0, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
 
         :overlay
         const/4 v0, 0x0
@@ -1865,10 +1867,9 @@ private fun skipButtonSmali(): String = """
         aget-object v1, v1, p1
 
         iget-object v2, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
-        if-nez v2, :update
-
         invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
         move-result-object v3
+        if-eqz v2, :have_button
         new-instance v2, Landroid/widget/TextView;
         invoke-direct {v2, v3}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
         const v4, -0x33ffffff
@@ -1883,7 +1884,14 @@ private fun skipButtonSmali(): String = """
         const/16 v4, 0x11
         invoke-virtual {v2, v4}, Landroid/widget/TextView;->setGravity(I)V
         iput-object v2, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
+        goto :attach
 
+        :have_button
+        invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v4
+        if-eqz v4, :update
+
+        :attach
         invoke-virtual {v0}, Landroid/view/View;->getRootView()Landroid/view/View;
         move-result-object v4
         const v5, 0x1020002

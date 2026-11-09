@@ -209,6 +209,41 @@ class SponsorSkipPatchTest {
     }
 
     @Test
+    fun `stop drops the button and show re-attaches a detached one`() {
+        val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
+        val stop = engine.substringAfter(".method private static stop")
+        assertTrue(stop.contains("if-eqz v0, :overlay"), "stop does not skip a missing button")
+        assertTrue(
+            stop.contains("invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
+            "stop does not detach through the view's own parent",
+        )
+        assertTrue(stop.contains("move-result-object v1\n    if-eqz v1, :overlay"), "stop does not bail on a null parent")
+        assertTrue(
+            stop.contains("check-cast v1, Landroid/view/ViewGroup;\n    invoke-virtual {v1, v0}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V"),
+            "stop does not remove from the resolved parent",
+        )
+        assertTrue(
+            stop.contains("iput-object v0, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;"),
+            "stop leaves a stale button behind",
+        )
+
+        val show = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+            .substringAfter(".method public static show")
+            .substringBefore(".method public static hide")
+        assertTrue(show.contains("if-eqz v2, :have_button"), "show does not branch on an existing button")
+        val existing = show.substringAfter("\n    :have_button").substringBefore(":attach")
+        assertTrue(
+            existing.contains("invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
+            "show does not check for a detached button",
+        )
+        assertTrue(existing.contains("if-eqz v4, :update"), "an attached button re-attaches anyway")
+        assertTrue(
+            show.substringAfter("iput-object v2, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;").contains("goto :attach"),
+            "a new button does not fall into the attach block",
+        )
+    }
+
+    @Test
     fun `the tick evaluates while paused and gates only the skip`() {
         val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
         val tick = engine.substring(engine.indexOf(".method public static tick"), engine.indexOf(".method private static evaluate"))
