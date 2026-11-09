@@ -3,7 +3,9 @@ package app.revanced.patches.vkvideo.e2e
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patches.vkvideo.sponsorskip.SEEK_BAR_ID
 import app.revanced.patches.vkvideo.sponsorskip.SEEK_BAR_VIEW_ID
+import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionListFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS
+import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionDrawableFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipVideoHandoffFingerprint
@@ -142,6 +144,91 @@ class RealApkSponsorSkipTest {
             assertEquals(SEEK_BAR_VIEW_ID ushr 16, SEEK_BAR_ID ushr 16, "the two ids drifted to different types")
             assertTrue(SEEK_BAR_VIEW_ID != SEEK_BAR_ID)
         }
+    }
+
+    @Test
+    fun testSectionHostsOnRealApk() {
+        val apkFile = findApkFile()
+        val isStrictE2e = System.getProperty("vkvideo.e2e") == "true" || System.getenv("VKVIDEO_E2E") == "true"
+
+        if (isStrictE2e) {
+            check(apkFile != null && apkFile.exists()) {
+                "VK Video target APK snapshot (vkvideo-*.apk) not found in .cache"
+            }
+        } else {
+            assumeTrue(
+                apkFile != null && apkFile.exists(),
+                "Skipping RealApkSponsorSkipTest: VK Video target APK snapshot not found in .cache",
+            )
+        }
+
+        val patchedDir = Files.createTempDirectory("patched-sections-test").toFile().apply { deleteOnExit() }
+        val constructor = BytecodePatchContext::class.java.getDeclaredConstructor(File::class.java, File::class.java)
+        constructor.isAccessible = true
+        val context = constructor.newInstance(apkFile, patchedDir)
+        context.initializeCache()
+
+        listOf("Loo7/c;", "Lyo7/c;").forEach { descriptor ->
+            val drawable = context.classDefs.firstOrNull { it.type == descriptor }
+            assertNotNull(drawable, "the section drawable $descriptor is gone")
+            assertEquals("Landroid/graphics/drawable/LayerDrawable;", drawable!!.superclass, "$descriptor is no longer a layer list")
+            val ids = drawable.methods
+                .first { it.name == "<init>" }
+                .implementation!!.instructions
+                .filter { it.opcode == Opcode.CONST || it.opcode == Opcode.CONST_HIGH16 }
+                .mapNotNull { (it as? com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction)?.narrowLiteral }
+            assertTrue(ids.contains(0x1020000), "$descriptor lost layer id 0x1020000")
+        }
+
+        val page = context.classDefs.firstOrNull { it.type == "Lone/video/controls/views/seek/a;" }
+        assertNotNull(page, "the page-player seek binder is gone")
+        assertTrue(
+            page!!.fields.any { it.name == "a" && it.type == "Landroidx/appcompat/widget/AppCompatSeekBar;" },
+            "the page-player bar field moved",
+        )
+
+        assertNotNull(sponsorSkipSectionDrawableFingerprint.matchOrNull(context), "composite section install not found")
+        assertNotNull(sponsorSkipSectionListFingerprint.matchOrNull(context), "page section install not found")
+
+        applyPatches(context, sponsorSkipPatch)
+
+        val composite = sponsorSkipSectionDrawableFingerprint.getMethod(context)
+        val compositeInstructions = composite.getInstructions()
+        val compositeReturns = compositeInstructions.count { it.opcode == Opcode.RETURN_VOID }
+        assertEquals(1, compositeReturns, "the composite setter gained a second return")
+        val compositeHook = compositeInstructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.contains("/SeekbarSections;->apply") == true
+        }
+        assertTrue(
+            compositeHook > 0 && compositeInstructions[compositeHook + 1].opcode == Opcode.RETURN_VOID,
+            "the composite hook is not immediately before the return: hook=$compositeHook size=${compositeInstructions.size} " +
+                "seq=${compositeInstructions.map { it.opcode }} full=${compositeInstructions.joinToString(" | ") { ins -> ins.opcode.toString() + ":" + ((ins as? ReferenceInstruction)?.reference?.toString() ?: "") }}",
+        )
+        assertEquals(Opcode.INVOKE_STATIC, compositeInstructions[compositeHook].opcode)
+        val compositeRegisters = compositeInstructions[compositeHook] as FiveRegisterInstruction
+        assertEquals(1, compositeRegisters.registerC)
+        assertEquals(2, compositeRegisters.registerD)
+
+        val pageMethod = sponsorSkipSectionListFingerprint.getMethod(context)
+        val pageInstructions = pageMethod.getInstructions()
+        val pageReturns = pageInstructions.count { it.opcode == Opcode.RETURN_VOID }
+        assertEquals(2, pageReturns, "the page-player setter changed shape")
+        val pageHook = pageInstructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.contains("/SeekbarSections;->apply") == true
+        }
+        assertTrue(pageHook > 0 && pageInstructions[pageHook + 1].opcode == Opcode.RETURN_VOID, "the page-player hook is not immediately before its return")
+        assertEquals(Opcode.INVOKE_STATIC, pageInstructions[pageHook].opcode)
+        assertEquals(Opcode.MOVE_RESULT_OBJECT, pageInstructions[pageHook - 1].opcode)
+        assertEquals(
+            "Landroid/widget/ProgressBar;->getProgressDrawable()Landroid/graphics/drawable/Drawable;",
+            (pageInstructions[pageHook - 2] as ReferenceInstruction).reference.toString(),
+        )
+        assertTrue(
+            pageInstructions[pageHook - 3].opcode == Opcode.IGET_OBJECT &&
+                (pageInstructions[pageHook - 3] as ReferenceInstruction).reference.toString() ==
+                "Lone/video/controls/views/seek/a;->a:Landroidx/appcompat/widget/AppCompatSeekBar;",
+            "the page hook does not read the bar field",
+        )
     }
 
     private fun containsId(bytes: ByteArray, id: Int): Boolean {

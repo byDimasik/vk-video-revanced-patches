@@ -2,7 +2,9 @@ package app.revanced.patches.vkvideo.sponsorskip
 
 import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod
 import app.revanced.patcher.extensions.addInstruction
+import app.revanced.patcher.extensions.addInstructions
 import app.revanced.patcher.patch.bytecodePatch
+import com.android.tools.smali.dexlib2.Opcode
 import app.revanced.patches.vkvideo.settings.parameterWidth
 
 val sponsorSkipPatch = bytecodePatch(
@@ -32,7 +34,27 @@ val sponsorSkipPatch = bytecodePatch(
         sponsorSkipReleaseFingerprint.method.insertCall(
             "$SKIP_ENGINE_CLASS->onRelease(Lp73/a;)V",
         )
+        sponsorSkipSectionDrawableFingerprint.method.insertBeforeReturns(
+            "invoke-static {p0, p1}, $SEEK_SECTIONS_CLASS->apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V",
+        )
+        sponsorSkipSectionListFingerprint.method.insertBeforeReturns(
+            "iget-object v0, p0, Lone/video/controls/views/seek/a;->a:Landroidx/appcompat/widget/AppCompatSeekBar;",
+            "invoke-virtual {v0}, Landroid/widget/ProgressBar;->getProgressDrawable()Landroid/graphics/drawable/Drawable;",
+            "move-result-object v1",
+            "invoke-static {v0, v1}, $SEEK_SECTIONS_CLASS->apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V",
+        )
     }
+}
+
+/**
+ * Inserts [instructions] before every `RETURN_VOID` of this method. The bodies are
+ * post-body at that point, so they may clobber locals; the frame stays as is.
+ */
+private fun MutableMethod.insertBeforeReturns(vararg instructions: String) {
+    val returns = implementation!!.instructions.filter { it.opcode == Opcode.RETURN_VOID }
+    check(returns.isNotEmpty()) { "${definingClass}->$name has no return" }
+    val block = instructions.joinToString("\n")
+    returns.forEach { addInstructions(implementation!!.instructions.indexOf(it), block) }
 }
 
 /**

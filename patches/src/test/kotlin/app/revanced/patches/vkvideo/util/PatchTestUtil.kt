@@ -41,6 +41,8 @@ object PatchTestUtil {
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewSetupFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipHolderFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionDrawableFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionListFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.settings.rootContentFingerprint,
         ).forEach { fingerprintMatchField.set(it, null) }
         val tempApk = Files.createTempFile("test-app", ".apk").toFile().apply { deleteOnExit() }
@@ -820,6 +822,54 @@ object PatchTestUtil {
 
         .method public abstract getDuration()I
         .end method
+        """.trimIndent(),
+
+        """
+        .class public final Lone/video/controls/view/seekbar/ProgressSeekBarView;
+        .super Landroid/widget/ProgressBar;
+        """.trimIndent(),
+
+        """
+        .class public final Lone/video/controls/view/seekbar/CompositeSeekBarView;
+        .super Landroid/widget/FrameLayout;
+
+        .field public final h:Lone/video/controls/view/seekbar/ProgressSeekBarView;
+
+        .method public final setProgressDrawable(Landroid/graphics/drawable/Drawable;)V
+            .registers 3
+
+            iget-object v0, p0, Lone/video/controls/view/seekbar/CompositeSeekBarView;->h:Lone/video/controls/view/seekbar/ProgressSeekBarView;
+            return-void
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public final Lone/video/controls/views/seek/a;
+        .super Ljava/lang/Object;
+
+        .field public final a:Landroidx/appcompat/widget/AppCompatSeekBar;
+
+        .method public final g(ILjava/util/ArrayList;)V
+            .locals 10
+
+            invoke-virtual {p2}, Ljava/util/ArrayList;->isEmpty()Z
+            move-result v0
+            if-eqz v0, :end
+            return-void
+
+            :end
+            return-void
+        .end method
+        """.trimIndent(),
+
+        """
+        .class public final Loo7/c;
+        .super Landroid/graphics/drawable/LayerDrawable;
+        """.trimIndent(),
+
+        """
+        .class public final Lyo7/c;
+        .super Landroid/graphics/drawable/LayerDrawable;
         """.trimIndent(),
 
         """

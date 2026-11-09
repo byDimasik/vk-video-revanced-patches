@@ -74,3 +74,41 @@ val sponsorSkipHolderFingerprint = fingerprint {
             method.implementation?.instructions?.firstOrNull()?.opcode == Opcode.IGET_OBJECT
     }
 }
+
+/**
+ * `CompositeSeekBarView.setProgressDrawable(Drawable)` — the section-layer install
+ * point. The body forwards to field `h` (`ProgressSeekBarView`), so a reordered
+ * field set would show up here as a different receiver.
+ */
+val sponsorSkipSectionDrawableFingerprint = fingerprint {
+    returns("V")
+    parameters("Landroid/graphics/drawable/Drawable;")
+    custom { method, classDef ->
+        classDef.type == "Lone/video/controls/view/seekbar/CompositeSeekBarView;" &&
+            method.name == "setProgressDrawable" &&
+            method.implementation?.registerCount == 3 &&
+            method.implementation?.instructions?.any {
+                it.opcode == Opcode.IGET_OBJECT &&
+                    (it as com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction)
+                        .reference.toString() == "Lone/video/controls/view/seekbar/CompositeSeekBarView;->h:Lone/video/controls/view/seekbar/ProgressSeekBarView;"
+            } == true
+    }
+}
+
+/**
+ * The page player's section install `one/video/controls/views/seek/a.g(int, ArrayList)`.
+ * The page and composite players each own a structurally identical drawable family, so
+ * the class check is what keeps the two apart.
+ */
+val sponsorSkipSectionListFingerprint = fingerprint {
+    returns("V")
+    parameters("I", "Ljava/util/ArrayList;")
+    custom { method, classDef ->
+        classDef.type == "Lone/video/controls/views/seek/a;" &&
+            method.name == "g" &&
+            method.implementation?.registerCount == 13 &&
+            classDef.fields.any {
+                it.name == "a" && it.type == "Landroidx/appcompat/widget/AppCompatSeekBar;"
+            }
+    }
+}
