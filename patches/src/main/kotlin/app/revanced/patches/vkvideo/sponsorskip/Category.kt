@@ -19,6 +19,11 @@ internal object Category {
         0xFF0202ED.toInt(),
     )
 
+    /**
+     * Toast labels, matching the RU «Пропустить:» button rather than the EN settings rows.
+     */
+    val LABELS = arrayOf("Спонсор", "Самореклама", "Интро", "Аутро")
+
     fun name(category: Int): String = when (category) {
         SPONSOR -> "sponsor"
         SELFPROMO -> "selfpromo"
