@@ -8,6 +8,7 @@ import app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionDrawableFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint
+import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSeekFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipVideoHandoffFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipHolderFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewAttachedFingerprint
@@ -72,6 +73,10 @@ class RealApkSponsorSkipTest {
         assertNotNull(sponsorSkipHolderFingerprint.matchOrNull(context), "preview attach not found")
         assertNotNull(sponsorSkipReleaseFingerprint.matchOrNull(context), "release not found")
 
+        val seek = sponsorSkipSeekFingerprint.matchOrNull(context)
+        assertNotNull(seek, "seek entry not found")
+        assertEquals(1, seek!!.method.implementation!!.instructions.count { it.opcode == Opcode.RETURN_VOID }, "the seek entry gained a return")
+
         applyPatches(context, sponsorSkipPatch)
 
         assertHook(sponsorSkipVideoHandoffFingerprint.getMethod(context), "onVideoChanged", 3, 4)
@@ -79,6 +84,15 @@ class RealApkSponsorSkipTest {
         assertHook(sponsorSkipViewSetupFingerprint.getMethod(context), "onViewAttached", 1, 2)
         assertHook(sponsorSkipHolderFingerprint.getMethod(context), "onViewAttached", 3, 4)
         assertHook(sponsorSkipReleaseFingerprint.getMethod(context), "onRelease", 2, null)
+
+        val seekInstructions = seek.method.getInstructions()
+        val seekAt = seekInstructions.indexOfFirst { it.opcode == Opcode.RETURN_VOID } - 1
+        val seekHook = seekInstructions[seekAt] as FiveRegisterInstruction
+        assertEquals(Opcode.INVOKE_STATIC, seekHook.opcode, "the seek hook is not before the return")
+        assertEquals(3, seekHook.registerC)
+        assertEquals(4, seekHook.registerD)
+        assertEquals(5, seekHook.registerE)
+        assertEquals(Opcode.RETURN_VOID, seekInstructions[seekAt + 1].opcode)
     }
 
     @Test

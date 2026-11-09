@@ -808,6 +808,25 @@ object PatchTestUtil {
         """.trimIndent(),
 
         """
+        .class public abstract Lone/video/player/BaseVideoPlayer;
+        .super Ljava/lang/Object;
+        .implements Lp73/a;
+
+        .field public u0:J
+
+        .method public final a(J)V
+            .locals 3
+
+            iput-wide p1, p0, Lone/video/player/BaseVideoPlayer;->u0:J
+            invoke-virtual {p0, p1, p2}, Lone/video/player/BaseVideoPlayer;->E0(J)V
+            return-void
+        .end method
+
+        .method public abstract E0(J)V
+        .end method
+        """.trimIndent(),
+
+        """
         .class public interface abstract Lcom/vk/dto/common/VideoFile;
         .super Ljava/lang/Object;
 
