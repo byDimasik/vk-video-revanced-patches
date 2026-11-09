@@ -127,11 +127,20 @@ class SponsorSkipPatchTest {
     }
 
     @Test
-    fun `the layout listener follows the view and detaches on stop`() {
+    fun `the layout listener follows the surface and the button, then detaches`() {
         val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
-        assertTrue(button.replace(";;", ";").contains("$SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;)V".replace(";;", ";")))
-        assertTrue(sponsorSkipSources()[SKIP_LAYOUT_CLASS]!!.contains("removeOnLayoutChangeListener"))
-        assertTrue(sponsorSkipSources()[SKIP_ENGINE_CLASS]!!.contains("removeOnLayoutChangeListener"))
+        assertTrue(
+            button.replace(";;", ";")
+                .contains("$SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;)V".replace(";;", ";")),
+        )
+        val layout = sponsorSkipSources()[SKIP_LAYOUT_CLASS]!!
+        assertEquals(2, Regex("addOnLayoutChangeListener").findAll(layout).count(), "both slots are not watched")
+        assertTrue(layout.contains("if-ne v1, p1"), "the surface slot does not skip the same view")
+        assertTrue(layout.contains("if-ne v1, p2"), "the button slot does not skip the same view")
+        val stop = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!.substringAfter(".method private static stop")
+        assertEquals(2, Regex("removeOnLayoutChangeListener").findAll(stop).count(), "stop leaves a listener attached")
+        assertTrue(stop.contains("->listenerView:Landroid/view/View;"))
+        assertTrue(stop.contains("->buttonView:Landroid/view/View;"))
     }
 
     @Test
@@ -143,6 +152,7 @@ class SponsorSkipPatchTest {
         val skipAt = tick.indexOf("->skip(")
         assertTrue(evaluateAt >= 0 && evaluateAt < playingAt, "the scan is still gated by playback")
         assertTrue(skipAt > playingAt, "skip is not gated by playback")
+        assertTrue(tick.substring(playingAt, skipAt).contains("if-eqz v8, :repost"), "the playing result does not guard the skip")
     }
 
     @Test
@@ -164,7 +174,7 @@ class SponsorSkipPatchTest {
     fun `the guards cover the added members`() {
         assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("place:1"))
         assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("onSeek:2"))
-        assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9")))
+        assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9", "watch:3")))
         assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("listener", "listenerView")))
         assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
     }

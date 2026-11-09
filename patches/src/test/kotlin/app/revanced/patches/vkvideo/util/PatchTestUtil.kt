@@ -38,6 +38,7 @@ object PatchTestUtil {
             app.revanced.patches.vkvideo.ad.catalog.catalogSectionAdBannerGetterFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipVideoHandoffFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewAttachedFingerprint,
+            app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSeekFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipViewSetupFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipHolderFingerprint,
             app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint,
