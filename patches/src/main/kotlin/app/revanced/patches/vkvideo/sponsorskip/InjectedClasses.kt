@@ -1918,6 +1918,8 @@ private fun skipButtonSmali(): String = """
         :fallback
         iget-object v1, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
         if-eqz v1, :frame
+        instance-of v4, v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
+        if-eqz v4, :frame
         check-cast v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
         iget-object v1, v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->K:Ljava/lang/ref/WeakReference;
         if-eqz v1, :frame
