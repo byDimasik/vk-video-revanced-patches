@@ -287,6 +287,10 @@ class SponsorSkipSettingsPatchTest {
             .substringBefore(":cond_revanced_toolbar_hidden")
 
         assertTrue(content.contains("if-eqz v2, :cond_revanced_content_added"), "the frame lookup is unguarded")
+        assertTrue(
+            content.contains("if-eqz v3, :cond_revanced_content_direct"),
+            "a frame without a parent does not take the direct add",
+        )
         assertTrue(content.contains("getParent()Landroid/view/ViewParent;"), "attachment is not consulted")
         assertTrue(content.contains("new-instance v3, $CONTENT_ADD_CLASS"), "the deferred add is not posted")
         assertTrue(content.contains("post(Ljava/lang/Runnable;)Z"), "the content is not deferred to post")
@@ -297,6 +301,13 @@ class SponsorSkipSettingsPatchTest {
 
         val add = sources[CONTENT_ADD_CLASS]!!
         assertTrue(add.contains(".implements Ljava/lang/Runnable;"), "the deferred add is not a Runnable")
+        val run = add.substringAfter(".method public run()V")
+        assertTrue(run.contains("->frame:Landroid/view/ViewGroup;"), "run does not read the frame")
+        assertTrue(run.contains("->content:Landroid/view/View;"), "run does not read the content")
+        assertTrue(
+            run.contains("invoke-virtual {v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V"),
+            "run does not add the content to the frame",
+        )
         assertTrue(add.contains("->frame:Landroid/view/ViewGroup;"))
         assertTrue(add.contains("->content:Landroid/view/View;"))
     }
