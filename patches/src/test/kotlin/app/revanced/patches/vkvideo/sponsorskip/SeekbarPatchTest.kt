@@ -55,7 +55,7 @@ class SeekbarPatchTest {
         val page = apply.indexOf("instance-of v0, p1, Lyo7/c;")
         val walk = apply.indexOf("getNumberOfLayers()I")
         assertTrue(composite > 0 && page > composite, "the family guards are missing")
-        assertTrue(apply.contains("if-eqz v0, :family"), "a composite drawable does not reach the installer")
+        assertTrue(apply.contains("if-nez v0, :family"), "a composite drawable does not reach the installer")
         assertTrue(apply.contains("if-eqz v0, :return"), "a foreign drawable is not rejected")
         assertTrue(walk > page, "the walk must follow the family guard")
         assertFalse(apply.contains("$SKIP_ENGINE_CLASS->active()"), "apply still bails on a missing state")

@@ -1749,7 +1749,7 @@ private fun seekbarSectionsSmali(): String = """
 
         if-eqz p1, :return
         instance-of v0, p1, Loo7/c;
-        if-eqz v0, :family
+        if-nez v0, :family
         instance-of v0, p1, Lyo7/c;
         if-eqz v0, :return
 
