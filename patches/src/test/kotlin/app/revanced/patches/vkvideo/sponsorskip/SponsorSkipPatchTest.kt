@@ -191,6 +191,77 @@ class SponsorSkipPatchTest {
     }
 
     @Test
+    fun `show measures the label and writes the measured size before revealing it`() {
+        val show = showBody()
+        assertTrue(show.contains("Landroid/view/View;->measure(II)V"), "the button is never measured")
+        assertTrue(show.contains("getMeasuredWidth") && show.contains("getMeasuredHeight"), "the measurement is not read")
+        assertTrue(show.contains("->width:I") && show.contains("->height:I"), "the measured size is not written")
+    }
+
+    @Test
+    fun `the button stays invisible until its size is written and placed`() {
+        val show = showBody()
+        val invisibleAt = show.indexOf("invoke-virtual {v2, v4}, Landroid/view/View;->setVisibility(I)V")
+        val measureAt = show.indexOf("->measure(II)V")
+        val writeAt = show.indexOf("->width:I")
+        val placeAt = show.indexOf("->place($SKIP_STATE_CLASS)V")
+        val visibleAt = show.lastIndexOf("setVisibility")
+        assertTrue(invisibleAt in 0 until measureAt, "the button is measured while visible")
+        assertTrue(measureAt < writeAt, "the size is written before measuring")
+        assertTrue(writeAt < placeAt && placeAt < visibleAt, "the reveal does not follow the write and the place")
+        assertTrue(show.substringAfter(":m_params").contains("const/4 v4, 0x0"), "the reveal is not a VISIBLE flip")
+    }
+
+    @Test
+    fun `the measure block runs on a reused button`() {
+        val show = showBody()
+        assertTrue(show.substringAfter("\n    :update").contains("->measure(II)V"), "the measure sits in the create branch")
+        assertTrue(!show.substringAfter("\n    :create").substringBefore(":attach").contains("->measure(II)V"), "the create branch measures")
+    }
+
+    @Test
+    fun `the params carry the measured width and are written after the attach`() {
+        val show = showBody()
+        assertTrue(show.contains("iput v6, v5, Landroid/view/ViewGroup\$LayoutParams;->width:I"), "the measured width is not the one written")
+        assertTrue(show.contains("const/4 v4, 0x1\n    if-ge v6, v4, :m_params"), "the written width has no positive floor")
+        val addAt = show.indexOf("->addView(")
+        val writeAt = show.indexOf("->width:I")
+        assertTrue(addAt in 0 until writeAt, "the params are written before the view is attached")
+    }
+
+    @Test
+    fun `the text style is re-applied on the reused button`() {
+        val update = showBody().substringAfter("\n    :update")
+        assertTrue(update.contains("->setPadding(IIII)V"), "padding is not re-applied on re-show")
+        assertTrue(update.contains("->setTextSize(IF)V"), "text size is not re-applied on re-show")
+    }
+
+    @Test
+    fun `place falls back to the layout params when the button has no extent`() {
+        val place = placeBody()
+        assertTrue(place.contains("if-lez v12, :w_measured"), "a zero width does not fall back")
+        assertTrue(place.contains("iget v12, v2, Landroid/widget/FrameLayout\$LayoutParams;->width:I"), "the width fallback reads another field")
+        assertTrue(place.contains("if-lez v13, :h_measured"), "a zero height does not fall back")
+        assertTrue(place.contains("iget v13, v2, Landroid/widget/FrameLayout\$LayoutParams;->height:I"), "the height fallback reads another field")
+    }
+
+    @Test
+    fun `measure and place share one width floor`() {
+        val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+        assertEquals(1, Regex("\\.method public static minWidth").findAll(button).count(), "the floor helper is duplicated")
+        assertTrue(showBody().contains("->minWidth(Landroid/content/Context;I)I"), "the measure ignores the floor helper")
+        assertTrue(placeBody().contains("->minWidth(Landroid/content/Context;I)I"), "the place ignores the floor helper")
+    }
+
+    @Test
+    fun `the height spec is reduced by the inset and floored at one`() {
+        val show = showBody()
+        assertTrue(show.contains("sub-int v7, v10, v11") && show.contains("sub-int/2addr v7, v11"), "the height spec ignores the inset")
+        assertTrue(show.contains("const/4 v4, 0x1\n    if-ge v7, v4, :m_h"), "the height spec has no floor")
+        assertTrue(show.contains("if-le v7, v9, :m_clamp"), "the measured height is not clamped to the available one")
+    }
+
+    @Test
     fun `the layout listener follows the surface and the button, then detaches`() {
         val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
         assertTrue(
@@ -274,6 +345,7 @@ class SponsorSkipPatchTest {
     @Test
     fun `the guards cover the added members`() {
         assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("place:1"))
+        assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("minWidth:2"))
         assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("onSeek:2"))
         assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("skip:3"))
         assertTrue(requiredMethods.getValue(CATEGORY_CLASS).contains("label:1"))
@@ -282,6 +354,14 @@ class SponsorSkipPatchTest {
         assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("view", "button", "listener", "listenerView", "buttonView")))
         assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
     }
+
+    private fun showBody(): String = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+        .substringAfter(".method public static show")
+        .substringBefore(".method public static hide")
+
+    private fun placeBody(): String = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+        .substringAfter(".method public static place")
+        .substringBefore(".method private static sized")
 
     /** Asserts `fetch → move-result R → if-eqz R, :return` at [at]. */
     private fun assertNullGuard(
