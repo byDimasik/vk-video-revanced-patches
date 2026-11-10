@@ -107,7 +107,7 @@ internal val requiredMethods = mapOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
         "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0",
     ),
-    SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "place:1"),
+    SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1"),
     SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
     SKIP_LAYOUT_CLASS to listOf("<init>:1", "onLayoutChange:9", "watch:3"),
     PLAYED_SECTIONS_CLASS to listOf("<init>:1", "draw:1", "num:2", "setAlpha:1", "setColorFilter:1", "getOpacity:0"),
@@ -1095,6 +1095,22 @@ private fun skipEngineSmali(): String = """
         if-eqz v8, :auto
         const/4 v10, 0x2
         if-eq v8, v10, :hidden
+        iget-object v10, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
+        if-eqz v10, :log_show
+        invoke-virtual {v10}, Landroid/view/View;->getVisibility()I
+        move-result v10
+        if-eqz v10, :reveal
+
+        :log_show
+        aget-object v9, v3, v7
+        iget-wide v10, v9, $SEGMENT_CLASS->startMs:J
+        invoke-static/range {v10 .. v11}, Ljava/lang/String;->valueOf(J)Ljava/lang/String;
+        move-result-object v10
+        invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        const-string v10, "show"
+        invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+
+        :reveal
         invoke-static {p0, v7}, $SKIP_BUTTON_CLASS;->show($SKIP_STATE_CLASS;I)V
         return v14
 
@@ -1886,6 +1902,11 @@ private fun seekbarSectionsSmali(): String = """
     .end method
 """.trimIndent()
 
+/**
+ * The skip-button class: `show` sizes the label against the player surface, attaches it and
+ * reveals it only once the measured size is written; `place` clamps the button inside that
+ * surface with the same width floor.
+ */
 private fun skipButtonSmali(): String = """
     .class public final $SKIP_BUTTON_CLASS
     .super Ljava/lang/Object;
@@ -1932,15 +1953,10 @@ private fun skipButtonSmali(): String = """
         :create
         new-instance v2, Landroid/widget/TextView;
         invoke-direct {v2, v3}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+        const/4 v4, 0x4
+        invoke-virtual {v2, v4}, Landroid/view/View;->setVisibility(I)V
         const v4, -0x33ffffff
         invoke-virtual {v2, v4}, Landroid/widget/TextView;->setBackgroundColor(I)V
-        const/16 v4, 0xc
-        invoke-static {v3, v4}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
-        move-result v4
-        invoke-virtual {v2, v4, v4, v4, v4}, Landroid/widget/TextView;->setPadding(IIII)V
-        const/4 v4, 0x2
-        const/high16 v5, 0x41600000
-        invoke-virtual {v2, v4, v5}, Landroid/widget/TextView;->setTextSize(IF)V
         const/16 v4, 0x11
         invoke-virtual {v2, v4}, Landroid/widget/TextView;->setGravity(I)V
         iput-object v2, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
@@ -1981,6 +1997,13 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v5, v2, v4}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup${'$'}LayoutParams;)V
 
         :update
+        const/16 v4, 0xc
+        invoke-static {v3, v4}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
+        move-result v4
+        invoke-virtual {v2, v4, v4, v4, v4}, Landroid/widget/TextView;->setPadding(IIII)V
+        const/4 v4, 0x2
+        const/high16 v5, 0x41600000
+        invoke-virtual {v2, v4, v5}, Landroid/widget/TextView;->setTextSize(IF)V
         new-instance v4, $SKIP_CLICK_CLASS;
         invoke-direct {v4, p0, p1}, $SKIP_CLICK_CLASS;-><init>($SKIP_STATE_CLASS;I)V
         invoke-virtual {v2, v4}, Landroid/view/View;->setOnClickListener(Landroid/view/View${'$'}OnClickListener;)V
@@ -2019,9 +2042,110 @@ private fun skipButtonSmali(): String = """
         const v0, 0xff000000
         :text_color
         invoke-virtual {v2, v0}, Landroid/widget/TextView;->setTextColor(I)V
-        const/4 v0, 0x0
-        invoke-virtual {v2, v0}, Landroid/view/View;->setVisibility(I)V
+
+        const/4 v4, 0x4
+        invoke-virtual {v2, v4}, Landroid/view/View;->setVisibility(I)V
+        invoke-static {p0}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
+        move-result-object v4
+        invoke-static {v4}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
+        move-result-object v4
+        if-eqz v4, :m_k
+        invoke-virtual {v4}, Landroid/view/View;->getWidth()I
+        move-result v9
+        invoke-virtual {v4}, Landroid/view/View;->getHeight()I
+        move-result v10
+        goto :m_surface
+
+        :m_k
+        iget-object v4, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
+        if-eqz v4, :m_decor
+        instance-of v5, v4, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
+        if-eqz v5, :m_decor
+        check-cast v4, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
+        iget-object v4, v4, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->K:Ljava/lang/ref/WeakReference;
+        if-eqz v4, :m_decor
+        invoke-virtual {v4}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
+        move-result-object v4
+        check-cast v4, Landroid/view/View;
+        invoke-static {v4}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
+        move-result-object v4
+        if-eqz v4, :m_decor
+        invoke-virtual {v4}, Landroid/view/View;->getWidth()I
+        move-result v9
+        invoke-virtual {v4}, Landroid/view/View;->getHeight()I
+        move-result v10
+        goto :m_surface
+
+        :m_decor
+        invoke-virtual {v2}, Landroid/view/View;->getRootView()Landroid/view/View;
+        move-result-object v4
+        const v5, 0x1020002
+        invoke-virtual {v4, v5}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v4
+        if-eqz v4, :m_display
+        invoke-virtual {v4}, Landroid/view/View;->getWidth()I
+        move-result v9
+        invoke-virtual {v4}, Landroid/view/View;->getHeight()I
+        move-result v10
+        goto :m_surface
+
+        :m_display
+        invoke-virtual {v3}, Landroid/content/Context;->getResources()Landroid/content/res/Resources;
+        move-result-object v4
+        invoke-virtual {v4}, Landroid/content/res/Resources;->getDisplayMetrics()Landroid/util/DisplayMetrics;
+        move-result-object v4
+        iget v9, v4, Landroid/util/DisplayMetrics;->widthPixels:I
+        iget v10, v4, Landroid/util/DisplayMetrics;->heightPixels:I
+
+        :m_surface
+        const/16 v4, 0x8
+        invoke-static {v3, v4}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
+        move-result v11
+        sub-int v6, v9, v11
+        sub-int/2addr v6, v11
+        invoke-static {v3, v9}, $SKIP_BUTTON_CLASS;->minWidth(Landroid/content/Context;I)I
+        move-result v4
+        if-ge v6, v4, :m_w
+        move v6, v4
+
+        :m_w
+        sub-int v7, v10, v11
+        sub-int/2addr v7, v11
+        const/4 v4, 0x1
+        if-ge v7, v4, :m_h
+        move v7, v4
+
+        :m_h
+        invoke-virtual {v2, v6}, Landroid/widget/TextView;->setMaxWidth(I)V
+        invoke-virtual {v2, v7}, Landroid/widget/TextView;->setMaxHeight(I)V
+        move v9, v7
+        sget v4, Landroid/view/View${'$'}MeasureSpec;->AT_MOST:I
+        invoke-static {v6, v4}, Landroid/view/View${'$'}MeasureSpec;->makeMeasureSpec(II)I
+        move-result v8
+        invoke-static {v7, v4}, Landroid/view/View${'$'}MeasureSpec;->makeMeasureSpec(II)I
+        move-result v5
+        invoke-virtual {v2, v8, v5}, Landroid/view/View;->measure(II)V
+        invoke-virtual {v2}, Landroid/view/View;->getMeasuredWidth()I
+        move-result v6
+        invoke-virtual {v2}, Landroid/view/View;->getMeasuredHeight()I
+        move-result v7
+        if-le v7, v9, :m_clamp
+        move v7, v9
+
+        :m_clamp
+        const/4 v4, 0x1
+        if-ge v6, v4, :m_params
+        move v6, v4
+
+        :m_params
+        invoke-virtual {v2}, Landroid/view/View;->getLayoutParams()Landroid/view/ViewGroup${'$'}LayoutParams;
+        move-result-object v5
+        if-eqz v5, :return
+        iput v6, v5, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
+        iput v7, v5, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V
+        const/4 v4, 0x0
+        invoke-virtual {v2, v4}, Landroid/view/View;->setVisibility(I)V
 
         :return
         return-void
@@ -2041,6 +2165,22 @@ private fun skipButtonSmali(): String = """
         return-void
     .end method
 
+    .method public static minWidth(Landroid/content/Context;I)I
+        .registers 4
+        .param p0, "context"
+        .param p1, "surfaceWidth"
+
+        div-int/lit8 v0, p1, 0x2
+        const/16 v1, 0x60
+        invoke-static {p0, v1}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
+        move-result v1
+        if-lt v0, v1, :widest
+        move v0, v1
+
+        :widest
+        return v0
+    .end method
+
     .method public static place($SKIP_STATE_CLASS;)V
         .registers 16
         .param p0, "state"
@@ -2048,6 +2188,7 @@ private fun skipButtonSmali(): String = """
         if-eqz p0, :return
         iget-object v0, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
         if-eqz v0, :return
+        const/4 v14, 0x0
         invoke-static {p0}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
         move-result-object v1
         invoke-static {v1}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
@@ -2077,7 +2218,13 @@ private fun skipButtonSmali(): String = """
         const v5, 0x1020002
         invoke-virtual {v4, v5}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v1
-        if-eqz v1, :return
+        if-eqz v1, :display
+        goto :live
+
+        :display
+        if-eqz v4, :return
+        move-object v1, v4
+        const/4 v14, 0x1
 
         :live
         iput-object v1, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
@@ -2112,6 +2259,18 @@ private fun skipButtonSmali(): String = """
         add-int/2addr v11, v9
         invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
         move-result-object v4
+        if-eqz v14, :no_display
+        invoke-virtual {v4}, Landroid/content/Context;->getResources()Landroid/content/res/Resources;
+        move-result-object v5
+        invoke-virtual {v5}, Landroid/content/res/Resources;->getDisplayMetrics()Landroid/util/DisplayMetrics;
+        move-result-object v5
+        iget v10, v5, Landroid/util/DisplayMetrics;->widthPixels:I
+        iget v11, v5, Landroid/util/DisplayMetrics;->heightPixels:I
+        const/4 v8, 0x0
+        const/4 v9, 0x0
+
+        :no_display
+        move-object v14, v4
         const/16 v5, 0x8
         invoke-static {v4, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
         move-result v6
@@ -2120,14 +2279,24 @@ private fun skipButtonSmali(): String = """
         move-result v7
         invoke-virtual {v0}, Landroid/view/View;->getWidth()I
         move-result v12
+        if-lez v12, :w_measured
+        iget v12, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->width:I
+
+        :w_measured
         invoke-virtual {v0}, Landroid/view/View;->getHeight()I
         move-result v13
+        if-lez v13, :h_measured
+        iget v13, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->height:I
+
+        :h_measured
         sub-int v4, v10, v8
         add-int v5, v6, v6
         sub-int v4, v4, v5
-        const/4 v5, 0x1
-        if-ge v4, v5, :w_max
-        move v4, v5
+        sub-int v5, v10, v8
+        invoke-static {v14, v5}, $SKIP_BUTTON_CLASS;->minWidth(Landroid/content/Context;I)I
+        move-result v14
+        if-ge v4, v14, :w_max
+        move v4, v14
 
         :w_max
         invoke-virtual {v0}, Landroid/widget/TextView;->getMaxWidth()I
