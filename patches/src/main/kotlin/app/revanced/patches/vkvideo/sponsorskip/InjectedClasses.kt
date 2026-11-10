@@ -68,7 +68,6 @@ internal fun injectSponsorSkipClasses(context: BytecodePatchContext) {
             try {
                 SmaliTestUtils.compileSmali(source)
             } catch (e: RuntimeException) {
-                e.cause?.printStackTrace()
                 throw IllegalStateException("$descriptor does not compile: ${e.cause?.message}", e)
             },
         )
@@ -1085,11 +1084,6 @@ private fun skipEngineSmali(): String = """
 
         :found
         move v7, v6
-        aget-object v9, v3, v7
-        iget-wide v10, v9, $SEGMENT_CLASS->startMs:J
-        invoke-static/range {v10 .. v11}, Ljava/lang/String;->valueOf(J)Ljava/lang/String;
-        move-result-object v10
-        invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
 
         :scanned
         if-ltz v7, :hidden
@@ -1101,8 +1095,22 @@ private fun skipEngineSmali(): String = """
         if-eqz v8, :auto
         const/4 v10, 0x2
         if-eq v8, v10, :hidden
+        iget-object v10, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
+        if-eqz v10, :log_show
+        invoke-virtual {v10}, Landroid/view/View;->getVisibility()I
+        move-result v10
+        if-eqz v10, :reveal
+
+        :log_show
+        aget-object v9, v3, v7
+        iget-wide v10, v9, $SEGMENT_CLASS->startMs:J
+        invoke-static/range {v10 .. v11}, Ljava/lang/String;->valueOf(J)Ljava/lang/String;
+        move-result-object v10
+        invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         const-string v10, "show"
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+
+        :reveal
         invoke-static {p0, v7}, $SKIP_BUTTON_CLASS;->show($SKIP_STATE_CLASS;I)V
         return v14
 
@@ -2092,7 +2100,7 @@ private fun skipButtonSmali(): String = """
         sub-int/2addr v6, v11
         invoke-static {v3, v9}, $SKIP_BUTTON_CLASS;->minWidth(Landroid/content/Context;I)I
         move-result v4
-        if-lt v6, v4, :m_w
+        if-ge v6, v4, :m_w
         move v6, v4
 
         :m_w
@@ -2106,7 +2114,7 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v2, v6}, Landroid/widget/TextView;->setMaxWidth(I)V
         invoke-virtual {v2, v7}, Landroid/widget/TextView;->setMaxHeight(I)V
         move v9, v7
-        const/4 v4, 0x2
+        sget v4, Landroid/view/View${'$'}MeasureSpec;->AT_MOST:I
         invoke-static {v6, v4}, Landroid/view/View${'$'}MeasureSpec;->makeMeasureSpec(II)I
         move-result v8
         invoke-static {v7, v4}, Landroid/view/View${'$'}MeasureSpec;->makeMeasureSpec(II)I
@@ -2127,6 +2135,7 @@ private fun skipButtonSmali(): String = """
         :m_params
         invoke-virtual {v2}, Landroid/view/View;->getLayoutParams()Landroid/view/ViewGroup${'$'}LayoutParams;
         move-result-object v5
+        if-eqz v5, :return
         iput v6, v5, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
         iput v7, v5, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V

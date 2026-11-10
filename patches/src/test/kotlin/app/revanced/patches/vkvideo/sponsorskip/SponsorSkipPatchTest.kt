@@ -254,6 +254,18 @@ class SponsorSkipPatchTest {
     }
 
     @Test
+    fun `the floor raises the width instead of lowering it`() {
+        assertTrue(
+            showBody().contains("if-ge v6, v4, :m_w\n    move v6, v4"),
+            "the measure keeps the smaller width when the floor is larger",
+        )
+        assertTrue(
+            placeBody().contains("if-ge v4, v14, :w_max\n    move v4, v14"),
+            "the place keeps the smaller cap when the floor is larger",
+        )
+    }
+
+    @Test
     fun `the height spec is reduced by the inset and floored at one`() {
         val show = showBody()
         assertTrue(show.contains("sub-int v7, v10, v11") && show.contains("sub-int/2addr v7, v11"), "the height spec ignores the inset")
@@ -355,10 +367,12 @@ class SponsorSkipPatchTest {
         assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
     }
 
+    /** The `show` body, sliced out for ordering assertions. */
     private fun showBody(): String = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
         .substringAfter(".method public static show")
         .substringBefore(".method public static hide")
 
+    /** The `place` body, sliced out for ordering assertions. */
     private fun placeBody(): String = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
         .substringAfter(".method public static place")
         .substringBefore(".method private static sized")
