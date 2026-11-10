@@ -1902,6 +1902,11 @@ private fun seekbarSectionsSmali(): String = """
     .end method
 """.trimIndent()
 
+/**
+ * The skip-button class: `show` sizes the label against the player surface, attaches it and
+ * reveals it only once the measured size is written; `place` clamps the button inside that
+ * surface with the same width floor.
+ */
 private fun skipButtonSmali(): String = """
     .class public final $SKIP_BUTTON_CLASS
     .super Ljava/lang/Object;
