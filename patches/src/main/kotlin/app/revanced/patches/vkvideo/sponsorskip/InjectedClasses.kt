@@ -1558,6 +1558,7 @@ private fun playedSectionsSmali(): String = """
         iget-object v4, v15, $PLAYED_SECTIONS_CLASS;->target:Landroid/graphics/Canvas;
         iget-object v11, v15, $PLAYED_SECTIONS_CLASS;->paint:Landroid/graphics/Paint;
         const/4 v1, 0x0
+        :try_read
 
         :loop
         if-ge v1, v2, :done
@@ -1609,8 +1610,17 @@ private fun playedSectionsSmali(): String = """
         add-int/lit8 v1, v1, 0x1
         goto :loop
 
+        :try_end_read
+
         :done
         return-void
+
+        :read_fail
+        const/4 v0, 0x1
+        iput-boolean v0, v15, $PLAYED_SECTIONS_CLASS;->broken:Z
+        return-void
+
+        .catch Ljava/lang/Exception; {:try_read .. :try_end_read} :read_fail
     .end method
 
     .method private drawRects()V
@@ -1629,6 +1639,7 @@ private fun playedSectionsSmali(): String = """
         sub-float v6, v13, v12
         add-float v8, v13, v12
         const/4 v1, 0x0
+        :try_read
 
         :loop
         if-ge v1, v2, :done
@@ -1655,8 +1666,17 @@ private fun playedSectionsSmali(): String = """
         add-int/lit8 v1, v1, 0x1
         goto :loop
 
+        :try_end_read
+
         :done
         return-void
+
+        :read_fail
+        const/4 v0, 0x1
+        iput-boolean v0, v15, $PLAYED_SECTIONS_CLASS;->broken:Z
+        return-void
+
+        .catch Ljava/lang/Exception; {:try_read .. :try_end_read} :read_fail
     .end method
 
     .method private colour()I

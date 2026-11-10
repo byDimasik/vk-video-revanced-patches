@@ -90,6 +90,11 @@ class SeekbarPatchTest {
         assertTrue(drawable.contains(".catch Ljava/lang/Exception; {:try_start .. :try_end} :broken"), "a field mismatch is unguarded")
         assertTrue(drawable.substringAfter(":broken").contains("iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS->broken:Z"), "the guard does not set the failure flag")
         assertTrue(drawable.contains("if-nez v0, :source"), "draw does not bail out on a broken wrapper")
+        listOf("drawRounds", "drawRects").forEach { method ->
+            val body = drawable.substringAfter(".method private $method")
+            assertTrue(body.contains(".catch Ljava/lang/Exception; {:try_read .. :try_end_read} :read_fail"), "$method does not guard its reflective reads")
+            assertTrue(body.contains("iput-boolean v0, v15, $PLAYED_SECTIONS_CLASS->broken:Z"), "$method does not set the failure flag")
+        }
     }
 
     @Test
