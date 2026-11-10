@@ -32,6 +32,10 @@ class SeekbarPatchTest {
             assertTrue(apply.contains("instance-of v5, v8, $it"), "the inner type check for $it is missing")
         }
         assertTrue(apply.contains("addLayer(Landroid/graphics/drawable/Drawable;)V"), "the no-clip fallback adds no layer")
+        val add = apply.substringAfter(":add\n")
+        assertTrue(add.contains("if-ltz v5, :add_new"), "the fallback re-adds on every call")
+        assertTrue(add.contains("instance-of v7, v6, $PLAYED_SECTIONS_CLASS"), "the last layer is not checked for an existing wrapper")
+        assertTrue(add.contains("move-object v9, v6"), "an existing wrapper is not reused")
     }
 
     @Test

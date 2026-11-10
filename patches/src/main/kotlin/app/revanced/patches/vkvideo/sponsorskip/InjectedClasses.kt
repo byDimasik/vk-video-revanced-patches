@@ -1838,7 +1838,7 @@ private fun seekbarSectionsSmali(): String = """
         invoke-virtual {v2}, Landroid/graphics/drawable/LayerDrawable;->getNumberOfLayers()I
         move-result v5
         add-int/lit8 v5, v5, -0x1
-        if-gez v5, :add_new
+        if-ltz v5, :add_new
         invoke-virtual {v2, v5}, Landroid/graphics/drawable/LayerDrawable;->getDrawable(I)Landroid/graphics/drawable/Drawable;
         move-result-object v6
         instance-of v7, v6, $PLAYED_SECTIONS_CLASS;
