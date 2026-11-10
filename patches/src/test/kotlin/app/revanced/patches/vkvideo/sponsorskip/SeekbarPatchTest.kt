@@ -10,49 +10,115 @@ class SeekbarPatchTest {
     private val sources get() = sponsorSkipSources()
 
     @Test
-    fun `the ranges builder clamps both edges and stacks lanes`() {
-        val ranges = sources[RANGES_CLASS]!!
-        assertTrue(ranges.contains("const/4 v10, 0x2"), "the lane fallback is missing")
-        assertTrue(ranges.contains("if-lt v6, v15, :lane_body"), "the lane scan bound is missing")
-        assertTrue(ranges.contains("if-gez v10, :lane_ok"), "a negative lane is not replaced")
-        assertTrue(ranges.contains("const v19, 0x3a83126f"), "the fraction gap is missing")
-        assertTrue(ranges.contains("move/from16 v11, v20"), "the one-end clamp is missing")
-        assertTrue(ranges.contains("move/from16 v12, v20"), "the other-end clamp is missing")
+    fun `apply finds the fill layer by index, never by the overridden id lookup`() {
+        val apply = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
+        val walk = apply.indexOf("getNumberOfLayers()I")
+        val getId = apply.indexOf("getId(I)I")
+        val install = apply.indexOf("setDrawable(Landroid/graphics/drawable/Drawable;)V")
+        assertTrue(walk > 0 && getId > walk, "the layer walk is missing")
+        assertTrue(apply.contains("const v6, 0x102000d"), "the fill id assertion is missing")
+        assertTrue(apply.contains("const/4 v0, 0x2"), "the index-2 fallback is missing")
+        assertTrue(apply.contains("if-ge v0, v3, :fallback"), "the fallback is not guarded by the layer count")
+        assertTrue(install > walk, "the found layer is installed before the walk")
+        assertFalse(apply.contains("findDrawableByLayerId"), "the overridden id lookup is used")
     }
 
     @Test
-    fun `apply rejects foreign drawables and both null preconditions`() {
+    fun `apply requires a clip layer and a known inner drawable`() {
+        val apply = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
+        assertTrue(apply.contains("instance-of v6, v5, Landroid/graphics/drawable/ClipDrawable;"), "the clip check is missing")
+        assertTrue(apply.contains("getDrawable()Landroid/graphics/drawable/Drawable;"), "the inner drawable is not read")
+        listOf("Lyo7/b;", "Loo7/b;").forEach {
+            assertTrue(apply.contains("instance-of v5, v8, $it"), "the inner type check for $it is missing")
+        }
+        assertTrue(apply.contains("addLayer(Landroid/graphics/drawable/Drawable;)V"), "the no-clip fallback adds no layer")
+        val add = apply.substringAfter(":add\n")
+        assertTrue(add.contains("if-ltz v5, :add_new"), "the fallback re-adds on every call")
+        assertTrue(add.contains("instance-of v7, v6, $PLAYED_SECTIONS_CLASS"), "the last layer is not checked for an existing wrapper")
+        assertTrue(add.contains("move-object v9, v6"), "an existing wrapper is not reused")
+    }
+
+    @Test
+    fun `apply keeps a re-entry guard and does not force bounds`() {
+        val apply = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
+        assertTrue(apply.contains("instance-of v5, v8, $PLAYED_SECTIONS_CLASS"), "the re-entry guard is missing")
+        assertTrue(apply.contains("if-nez v5, :reuse"), "a wrapped drawable is not reused")
+        assertTrue(apply.contains("invalidateSelf()V"), "the wrapper is not repainted")
+        assertFalse(apply.contains("setBounds(IIII)V"), "apply still forces the wrapper bounds")
+        assertFalse(apply.contains("setDrawable(ILandroid/graphics/drawable/Drawable;)V"), "layer 0 is replaced again")
+    }
+
+    @Test
+    fun `apply rejects foreign drawables and a missing active state`() {
         val apply = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
         val composite = apply.indexOf("instance-of v0, p1, Loo7/c;")
         val page = apply.indexOf("instance-of v0, p1, Lyo7/c;")
-        val active = apply.indexOf("$SKIP_ENGINE_CLASS->active()")
-        val install = apply.indexOf("setDrawable(I")
+        val walk = apply.indexOf("getNumberOfLayers()I")
         assertTrue(composite > 0 && page > composite, "the family guards are missing")
         assertTrue(apply.contains("if-nez v0, :family"), "a composite drawable does not reach the installer")
         assertTrue(apply.contains("if-eqz v0, :return"), "a foreign drawable is not rejected")
-        assertTrue(active > page, "the active-state guard must follow the family guard")
-        assertTrue(apply.contains("if-eqz v0, :act_null"), "an unresolved active state does not bail")
-        assertTrue(active < install, "the guard must run before the layer is replaced")
-        assertTrue(apply.contains("instance-of v4, v2, $SECTIONS_DRAWABLE_CLASS"), "the re-entry guard is missing")
-        assertTrue(apply.contains("getNumberOfLayers()I"), "the empty-layer guard is missing")
-        assertFalse(apply.contains("mProgressDrawable"), "apply must not call setProgressDrawable again")
+        assertTrue(walk > page, "the walk must follow the family guard")
+        assertFalse(apply.contains("$SKIP_ENGINE_CLASS->active()"), "apply still bails on a missing state")
     }
 
     @Test
-    fun `the sections drawable resolves the active state and re-reads the gating`() {
-        val draw = sources[SECTIONS_DRAWABLE_CLASS]!!.substringAfter(".method public draw(")
-        val active = draw.indexOf("$SKIP_ENGINE_CLASS->active()")
-        val enabled = draw.indexOf("$BEHAVIOR_STORE_CLASS->isEnabled()Z")
-        val behavior = draw.indexOf("$BEHAVIOR_STORE_CLASS->getBehavior(I)I")
-        assertTrue(active in 1 until enabled, "the drawable does not resolve the active state first")
-        assertTrue(behavior > enabled, "the per-category gate is missing from the loop")
-        assertTrue(draw.contains("if-eq v14, v10, :next"), "the disabled-category branch is missing")
-        assertTrue(draw.contains("$RANGES_CLASS->build(${SEGMENT_ARRAY}J)$BAND_ARRAY"), "the drawable does not build bands")
-        assertTrue(draw.contains("Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;"), "the band coordinates do not use the bounds")
-        assertTrue(draw.contains("0xb2"), "the band alpha is missing")
-        assertTrue(draw.contains("0x3e800000"), "the 25 % inset is missing")
-        assertTrue(draw.contains("Canvas;->drawRect(FFFFLandroid/graphics/Paint;)V"))
-        assertFalse(sources[SECTIONS_DRAWABLE_CLASS]!!.contains("Landroid/content/Context;"), "the drawable still needs a context")
+    fun `the played drawable draws inside its own bounds with the native geometry`() {
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val rounds = drawable.substringAfter(".method private drawRounds")
+        assertTrue(rounds.contains("drawRoundRect(FFFFFFLandroid/graphics/Paint;)V"), "the round family does not round")
+        assertTrue(drawable.contains("$PLAYED_SECTIONS_CLASS->center:F"), "the layer centre is not cached")
+        assertTrue(rounds.contains("$PLAYED_SECTIONS_CLASS->center:F"), "the bands are not centred on the layer")
+        assertTrue(rounds.contains("div-float v12, v6, v12"), "the thickness is not halved")
+        assertTrue(drawable.contains("Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;"), "the bounds are not read")
+        val rects = drawable.substringAfter(".method private drawRects")
+        assertTrue(rects.contains("drawRect(FFFFLandroid/graphics/Paint;)V"), "the rect family does not draw rects")
+    }
+
+    @Test
+    fun `the played drawable reads the thickness family through reflection`() {
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val init = drawable.substringAfter(".method public constructor <init>")
+        listOf("d", "a", "b", "e", "f").forEach {
+            assertTrue(init.contains("const-string v1, \"$it\""), "the round field $it is not resolved")
+        }
+        assertTrue(init.contains("const-class v2, Loo7/a;"), "the rect item class is not resolved")
+        assertTrue(drawable.contains(".method private static field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;"))
+        val rounds = drawable.substringAfter(".method private drawRounds")
+        assertTrue(rounds.contains("$PLAYED_SECTIONS_CLASS->selected:Ljava/lang/reflect/Field;"), "the current segment is not read")
+        assertTrue(rounds.contains("$PLAYED_SECTIONS_CLASS->factor:Ljava/lang/reflect/Field;"), "the grow factor is not read")
+        assertFalse(drawable.contains(".field private static list:Ljava/lang/reflect/Field;"), "the handles are shared between instances")
+        assertTrue(drawable.contains(".catch Ljava/lang/Exception; {:try_start .. :try_end} :broken"), "a field mismatch is unguarded")
+        assertTrue(drawable.substringAfter(":broken").contains("iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS->broken:Z"), "the guard does not set the failure flag")
+        assertTrue(drawable.contains("if-nez v0, :source"), "draw does not bail out on a broken wrapper")
+        listOf("drawRounds", "drawRects").forEach { method ->
+            val body = drawable.substringAfter(".method private $method")
+            assertTrue(body.contains(".catch Ljava/lang/Exception; {:try_read .. :try_end_read} :read_fail"), "$method does not guard its reflective reads")
+            assertTrue(body.contains("iput-boolean v0, v15, $PLAYED_SECTIONS_CLASS->broken:Z"), "$method does not set the failure flag")
+        }
+    }
+
+    @Test
+    fun `the played drawable applies alpha and falls back to the native colour`() {
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val alpha = drawable.substringAfter(".method public setAlpha")
+        assertTrue(alpha.contains("Paint;->setAlpha(I)V"), "setAlpha does not reach the paint")
+        assertTrue(drawable.contains(".field private static final NATIVE:I = 0xff528bcc"), "the native fill colour is not pinned")
+        val colour = drawable.substringAfter(".method private colour")
+        assertTrue(colour.indexOf(":native") < colour.indexOf("$CATEGORY_CLASS->color(I)I"), "the native branch is not the fallback")
+        assertTrue(colour.contains("getBehavior(I)I"), "a disabled category is not routed to the native colour")
+        assertTrue(drawable.contains(".method public getOpacity()I"))
+        assertTrue(drawable.contains(".method public setColorFilter(Landroid/graphics/ColorFilter;)V"))
+    }
+
+    @Test
+    fun `the colour picks the nearest segment start`() {
+        val colour = sources[PLAYED_SECTIONS_CLASS]!!.substringAfter(".method private colour")
+        val best = colour.indexOf("move v6, v9")
+        assertTrue(best > 0, "the nearest index is not recorded")
+        assertTrue(colour.contains("cmpg-float"), "the distance sign is not handled")
+        assertTrue(colour.contains("if-ltz v13, :neg"), "a negative delta is not negated")
+        assertTrue(colour.contains("if-gez v13, :next"), "a farther segment overwrites the best one")
+        assertFalse(colour.contains(":equal"), "the exact-count shortcut survived without a counter")
     }
 
     @Test
@@ -88,10 +154,13 @@ class SeekbarPatchTest {
 
     @Test
     fun `the engine owns every injected seekbar class`() {
-        listOf(BAND_CLASS, RANGES_CLASS, SECTIONS_DRAWABLE_CLASS, SEEK_SECTIONS_CLASS).forEach { descriptor ->
+        listOf(PLAYED_SECTIONS_CLASS, SEEK_SECTIONS_CLASS).forEach { descriptor ->
             assertTrue(sources.containsKey(descriptor), "missing $descriptor")
         }
         assertFalse(sources.containsKey(OVERLAY_CLASS), "the overlay class is still injected")
+        listOf("Band;", "Ranges;", "SectionsDrawable;").forEach {
+            assertFalse(sources.keys.any { key -> key.endsWith("/$it") }, "$it is still injected")
+        }
     }
 
     @Test

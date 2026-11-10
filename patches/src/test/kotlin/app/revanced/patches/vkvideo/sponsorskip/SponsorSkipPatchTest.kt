@@ -232,14 +232,15 @@ class SponsorSkipPatchTest {
         val show = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
             .substringAfter(".method public static show")
             .substringBefore(".method public static hide")
-        assertTrue(show.contains("if-nez v2, :create"), "show does not create only for a missing button")
-        val existing = show.substringAfter("if-nez v2, :create").substringBefore(":create\n")
+        assertTrue(show.contains("if-eqz v2, :create"), "show does not create only for a missing button")
+        val existing = show.substringAfter("if-eqz v2, :create").substringBefore(":create\n")
         assertTrue(
             existing.contains("invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
             "show does not check for a detached button",
         )
-        assertTrue(existing.contains("if-eqz v4, :update"), "an attached button re-attaches anyway")
+        assertTrue(existing.contains("if-nez v4, :update"), "an attached button re-attaches anyway")
         assertTrue(existing.contains("goto :attach"), "a detached button does not fall into the attach block")
+        assertTrue(show.contains("check-cast v4, Landroid/view/ViewGroup;"), "the attach block does not detach a stale parent first")
         assertTrue(!show.substringAfter("\n    :create").substringBefore(":attach").contains("getParent"), "the create block reads the parent")
     }
 

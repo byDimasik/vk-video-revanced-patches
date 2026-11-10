@@ -19,11 +19,8 @@ internal const val SKIP_TICK_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipEngine\$Tick;"
 internal const val SKIP_BUTTON_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipButton;"
 internal const val SKIP_CLICK_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipButton\$Click;"
 internal const val SKIP_LAYOUT_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipButton\$Layout;"
-internal const val BAND_CLASS = "${SPONSOR_SKIP_PACKAGE}Band;"
-internal const val BAND_ARRAY = "[$BAND_CLASS"
-internal const val RANGES_CLASS = "${SPONSOR_SKIP_PACKAGE}Ranges;"
 internal const val OVERLAY_CLASS = "${SPONSOR_SKIP_PACKAGE}SeekbarOverlay;"
-internal const val SECTIONS_DRAWABLE_CLASS = "${SPONSOR_SKIP_PACKAGE}SectionsDrawable;"
+internal const val PLAYED_SECTIONS_CLASS = "${SPONSOR_SKIP_PACKAGE}PlayedSections;"
 internal const val SEEK_SECTIONS_CLASS = "${SPONSOR_SKIP_PACKAGE}SeekbarSections;"
 
 /** The `OneVideoSeekBarView` id from `one_video_simple_controls_view.xml`. */
@@ -92,9 +89,7 @@ internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
     SKIP_BUTTON_CLASS to skipButtonSmali(),
     SKIP_CLICK_CLASS to skipClickSmali(),
     SKIP_LAYOUT_CLASS to skipLayoutSmali(),
-    BAND_CLASS to bandSmali(),
-    RANGES_CLASS to rangesSmali(),
-    SECTIONS_DRAWABLE_CLASS to sectionsDrawableSmali(),
+    PLAYED_SECTIONS_CLASS to playedSectionsSmali(),
     SEEK_SECTIONS_CLASS to seekbarSectionsSmali(),
 ).mapValues { (_, source) -> source.replace(";;", ";") }
 
@@ -115,9 +110,7 @@ internal val requiredMethods = mapOf(
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "place:1"),
     SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
     SKIP_LAYOUT_CLASS to listOf("<init>:1", "onLayoutChange:9", "watch:3"),
-    BAND_CLASS to listOf("<init>:4"),
-    RANGES_CLASS to listOf("build:2"),
-    SECTIONS_DRAWABLE_CLASS to listOf("<init>:0", "onDraw:1", "setAlpha:1", "setColorFilter:1", "getOpacity:0"),
+    PLAYED_SECTIONS_CLASS to listOf("<init>:1", "draw:1", "num:2", "setAlpha:1", "setColorFilter:1", "getOpacity:0"),
     SEEK_SECTIONS_CLASS to listOf("apply:2", "invalidate:0"),
 )
 
@@ -162,7 +155,7 @@ private fun categorySmali(): String = """
         const/4 p0, 0x0
         :non_negative
         array-length v1, v0
-        if-ge p0, v1, :in_range
+        if-lt p0, v1, :in_range
         const/4 p0, 0x0
         :in_range
         aget v0, v0, p0
@@ -1313,422 +1306,440 @@ private fun skipEngineSmali(): String = """
     .end method
 """.trimIndent()
 
-private fun bandSmali(): String = """
-    .class public final $BAND_CLASS
-    .super Ljava/lang/Object;
-
-    .field public final xStart:F
-    .field public final xEnd:F
-    .field public final lane:I
-    .field public final category:I
-
-    .method public constructor <init>(FFII)V
-        .registers 5
-
-        invoke-direct {p0}, Ljava/lang/Object;-><init>()V
-        iput p1, p0, $BAND_CLASS->xStart:F
-        iput p2, p0, $BAND_CLASS->xEnd:F
-        iput p3, p0, $BAND_CLASS->lane:I
-        iput p4, p0, $BAND_CLASS->category:I
-        return-void
-    .end method
-""".trimIndent()
-
-private fun rangesSmali(): String = """
-    .class public final $RANGES_CLASS
-    .super Ljava/lang/Object;
-
-    .method public static build($SEGMENT_ARRAY;J)$BAND_ARRAY
-        .registers 26
-        .param p0, "segments"
-        .param p1, "durationMs"
-
-        move-object/from16 v0, p0
-        move-wide/from16 v1, p1
-        sget-object v16, $SECTIONS_DRAWABLE_CLASS;->BEHAVIORS:[I
-
-        if-eqz v0, :empty
-        array-length v3, v0
-        if-eqz v3, :empty
-        const-wide/16 v4, 0x0
-        cmp-long v18, v1, v4
-        if-lez v18, :empty
-
-        new-instance v4, Ljava/util/ArrayList;
-        invoke-direct {v4}, Ljava/util/ArrayList;-><init>()V
-        const/4 v15, 0x3
-        new-array v5, v15, [F
-        const/high16 v10, -0x3f800000
-        const/4 v6, 0x0
-
-        :init
-        if-ge v6, v15, :inited
-        aput v10, v5, v6
-        add-int/lit8 v6, v6, 0x1
-        goto :init
-
-        :inited
-        const v19, 0x3a83126f
-        const v20, 0x3f800000
-        long-to-float v13, v1
-        move/from16 v21, v13
-        const/4 v7, 0x0
-
-        :loop
-        if-ge v7, v3, :done
-        aget-object v8, v0, v7
-        iget v9, v8, $SEGMENT_CLASS->category:I
-        if-ltz v9, :next
-        aget v6, v16, v9
-        const/4 v10, 0x2
-        if-eq v6, v10, :next
-
-        iget-wide v13, v8, $SEGMENT_CLASS->startMs:J
-        long-to-float v13, v13
-        div-float v11, v13, v21
-        iget-wide v13, v8, $SEGMENT_CLASS->endMs:J
-        long-to-float v13, v13
-        div-float v12, v13, v21
-        new-instance v13, Ljava/lang/StringBuilder;
-        const-string v14, "frac "
-        invoke-direct {v13, v14}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
-        invoke-virtual {v13, v11}, Ljava/lang/StringBuilder;->append(F)Ljava/lang/StringBuilder;
-        const-string v14, " / "
-        invoke-virtual {v13, v14}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        invoke-virtual {v13, v12}, Ljava/lang/StringBuilder;->append(F)Ljava/lang/StringBuilder;
-        const-string v14, " d="
-        invoke-virtual {v13, v14}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        move/from16 v14, v21
-        invoke-virtual {v13, v14}, Ljava/lang/StringBuilder;->append(F)Ljava/lang/StringBuilder;
-        invoke-virtual {v13}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-        move-result-object v13
-        invoke-static/range {v13}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        const/4 v13, 0x0
-        cmpl-float v14, v11, v13
-        if-gez v14, :start_pos
-        const/4 v11, 0x0
-
-        :start_pos
-        cmpg-float v14, v11, v20
-        if-lez v14, :start_max
-        move/from16 v11, v20
-
-        :start_max
-        cmpg-float v14, v12, v20
-        if-lez v14, :end_max
-        move/from16 v12, v20
-
-        :end_max
-        cmpl-float v14, v12, v11
-        if-gtz v14, :width_ok
-        add-float v12, v11, v19
-        cmpg-float v14, v12, v20
-        if-lez v14, :width_ok
-        move/from16 v12, v20
-
-        :width_ok
-        const/4 v10, -0x1
-        const/4 v6, 0x0
-
-        :lane
-        if-lt v6, v15, :lane_body
-        goto :laned
-
-        :lane_body
-        aget v13, v5, v6
-        cmpl-float v14, v13, v11
-        if-ltz v14, :accept
-        add-int/lit8 v6, v6, 0x1
-        goto :lane
-
-        :accept
-        move v10, v6
-
-        :laned
-        if-gez v10, :lane_ok
-        const/4 v10, 0x2
-
-        :lane_ok
-        aget v13, v5, v10
-        add-float v13, v13, v19
-        cmpl-float v14, v11, v13
-        if-gez v14, :gap
-        move v11, v13
-
-        :gap
-        cmpg-float v14, v12, v20
-        if-lez v14, :end_ok
-        move/from16 v12, v20
-
-        :end_ok
-        cmpl-float v14, v12, v11
-        if-gtz v14, :gap_ok
-        add-float v12, v11, v19
-        cmpg-float v14, v12, v20
-        if-lez v14, :min_ok
-        move/from16 v12, v20
-
-        :min_ok
-        sub-float v11, v12, v19
-
-        :gap_ok
-        new-instance v13, Ljava/lang/StringBuilder;
-        const-string v14, "pre "
-        invoke-direct {v13, v14}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
-        invoke-virtual {v13, v11}, Ljava/lang/StringBuilder;->append(F)Ljava/lang/StringBuilder;
-        const-string v14, " "
-        invoke-virtual {v13, v14}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        invoke-virtual {v13, v12}, Ljava/lang/StringBuilder;->append(F)Ljava/lang/StringBuilder;
-        invoke-virtual {v13}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-        move-result-object v13
-        invoke-static/range {v13}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        aput v12, v5, v10
-        new-instance v13, $BAND_CLASS;
-        invoke-direct {v13, v11, v12, v10, v9}, $BAND_CLASS;-><init>(FFII)V
-        invoke-virtual {v4, v13}, Ljava/util/ArrayList;->add(Ljava/lang/Object;)Z
-
-        :next
-        add-int/lit8 v7, v7, 0x1
-        goto :loop
-
-        :done
-        invoke-virtual {v4}, Ljava/util/ArrayList;->size()I
-        move-result v3
-        new-array v5, v3, $BAND_ARRAY
-        invoke-virtual {v4, v5}, Ljava/util/ArrayList;->toArray([Ljava/lang/Object;)[Ljava/lang/Object;
-        move-result-object v4
-        check-cast v4, $BAND_ARRAY
-        return-object v4
-
-        :empty
-        const/4 v3, 0x0
-        new-array v3, v3, $BAND_ARRAY
-        return-object v3
-    .end method
-""".trimIndent()
-
-private fun sectionsDrawableSmali(): String = """
-    .class public final $SECTIONS_DRAWABLE_CLASS
+private fun playedSectionsSmali(): String = """
+    .class public final $PLAYED_SECTIONS_CLASS
     .super Landroid/graphics/drawable/Drawable;
 
-    .field private paint:Landroid/graphics/Paint;
-    .field private alpha:I
-    .field private static CACHE_STAMP:I
-    .field public static BEHAVIORS:[I
-    .field private static CACHE_BANDS:$BAND_ARRAY
+    .field private final source:Landroid/graphics/drawable/Drawable;
+    .field private final paint:Landroid/graphics/Paint;
+    .field private final alpha:I
+    .field private final round:Z
+    .field private segments:$SEGMENT_ARRAY
+    .field private duration:J
+    .field private target:Landroid/graphics/Canvas;
+    .field private intervals:Ljava/util/List;
+    .field private width:I
+    .field private center:F
+    .field private thick:F
+    .field private effective:I
+    .field private fraction:F
+    .field private broken:Z
+    .field private list:Ljava/lang/reflect/Field;
+    .field private thin:Ljava/lang/reflect/Field;
+    .field private thickField:Ljava/lang/reflect/Field;
+    .field private selected:Ljava/lang/reflect/Field;
+    .field private factor:Ljava/lang/reflect/Field;
+    .field private start:Ljava/lang/reflect/Field;
+    .field private end:Ljava/lang/reflect/Field;
+    .field private static final NATIVE:I = 0xff528bcc
 
-    .method public constructor <init>()V
-        .registers 4
+    .method public constructor <init>(Landroid/graphics/drawable/Drawable;)V
+        .registers 5
 
         invoke-direct {p0}, Landroid/graphics/drawable/Drawable;-><init>()V
         const/16 v0, 0xff
-        iput v0, p0, $SECTIONS_DRAWABLE_CLASS;->alpha:I
+        iput v0, p0, $PLAYED_SECTIONS_CLASS;->alpha:I
+        iput-object p1, p0, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
         new-instance v0, Landroid/graphics/Paint;
         invoke-direct {v0}, Landroid/graphics/Paint;-><init>()V
-        const/4 v1, 0x0
+        const/4 v1, 0x1
         invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setAntiAlias(Z)V
         sget-object v1, Landroid/graphics/Paint${'$'}Style;->FILL:Landroid/graphics/Paint${'$'}Style;
         invoke-virtual {v0, v1}, Landroid/graphics/Paint;->setStyle(Landroid/graphics/Paint${'$'}Style;)V
-        iput-object v0, p0, $SECTIONS_DRAWABLE_CLASS;->paint:Landroid/graphics/Paint;
-        return-void
-    .end method
-
-    .method public constructor <init>()V
-        .registers 1
-
-        invoke-direct {p0}, Landroid/graphics/drawable/Drawable;-><init>()V
-        return-void
-    .end method
-
-    .method public setBounds(IIII)V
-        .registers 8
-
-        new-instance v0, Ljava/lang/StringBuilder;
-        const-string v1, "sb "
-        invoke-direct {v0, v1}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
-        invoke-virtual {v0, p1}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
-        const-string v1, ","
-        invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        invoke-virtual {v0, p2}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
-        const-string v1, " "
-        invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        invoke-virtual {v0, p3}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
-        const-string v1, ","
-        invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-        invoke-virtual {v0, p4}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
-        invoke-virtual {v0}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-        move-result-object v0
+        iput-object v0, p0, $PLAYED_SECTIONS_CLASS;->paint:Landroid/graphics/Paint;
+        const-string v0, "ctor"
         invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        invoke-super {p0, p1, p2, p3, p4}, Landroid/graphics/drawable/Drawable;->setBounds(IIII)V
+        instance-of v0, p1, Lyo7/b;
+        iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->round:Z
+        invoke-virtual {p1}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
+        move-result-object v2
+        :try_start
+        if-eqz v0, :rect
+        const-string v1, "d"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;
+        const-string v1, "a"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->thin:Ljava/lang/reflect/Field;
+        const-string v1, "b"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->thickField:Ljava/lang/reflect/Field;
+        const-string v1, "e"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->selected:Ljava/lang/reflect/Field;
+        const-string v1, "f"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->factor:Ljava/lang/reflect/Field;
+        const-class v2, Lkotlin/Pair;
+        const-string v1, "first"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->start:Ljava/lang/reflect/Field;
+        const-string v1, "second"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->end:Ljava/lang/reflect/Field;
         return-void
+
+        :rect
+        const-string v1, "b"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;
+        const-string v1, "a"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->thin:Ljava/lang/reflect/Field;
+        const-class v2, Loo7/a;
+        const-string v1, "a"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->start:Ljava/lang/reflect/Field;
+        const-string v1, "b"
+        invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v1
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->end:Ljava/lang/reflect/Field;
+        :try_end
+        return-void
+
+        :broken
+        const/4 v0, 0x1
+        iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->broken:Z
+        return-void
+
+        .catch Ljava/lang/Exception; {:try_start .. :try_end} :broken
+    .end method
+
+    .method private static num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
+        .registers 4
+
+        invoke-virtual {p0, p1}, Ljava/lang/reflect/Field;->get(Ljava/lang/Object;)Ljava/lang/Object;
+        move-result-object v0
+        check-cast v0, Ljava/lang/Number;
+        invoke-virtual {v0}, Ljava/lang/Number;->floatValue()F
+        move-result v0
+        return v0
+    .end method
+
+    .method private static field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+        .registers 3
+
+        invoke-virtual {p0, p1}, Ljava/lang/Class;->getDeclaredField(Ljava/lang/String;)Ljava/lang/reflect/Field;
+        move-result-object v0
+        const/4 v1, 0x1
+        invoke-virtual {v0, v1}, Ljava/lang/reflect/Field;->setAccessible(Z)V
+        return-object v0
     .end method
 
     .method public setAlpha(I)V
-        .registers 3
+        .registers 4
 
-        move-object v0, p0
-        iput p1, v0, $SECTIONS_DRAWABLE_CLASS;->alpha:I
-        invoke-virtual {v0}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
+        iput p1, p0, $PLAYED_SECTIONS_CLASS;->alpha:I
+        iget-object v1, p0, $PLAYED_SECTIONS_CLASS;->paint:Landroid/graphics/Paint;
+        mul-int/lit16 v0, p1, 0xb2
+        div-int/lit16 v0, v0, 0xff
+        invoke-virtual {v1, v0}, Landroid/graphics/Paint;->setAlpha(I)V
+        invoke-virtual {p0}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
         return-void
     .end method
 
     .method public getAlpha()I
         .registers 2
 
-        iget v0, p0, $SECTIONS_DRAWABLE_CLASS;->alpha:I
+        iget v0, p0, $PLAYED_SECTIONS_CLASS;->alpha:I
         return v0
     .end method
 
     .method public setColorFilter(Landroid/graphics/ColorFilter;)V
         .registers 3
 
-        move-object v0, p0
-        iget-object v1, v0, $SECTIONS_DRAWABLE_CLASS;->paint:Landroid/graphics/Paint;
-        invoke-virtual {v1, p1}, Landroid/graphics/Paint;->setColorFilter(Landroid/graphics/ColorFilter;)V
-        invoke-virtual {v0}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
+        iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->paint:Landroid/graphics/Paint;
+        invoke-virtual {v0, p1}, Landroid/graphics/Paint;->setColorFilter(Landroid/graphics/ColorFilter;)V
+        invoke-virtual {p0}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
         return-void
     .end method
 
     .method public getOpacity()I
-        .registers 1
+        .registers 3
 
+        iget v0, p0, $PLAYED_SECTIONS_CLASS;->alpha:I
+        const/16 v1, 0xff
+        if-ne v0, v1, :translucent
+        const/4 v0, -0x1
+        return v0
+
+        :translucent
         const/4 v0, -0x3
         return v0
     .end method
 
-    .method public onDraw(Landroid/graphics/Canvas;)V
-        .registers 2
-
-        invoke-virtual {p0, p1}, $SECTIONS_DRAWABLE_CLASS;->draw(Landroid/graphics/Canvas;)V
-        return-void
-    .end method
-
     .method public draw(Landroid/graphics/Canvas;)V
-        .registers 16
+        .registers 14
         .param p1, "canvas"
 
-        move-object/from16 v8, p1
-        invoke-static {}, $SKIP_ENGINE_CLASS;->active()$SKIP_STATE_CLASS;
-        move-result-object v0
-        if-eqz v0, :return
-        invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
-        move-result v1
-        if-eqz v1, :return
-        iget-object v1, v0, $SKIP_STATE_CLASS->segments:$SEGMENT_ARRAY
-        if-eqz v1, :return
-        array-length v2, v1
-        if-eqz v2, :return
-        iget-object v3, v0, $SKIP_STATE_CLASS->controller:Lp73/a;
-        if-eqz v3, :return
-        invoke-interface {v3}, Lp73/a;->getDuration()J
-        move-result-wide v4
-        const-wide/16 v6, 0x0
-        cmp-long v2, v4, v6
-        if-lez v2, :return
-
-        const/4 v3, 0x4
-        new-array v15, v3, [I
-        const/4 v7, 0x0
-        const/4 v9, 0x0
-
-        :stamp
-        const/4 v3, 0x4
-        if-ge v9, v3, :stamped
-        invoke-static {v9}, $BEHAVIOR_STORE_CLASS;->getBehavior(I)I
-        move-result v3
-        aput v3, v15, v9
-        mul-int/lit8 v7, v7, 0x1f
-        add-int/2addr v7, v3
-        add-int/lit8 v9, v9, 0x1
-        goto :stamp
-
-        :stamped
-        invoke-static {v1}, Ljava/lang/System;->identityHashCode(Ljava/lang/Object;)I
-        move-result v3
-        mul-int/lit8 v7, v7, 0x1f
-        add-int/2addr v7, v3
-        long-to-int v3, v4
-        mul-int/lit8 v7, v7, 0x1f
-        add-int/2addr v7, v3
-
-        sget v3, $SECTIONS_DRAWABLE_CLASS;->CACHE_STAMP:I
-        if-eq v7, v3, :cached
-        sput v7, $SECTIONS_DRAWABLE_CLASS;->CACHE_STAMP:I
-        sput-object v15, $SECTIONS_DRAWABLE_CLASS;->BEHAVIORS:[I
-        invoke-static {v1, v4, v5}, $RANGES_CLASS;->build($SEGMENT_ARRAY;J)$BAND_ARRAY
-        move-result-object v3
-        sput-object v3, $SECTIONS_DRAWABLE_CLASS;->CACHE_BANDS:$BAND_ARRAY
-
-        :cached
-        sget-object v1, $SECTIONS_DRAWABLE_CLASS;->CACHE_BANDS:$BAND_ARRAY
-        if-eqz v1, :return
-        array-length v0, v1
-        if-eqz v0, :return
-
+        iput-object p1, p0, $PLAYED_SECTIONS_CLASS;->target:Landroid/graphics/Canvas;
         invoke-virtual {p0}, Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;
-        move-result-object v3
-        invoke-virtual {v3}, Landroid/graphics/Rect;->width()I
-        move-result v9
-        if-lez v9, :return
-        invoke-virtual {v3}, Landroid/graphics/Rect;->height()I
-        move-result v4
-        if-lez v4, :return
+        move-result-object v0
+        invoke-virtual {v0}, Landroid/graphics/Rect;->isEmpty()Z
+        move-result v1
+        if-nez v1, :return
+        invoke-virtual {v0}, Landroid/graphics/Rect;->width()I
+        move-result v1
+        if-lez v1, :return
+        iput v1, p0, $PLAYED_SECTIONS_CLASS;->width:I
+        invoke-virtual {v0}, Landroid/graphics/Rect;->centerY()I
+        move-result v1
+        int-to-float v1, v1
+        iput v1, p0, $PLAYED_SECTIONS_CLASS;->center:F
+        iget-object v3, p0, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
+        if-eqz v3, :return
+        iget-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->broken:Z
+        if-nez v0, :source
+        invoke-static {}, $SKIP_ENGINE_CLASS;->active()$SKIP_STATE_CLASS;
+        move-result-object v2
+        if-eqz v2, :source
+        iget-object v4, v2, $SKIP_STATE_CLASS;->segments:$SEGMENT_ARRAY
+        if-eqz v4, :source
+        array-length v5, v4
+        if-eqz v5, :source
+        iget-object v5, v2, $SKIP_STATE_CLASS;->controller:Lp73/a;
+        if-eqz v5, :source
+        invoke-interface {v5}, Lp73/a;->getDuration()J
+        move-result-wide v6
+        const-wide/16 v8, 0x0
+        cmp-long v10, v6, v8
+        if-lez v10, :source
+        iput-object v4, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
+        iput-wide v6, p0, $PLAYED_SECTIONS_CLASS;->duration:J
+        iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;
+        move-object v11, v0
+        invoke-virtual {v11, v3}, Ljava/lang/reflect/Field;->get(Ljava/lang/Object;)Ljava/lang/Object;
+        move-result-object v9
+        if-eqz v9, :return
+        check-cast v9, Ljava/util/List;
+        iput-object v9, p0, $PLAYED_SECTIONS_CLASS;->intervals:Ljava/util/List;
+        iget v8, p0, $PLAYED_SECTIONS_CLASS;->alpha:I
+        mul-int/lit16 v8, v8, 0xb2
+        div-int/lit16 v8, v8, 0xff
+        iput v8, p0, $PLAYED_SECTIONS_CLASS;->effective:I
+        iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->thin:Ljava/lang/reflect/Field;
+        move-object v11, v0
+        invoke-virtual {v11, v3}, Ljava/lang/reflect/Field;->getFloat(Ljava/lang/Object;)F
+        move-result v1
+        iput v1, p0, $PLAYED_SECTIONS_CLASS;->thick:F
+        iget-boolean v11, p0, $PLAYED_SECTIONS_CLASS;->round:Z
+        if-eqz v11, :rect
+        invoke-direct {p0}, $PLAYED_SECTIONS_CLASS;->drawRounds()V
+        return-void
 
-        iget v10, v3, Landroid/graphics/Rect;->top:I
-        iget v3, v3, Landroid/graphics/Rect;->left:I
-        int-to-float v3, v3
-        int-to-float v4, v4
-        int-to-float v10, v10
-        int-to-float v2, v9
-        const v9, 0x3e800000
-        mul-float v9, v9, v4
-        add-float v5, v10, v9
-        const v9, 0x3f000000
-        mul-float v9, v9, v4
-        const v10, 0x40400000
-        div-float v4, v9, v10
+        :rect
+        invoke-direct {p0}, $PLAYED_SECTIONS_CLASS;->drawRects()V
+        return-void
 
-        iget-object v13, p0, $SECTIONS_DRAWABLE_CLASS;->paint:Landroid/graphics/Paint;
-        iget v15, p0, $SECTIONS_DRAWABLE_CLASS;->alpha:I
-        mul-int/lit16 v15, v15, 0xb2
-        div-int/lit16 v15, v15, 0xff
-        const/4 v6, 0x0
-
-        :loop
-        if-ge v6, v0, :return
-        aget-object v7, v1, v6
-        iget v14, v7, $BAND_CLASS->category:I
-        invoke-static {v14}, $BEHAVIOR_STORE_CLASS;->getBehavior(I)I
-        move-result v14
-        const/4 v10, 0x2
-        if-eq v14, v10, :next
-
-        iget v9, v7, $BAND_CLASS->xStart:F
-        mul-float v9, v9, v2
-        add-float v9, v9, v3
-        iget v11, v7, $BAND_CLASS->xEnd:F
-        mul-float v11, v11, v2
-        add-float v11, v11, v3
-        iget v10, v7, $BAND_CLASS->lane:I
-        int-to-float v10, v10
-        mul-float v10, v10, v4
-        add-float v10, v10, v5
-        add-float v12, v10, v4
-        iget v14, v7, $BAND_CLASS->category:I
-        invoke-static {v14}, $CATEGORY_CLASS;->color(I)I
-        move-result v14
-        invoke-virtual {v13, v14}, Landroid/graphics/Paint;->setColor(I)V
-        invoke-virtual {v13, v15}, Landroid/graphics/Paint;->setAlpha(I)V
-        invoke-virtual/range {v8 .. v13}, Landroid/graphics/Canvas;->drawRect(FFFFLandroid/graphics/Paint;)V
-
-        :next
-        add-int/lit8 v6, v6, 0x1
-        goto :loop
+        :source
+        invoke-virtual {v3, p1}, Landroid/graphics/drawable/Drawable;->draw(Landroid/graphics/Canvas;)V
 
         :return
         return-void
     .end method
+
+    .method private drawRounds()V
+        .registers 17
+
+        move-object/from16 v15, p0
+        iget-object v0, v15, $PLAYED_SECTIONS_CLASS;->intervals:Ljava/util/List;
+        invoke-interface/range {v0 .. v0}, Ljava/util/List;->size()I
+        move-result v2
+        iget-object v4, v15, $PLAYED_SECTIONS_CLASS;->target:Landroid/graphics/Canvas;
+        iget-object v11, v15, $PLAYED_SECTIONS_CLASS;->paint:Landroid/graphics/Paint;
+        const/4 v1, 0x0
+        :try_read
+
+        :loop
+        if-ge v1, v2, :done
+        invoke-interface/range {v0 .. v1}, Ljava/util/List;->get(I)Ljava/lang/Object;
+        move-result-object v3
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->start:Ljava/lang/reflect/Field;
+        move-object v14, v3
+        invoke-static/range {v13 .. v14}, $PLAYED_SECTIONS_CLASS;->num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
+        move-result v5
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->end:Ljava/lang/reflect/Field;
+        invoke-static/range {v13 .. v14}, $PLAYED_SECTIONS_CLASS;->num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
+        move-result v7
+        iget v6, v15, $PLAYED_SECTIONS_CLASS;->thick:F
+        iget-object v14, v15, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->selected:Ljava/lang/reflect/Field;
+        invoke-virtual/range {v13 .. v14}, Ljava/lang/reflect/Field;->getInt(Ljava/lang/Object;)I
+        move-result v13
+        if-ne v1, v13, :plain
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->thickField:Ljava/lang/reflect/Field;
+        invoke-virtual/range {v13 .. v14}, Ljava/lang/reflect/Field;->getFloat(Ljava/lang/Object;)F
+        move-result v12
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->factor:Ljava/lang/reflect/Field;
+        invoke-virtual/range {v13 .. v14}, Ljava/lang/reflect/Field;->getFloat(Ljava/lang/Object;)F
+        move-result v13
+        sub-float v12, v12, v6
+        mul-float/2addr v12, v13
+        add-float v6, v12, v6
+
+        :plain
+        iget v13, v15, $PLAYED_SECTIONS_CLASS;->thick:F
+        const/high16 v12, 0x40000000
+        div-float v13, v13, v12
+        move v9, v13
+        move v10, v13
+        div-float v12, v6, v12
+        iget v13, v15, $PLAYED_SECTIONS_CLASS;->center:F
+        sub-float v6, v13, v12
+        add-float v8, v13, v12
+        iget v13, v15, $PLAYED_SECTIONS_CLASS;->width:I
+        int-to-float v13, v13
+        div-float v13, v5, v13
+        iput v13, v15, $PLAYED_SECTIONS_CLASS;->fraction:F
+        invoke-direct/range {v15 .. v15}, $PLAYED_SECTIONS_CLASS;->colour()I
+        move-result v12
+        invoke-virtual/range {v11 .. v12}, Landroid/graphics/Paint;->setColor(I)V
+        iget v12, v15, $PLAYED_SECTIONS_CLASS;->effective:I
+        invoke-virtual/range {v11 .. v12}, Landroid/graphics/Paint;->setAlpha(I)V
+        invoke-virtual/range {v4 .. v11}, Landroid/graphics/Canvas;->drawRoundRect(FFFFFFLandroid/graphics/Paint;)V
+        add-int/lit8 v1, v1, 0x1
+        goto :loop
+
+        :try_end_read
+
+        :done
+        return-void
+
+        :read_fail
+        const/4 v0, 0x1
+        iput-boolean v0, v15, $PLAYED_SECTIONS_CLASS;->broken:Z
+        return-void
+
+        .catch Ljava/lang/Exception; {:try_read .. :try_end_read} :read_fail
+    .end method
+
+    .method private drawRects()V
+        .registers 17
+
+        move-object/from16 v15, p0
+        iget-object v0, v15, $PLAYED_SECTIONS_CLASS;->intervals:Ljava/util/List;
+        invoke-interface/range {v0 .. v0}, Ljava/util/List;->size()I
+        move-result v2
+        iget-object v4, v15, $PLAYED_SECTIONS_CLASS;->target:Landroid/graphics/Canvas;
+        iget-object v9, v15, $PLAYED_SECTIONS_CLASS;->paint:Landroid/graphics/Paint;
+        iget v13, v15, $PLAYED_SECTIONS_CLASS;->thick:F
+        const/high16 v12, 0x40000000
+        div-float v12, v13, v12
+        iget v13, v15, $PLAYED_SECTIONS_CLASS;->center:F
+        sub-float v6, v13, v12
+        add-float v8, v13, v12
+        const/4 v1, 0x0
+        :try_read
+
+        :loop
+        if-ge v1, v2, :done
+        invoke-interface/range {v0 .. v1}, Ljava/util/List;->get(I)Ljava/lang/Object;
+        move-result-object v3
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->start:Ljava/lang/reflect/Field;
+        move-object v14, v3
+        invoke-static/range {v13 .. v14}, $PLAYED_SECTIONS_CLASS;->num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
+        move-result v5
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->end:Ljava/lang/reflect/Field;
+        invoke-static/range {v13 .. v14}, $PLAYED_SECTIONS_CLASS;->num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
+        move-result v7
+        iget v13, v15, $PLAYED_SECTIONS_CLASS;->width:I
+        int-to-float v13, v13
+        div-float v13, v5, v13
+        iput v13, v15, $PLAYED_SECTIONS_CLASS;->fraction:F
+        invoke-direct/range {v15 .. v15}, $PLAYED_SECTIONS_CLASS;->colour()I
+        move-result v12
+        move v10, v12
+        invoke-virtual/range {v9 .. v10}, Landroid/graphics/Paint;->setColor(I)V
+        iget v10, v15, $PLAYED_SECTIONS_CLASS;->effective:I
+        invoke-virtual/range {v9 .. v10}, Landroid/graphics/Paint;->setAlpha(I)V
+        invoke-virtual/range {v4 .. v9}, Landroid/graphics/Canvas;->drawRect(FFFFLandroid/graphics/Paint;)V
+        add-int/lit8 v1, v1, 0x1
+        goto :loop
+
+        :try_end_read
+
+        :done
+        return-void
+
+        :read_fail
+        const/4 v0, 0x1
+        iput-boolean v0, v15, $PLAYED_SECTIONS_CLASS;->broken:Z
+        return-void
+
+        .catch Ljava/lang/Exception; {:try_read .. :try_end_read} :read_fail
+    .end method
+
+    .method private colour()I
+        .registers 16
+
+        iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
+        if-eqz v0, :native
+        array-length v1, v0
+        if-eqz v1, :native
+        iget-wide v2, p0, $PLAYED_SECTIONS_CLASS;->duration:J
+        const-wide/16 v4, 0x0
+        cmp-long v6, v2, v4
+        if-lez v6, :native
+        iget v7, p0, $PLAYED_SECTIONS_CLASS;->fraction:F
+        const/4 v6, -0x1
+        const v8, 0x7f7fffff
+        const/4 v9, 0x0
+
+        :loop
+        if-ge v9, v1, :scanned
+        aget-object v10, v0, v9
+        iget-wide v11, v10, $SEGMENT_CLASS;->startMs:J
+        long-to-float v11, v11
+        long-to-float v13, v2
+        div-float v11, v11, v13
+        sub-float v11, v11, v7
+        const/4 v13, 0x0
+        cmpg-float v13, v11, v13
+        if-ltz v13, :neg
+        goto :abs
+
+        :neg
+        neg-float v11, v11
+
+        :abs
+        cmpl-float v13, v11, v8
+        if-gez v13, :next
+        move v8, v11
+        move v6, v9
+
+        :next
+        add-int/lit8 v9, v9, 0x1
+        goto :loop
+
+        :scanned
+        if-ltz v6, :native
+        aget-object v0, v0, v6
+        iget v0, v0, $SEGMENT_CLASS;->category:I
+        if-ltz v0, :native
+        invoke-static {v0}, $BEHAVIOR_STORE_CLASS;->getBehavior(I)I
+        move-result v1
+        const/4 v2, 0x2
+        if-eq v1, v2, :native
+        invoke-static {v0}, $CATEGORY_CLASS;->color(I)I
+        move-result v0
+        return v0
+
+        :native
+        sget v0, $PLAYED_SECTIONS_CLASS;->NATIVE:I
+        return v0
+    .end method
 """.trimIndent()
+
 
 private fun seekbarSectionsSmali(): String = """
     .class public final $SEEK_SECTIONS_CLASS
@@ -1752,7 +1763,9 @@ private fun seekbarSectionsSmali(): String = """
     .end method
 
     .method public static apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V
-        .registers 7
+        .registers 12
+        .param p0, "view"
+        .param p1, "drawable"
 
         if-eqz p1, :return
         instance-of v0, p1, Loo7/c;
@@ -1761,72 +1774,114 @@ private fun seekbarSectionsSmali(): String = """
         if-eqz v0, :return
 
         :family
-        invoke-virtual {p1}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
-        move-result-object v4
-        invoke-virtual {v4}, Ljava/lang/Class;->getName()Ljava/lang/String;
-        move-result-object v4
-        invoke-static {v4}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        invoke-static {}, $SKIP_ENGINE_CLASS;->active()$SKIP_STATE_CLASS;
-        move-result-object v0
-        if-eqz v0, :act_null
-
-        move-object v4, p1
-        check-cast v4, Landroid/graphics/drawable/LayerDrawable;
-        invoke-virtual {v4}, Landroid/graphics/drawable/LayerDrawable;->getNumberOfLayers()I
+        const-string v0, "apply"
+        invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        move-object v2, p1
+        check-cast v2, Landroid/graphics/drawable/LayerDrawable;
+        invoke-virtual {v2}, Landroid/graphics/drawable/LayerDrawable;->getNumberOfLayers()I
         move-result v3
-        new-instance v2, Ljava/lang/StringBuilder;
-        const-string v4, "a-layers="
-        invoke-direct {v2, v4}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
-        invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
-        invoke-virtual {v2}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-        move-result-object v2
-        invoke-static {v2}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        if-lez v3, :return
 
-        move-object v0, p1
-        check-cast v0, Landroid/graphics/drawable/LayerDrawable;
-        invoke-virtual {v0}, Landroid/graphics/drawable/LayerDrawable;->getNumberOfLayers()I
-        move-result v1
-        if-lez v1, :return
+        const/4 v0, -0x1
+        const/4 v4, 0x0
 
+        :walk
+        if-ge v4, v3, :walked
+        invoke-virtual {v2, v4}, Landroid/graphics/drawable/LayerDrawable;->getId(I)I
+        move-result v5
+        const v6, 0x102000d
+        if-ne v5, v6, :next
+        move v0, v4
+
+        :next
+        add-int/lit8 v4, v4, 0x1
+        goto :walk
+
+        :walked
+        new-instance v5, Ljava/lang/StringBuilder;
+        const-string v6, "idx="
+        invoke-direct {v5, v6}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
+        invoke-virtual {v5, v0}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
+        invoke-virtual {v5}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+        move-result-object v5
+        invoke-static {v5}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        if-gez v0, :indexed
+        const/4 v0, 0x2
+        if-ge v0, v3, :fallback
+
+        :indexed
+        invoke-virtual {v2, v0}, Landroid/graphics/drawable/LayerDrawable;->getDrawable(I)Landroid/graphics/drawable/Drawable;
+        move-result-object v5
+        instance-of v6, v5, Landroid/graphics/drawable/ClipDrawable;
+        if-eqz v6, :fallback
+        const-string v6, "clip"
+        invoke-static {v6}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        move-object v7, v5
+        check-cast v7, Landroid/graphics/drawable/ClipDrawable;
+        invoke-virtual {v7}, Landroid/graphics/drawable/ClipDrawable;->getDrawable()Landroid/graphics/drawable/Drawable;
+        move-result-object v8
+        if-eqz v8, :fallback
+        goto :wrap
+
+        :fallback
+        const/4 v7, 0x0
         const/4 v1, 0x0
-        invoke-virtual {v0, v1}, Landroid/graphics/drawable/LayerDrawable;->getDrawable(I)Landroid/graphics/drawable/Drawable;
-        move-result-object v2
-        invoke-virtual {v2}, Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;
-        move-result-object v3
-        instance-of v4, v2, $SECTIONS_DRAWABLE_CLASS;
-        if-eqz v4, :create
-        goto :reuse
+        invoke-virtual {v2, v1}, Landroid/graphics/drawable/LayerDrawable;->getDrawable(I)Landroid/graphics/drawable/Drawable;
+        move-result-object v8
+        if-eqz v8, :return
+
+        :wrap
+        instance-of v5, v8, $PLAYED_SECTIONS_CLASS;
+        if-nez v5, :reuse
+        instance-of v5, v8, Lyo7/b;
+        if-eqz v5, :rect
+        goto :create
+
+        :rect
+        instance-of v5, v8, Loo7/b;
+        if-eqz v5, :return
 
         :create
-        new-instance v2, $SECTIONS_DRAWABLE_CLASS;
-        invoke-direct {v2}, $SECTIONS_DRAWABLE_CLASS;-><init>()V
-        invoke-virtual {v2}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
-        move-result-object v4
-        invoke-virtual {v4}, Ljava/lang/Class;->getName()Ljava/lang/String;
-        move-result-object v4
-        invoke-static {v4}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        invoke-virtual {v0, v1, v2}, Landroid/graphics/drawable/LayerDrawable;->setDrawable(ILandroid/graphics/drawable/Drawable;)V
-        const-string v4, "post-set"
-        invoke-static {v4}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        new-instance v9, $PLAYED_SECTIONS_CLASS;
+        invoke-direct {v9, v8}, $PLAYED_SECTIONS_CLASS;-><init>(Landroid/graphics/drawable/Drawable;)V
+        if-eqz v7, :add
+        invoke-virtual {v7, v9}, Landroid/graphics/drawable/ClipDrawable;->setDrawable(Landroid/graphics/drawable/Drawable;)V
+        invoke-virtual {v2}, Landroid/graphics/drawable/LayerDrawable;->getBounds()Landroid/graphics/Rect;
+        move-result-object v5
+        invoke-virtual {v5}, Landroid/graphics/Rect;->isEmpty()Z
+        move-result v6
+        if-nez v6, :installed
+        invoke-virtual {v9, v5}, Landroid/graphics/drawable/Drawable;->setBounds(Landroid/graphics/Rect;)V
+        goto :installed
+
+        :add
+        invoke-virtual {v2}, Landroid/graphics/drawable/LayerDrawable;->getNumberOfLayers()I
+        move-result v5
+        add-int/lit8 v5, v5, -0x1
+        if-ltz v5, :add_new
+        invoke-virtual {v2, v5}, Landroid/graphics/drawable/LayerDrawable;->getDrawable(I)Landroid/graphics/drawable/Drawable;
+        move-result-object v6
+        instance-of v7, v6, $PLAYED_SECTIONS_CLASS;
+        if-eqz v7, :add_new
+        move-object v9, v6
+        goto :installed
+
+        :add_new
+        invoke-virtual {v2, v9}, Landroid/graphics/drawable/LayerDrawable;->addLayer(Landroid/graphics/drawable/Drawable;)V
+        goto :installed
 
         :reuse
-        const/4 v4, 0x0
-        invoke-virtual {p0}, Landroid/view/View;->getWidth()I
-        move-result v0
-        invoke-virtual {p0}, Landroid/view/View;->getHeight()I
-        move-result v1
-        invoke-virtual {v2, v4, v4, v0, v1}, Landroid/graphics/drawable/Drawable;->setBounds(IIII)V
-        new-instance v0, Ljava/lang/ref/WeakReference;
-        invoke-direct {v0, v2}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
-        sput-object v0, $SEEK_SECTIONS_CLASS;->CURRENT:Ljava/lang/ref/WeakReference;
-        invoke-virtual {v2}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
+        const-string v5, "reuse"
+        invoke-static {v5}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        move-object v9, v8
+
+        :installed
+        new-instance v5, Ljava/lang/ref/WeakReference;
+        invoke-direct {v5, v9}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
+        sput-object v5, $SEEK_SECTIONS_CLASS;->CURRENT:Ljava/lang/ref/WeakReference;
+        invoke-virtual {v9}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
 
         :return
-        return-void
-
-        :act_null
-        const-string v4, "a-null"
-        invoke-static {v4}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         return-void
     .end method
 """.trimIndent()
@@ -1868,10 +1923,10 @@ private fun skipButtonSmali(): String = """
         iget-object v2, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
         invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
         move-result-object v3
-        if-nez v2, :create
+        if-eqz v2, :create
         invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
         move-result-object v4
-        if-eqz v4, :update
+        if-nez v4, :update
         goto :attach
 
         :create
@@ -1891,6 +1946,13 @@ private fun skipButtonSmali(): String = """
         iput-object v2, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
 
         :attach
+        invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v4
+        if-eqz v4, :attach_free
+        check-cast v4, Landroid/view/ViewGroup;
+        invoke-virtual {v4, v2}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V
+
+        :attach_free
         invoke-virtual {v0}, Landroid/view/View;->getRootView()Landroid/view/View;
         move-result-object v4
         const v5, 0x1020002
