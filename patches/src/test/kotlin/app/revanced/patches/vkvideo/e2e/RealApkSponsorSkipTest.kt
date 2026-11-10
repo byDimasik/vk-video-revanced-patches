@@ -194,6 +194,38 @@ class RealApkSponsorSkipTest {
             assertTrue(ids.contains(0x1020000), "$descriptor lost layer id 0x1020000")
         }
 
+        val pageDrawable = context.classDefs.firstOrNull { it.type == "Lyo7/c;" }
+        assertNotNull(pageDrawable, "the page section drawable is gone")
+        assertNotNull(
+            pageDrawable!!.methods.firstOrNull { it.name == "findDrawableByLayerId" },
+            "yo7/c no longer overrides findDrawableByLayerId, the id lookup shortcut is back",
+        )
+        val compositeDrawable = context.classDefs.firstOrNull { it.type == "Loo7/c;" }
+        assertNotNull(compositeDrawable, "the composite section drawable is gone")
+        assertTrue(
+            compositeDrawable!!.methods.none { it.name == "findDrawableByLayerId" },
+            "oo7/c gained a findDrawableByLayerId override",
+        )
+
+        listOf("Lyo7/c;", "Loo7/c;").forEach { descriptor ->
+            val constructor = context.classDefs.first { it.type == descriptor }.methods.first { it.name == "<init>" }
+            val instructions = constructor.implementation!!.instructions.toList()
+            assertEquals(
+                2,
+                instructions.count {
+                    it.opcode == Opcode.NEW_INSTANCE &&
+                        (it as ReferenceInstruction).reference.toString() == "Landroid/graphics/drawable/ClipDrawable;"
+                },
+                "$descriptor: the clip layers moved",
+            )
+            val assigned = layerIds(instructions)
+            assertEquals(
+                listOf(0 to 0x1020000, 1 to 0x102000f, 2 to 0x102000d),
+                assigned,
+                "$descriptor: the fill layer is no longer index 2 with id 0x102000d",
+            )
+        }
+
         val page = context.classDefs.firstOrNull { it.type == "Lone/video/controls/views/seek/a;" }
         assertNotNull(page, "the page-player seek binder is gone")
         assertTrue(
@@ -243,6 +275,27 @@ class RealApkSponsorSkipTest {
                 "Lone/video/controls/views/seek/a;->a:Landroidx/appcompat/widget/AppCompatSeekBar;",
             "the page hook does not read the bar field",
         )
+    }
+
+    /** `setId(index, id)` pairs of a layer constructor, resolved from the constant loads into their registers. */
+    private fun layerIds(instructions: List<com.android.tools.smali.dexlib2.iface.instruction.Instruction>): List<Pair<Int, Int>> {
+        val constants = mutableMapOf<Int, Int>()
+        val assigned = mutableListOf<Pair<Int, Int>>()
+        instructions.forEach { instruction ->
+            if (instruction.opcode in setOf(Opcode.CONST, Opcode.CONST_4, Opcode.CONST_16, Opcode.CONST_HIGH16)) {
+                val literal = instruction as com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
+                constants[(literal as com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction).registerA] = literal.narrowLiteral
+            }
+            if ((instruction as? ReferenceInstruction)?.reference?.toString()?.endsWith("LayerDrawable;->setId(II)V") != true) return@forEach
+            val (indexRegister, idRegister) = when (instruction) {
+                is com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction ->
+                    instruction.startRegister to instruction.startRegister + 1
+                is FiveRegisterInstruction -> instruction.registerD to instruction.registerE
+                else -> error("unexpected setId form")
+            }
+            assigned += constants.getValue(indexRegister) to constants.getValue(idRegister)
+        }
+        return assigned
     }
 
     private fun containsId(bytes: ByteArray, id: Int): Boolean {

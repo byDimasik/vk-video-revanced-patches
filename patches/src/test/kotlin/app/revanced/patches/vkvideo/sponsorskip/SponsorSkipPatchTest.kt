@@ -232,8 +232,8 @@ class SponsorSkipPatchTest {
         val show = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
             .substringAfter(".method public static show")
             .substringBefore(".method public static hide")
-        assertTrue(show.contains("if-nez v2, :create"), "show does not create only for a missing button")
-        val existing = show.substringAfter("if-nez v2, :create").substringBefore(":create\n")
+        assertTrue(show.contains("if-eqz v2, :create"), "show does not create only for a missing button")
+        val existing = show.substringAfter("if-eqz v2, :create").substringBefore(":create\n")
         assertTrue(
             existing.contains("invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
             "show does not check for a detached button",
