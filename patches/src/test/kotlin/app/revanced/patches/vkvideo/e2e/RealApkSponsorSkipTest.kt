@@ -226,6 +226,20 @@ class RealApkSponsorSkipTest {
             )
         }
 
+        val roundDrawable = context.classDefs.first { it.type == "Lyo7/b;" }
+        listOf("d" to "Ljava/util/List;", "a" to "F", "b" to "F", "e" to "I", "f" to "F").forEach { (name, type) ->
+            assertTrue(
+                roundDrawable.fields.any { it.name == name && it.type == type },
+                "yo7/b lost the reflected field $name:$type",
+            )
+        }
+        val rectDrawable = context.classDefs.first { it.type == "Loo7/b;" }
+        listOf("b" to "Ljava/util/List;", "a" to "F").forEach { (name, type) ->
+            assertTrue(rectDrawable.fields.any { it.name == name && it.type == type }, "oo7/b lost the reflected field $name:$type")
+        }
+        val pair = context.classDefs.first { it.type == "Lkotlin/Pair;" }
+        assertTrue(pair.fields.any { it.name == "first" } && pair.fields.any { it.name == "second" }, "kotlin/Pair lost first/second")
+
         val page = context.classDefs.firstOrNull { it.type == "Lone/video/controls/views/seek/a;" }
         assertNotNull(page, "the page-player seek binder is gone")
         assertTrue(
@@ -289,7 +303,7 @@ class RealApkSponsorSkipTest {
             if ((instruction as? ReferenceInstruction)?.reference?.toString()?.endsWith("LayerDrawable;->setId(II)V") != true) return@forEach
             val (indexRegister, idRegister) = when (instruction) {
                 is com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction ->
-                    instruction.startRegister to instruction.startRegister + 1
+                    instruction.startRegister + 1 to instruction.startRegister + 2
                 is FiveRegisterInstruction -> instruction.registerD to instruction.registerE
                 else -> error("unexpected setId form")
             }

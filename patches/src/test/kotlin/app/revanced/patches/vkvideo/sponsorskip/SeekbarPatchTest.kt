@@ -80,8 +80,12 @@ class SeekbarPatchTest {
         assertTrue(init.contains("const-class v2, Loo7/a;"), "the rect item class is not resolved")
         assertTrue(drawable.contains(".method private static field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;"))
         val rounds = drawable.substringAfter(".method private drawRounds")
-        assertTrue(rounds.contains("$PLAYED_SECTIONS_CLASS->SELECTED:Ljava/lang/reflect/Field;"), "the current segment is not read")
-        assertTrue(rounds.contains("$PLAYED_SECTIONS_CLASS->FACTOR:Ljava/lang/reflect/Field;"), "the grow factor is not read")
+        assertTrue(rounds.contains("$PLAYED_SECTIONS_CLASS->selected:Ljava/lang/reflect/Field;"), "the current segment is not read")
+        assertTrue(rounds.contains("$PLAYED_SECTIONS_CLASS->factor:Ljava/lang/reflect/Field;"), "the grow factor is not read")
+        assertFalse(drawable.contains(".field private static list:Ljava/lang/reflect/Field;"), "the handles are shared between instances")
+        assertTrue(drawable.contains(".catch Ljava/lang/Exception; {:try_start .. :try_end} :broken"), "a field mismatch is unguarded")
+        assertTrue(drawable.substringAfter(":broken").contains("iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS->broken:Z"), "the guard does not set the failure flag")
+        assertTrue(drawable.contains("if-nez v0, :source"), "draw does not bail out on a broken wrapper")
     }
 
     @Test

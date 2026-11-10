@@ -1323,13 +1323,14 @@ private fun playedSectionsSmali(): String = """
     .field private thick:F
     .field private effective:I
     .field private fraction:F
-    .field private static LIST:Ljava/lang/reflect/Field;
-    .field private static THIN:Ljava/lang/reflect/Field;
-    .field private static THICK:Ljava/lang/reflect/Field;
-    .field private static SELECTED:Ljava/lang/reflect/Field;
-    .field private static FACTOR:Ljava/lang/reflect/Field;
-    .field private static START:Ljava/lang/reflect/Field;
-    .field private static END:Ljava/lang/reflect/Field;
+    .field private broken:Z
+    .field private list:Ljava/lang/reflect/Field;
+    .field private thin:Ljava/lang/reflect/Field;
+    .field private thickField:Ljava/lang/reflect/Field;
+    .field private selected:Ljava/lang/reflect/Field;
+    .field private factor:Ljava/lang/reflect/Field;
+    .field private start:Ljava/lang/reflect/Field;
+    .field private end:Ljava/lang/reflect/Field;
     .field private static final NATIVE:I = 0xff528bcc
 
     .method public constructor <init>(Landroid/graphics/drawable/Drawable;)V
@@ -1352,57 +1353,66 @@ private fun playedSectionsSmali(): String = """
         iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->round:Z
         invoke-virtual {p1}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
         move-result-object v2
+        :try_start
         if-eqz v0, :rect
         const-string v1, "d"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->LIST:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;
         const-string v1, "a"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->THIN:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->thin:Ljava/lang/reflect/Field;
         const-string v1, "b"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->THICK:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->thickField:Ljava/lang/reflect/Field;
         const-string v1, "e"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->SELECTED:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->selected:Ljava/lang/reflect/Field;
         const-string v1, "f"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->FACTOR:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->factor:Ljava/lang/reflect/Field;
         const-class v2, Lkotlin/Pair;
         const-string v1, "first"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->START:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->start:Ljava/lang/reflect/Field;
         const-string v1, "second"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->END:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->end:Ljava/lang/reflect/Field;
         return-void
 
         :rect
         const-string v1, "b"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->LIST:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;
         const-string v1, "a"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->THIN:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->thin:Ljava/lang/reflect/Field;
         const-class v2, Loo7/a;
         const-string v1, "a"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->START:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->start:Ljava/lang/reflect/Field;
         const-string v1, "b"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
-        sput-object v1, $PLAYED_SECTIONS_CLASS;->END:Ljava/lang/reflect/Field;
+        iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->end:Ljava/lang/reflect/Field;
+        :try_end
         return-void
+
+        :broken
+        const/4 v0, 0x1
+        iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->broken:Z
+        return-void
+
+        .catch Ljava/lang/Exception; {:try_start .. :try_end} :broken
     .end method
 
     .method private static num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
@@ -1488,6 +1498,8 @@ private fun playedSectionsSmali(): String = """
         iput v1, p0, $PLAYED_SECTIONS_CLASS;->center:F
         iget-object v3, p0, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
         if-eqz v3, :return
+        iget-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->broken:Z
+        if-nez v0, :source
         invoke-static {}, $SKIP_ENGINE_CLASS;->active()$SKIP_STATE_CLASS;
         move-result-object v2
         if-eqz v2, :source
@@ -1504,7 +1516,7 @@ private fun playedSectionsSmali(): String = """
         if-lez v10, :source
         iput-object v4, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
         iput-wide v6, p0, $PLAYED_SECTIONS_CLASS;->duration:J
-        sget-object v0, $PLAYED_SECTIONS_CLASS;->LIST:Ljava/lang/reflect/Field;
+        iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;
         move-object v11, v0
         invoke-virtual {v11, v3}, Ljava/lang/reflect/Field;->get(Ljava/lang/Object;)Ljava/lang/Object;
         move-result-object v9
@@ -1515,7 +1527,7 @@ private fun playedSectionsSmali(): String = """
         mul-int/lit16 v8, v8, 0xb2
         div-int/lit16 v8, v8, 0xff
         iput v8, p0, $PLAYED_SECTIONS_CLASS;->effective:I
-        sget-object v0, $PLAYED_SECTIONS_CLASS;->THIN:Ljava/lang/reflect/Field;
+        iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->thin:Ljava/lang/reflect/Field;
         move-object v11, v0
         invoke-virtual {v11, v3}, Ljava/lang/reflect/Field;->getFloat(Ljava/lang/Object;)F
         move-result v1
@@ -1551,23 +1563,23 @@ private fun playedSectionsSmali(): String = """
         if-ge v1, v2, :done
         invoke-interface/range {v0 .. v1}, Ljava/util/List;->get(I)Ljava/lang/Object;
         move-result-object v3
-        sget-object v13, $PLAYED_SECTIONS_CLASS;->START:Ljava/lang/reflect/Field;
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->start:Ljava/lang/reflect/Field;
         move-object v14, v3
         invoke-static/range {v13 .. v14}, $PLAYED_SECTIONS_CLASS;->num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
         move-result v5
-        sget-object v13, $PLAYED_SECTIONS_CLASS;->END:Ljava/lang/reflect/Field;
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->end:Ljava/lang/reflect/Field;
         invoke-static/range {v13 .. v14}, $PLAYED_SECTIONS_CLASS;->num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
         move-result v7
         iget v6, v15, $PLAYED_SECTIONS_CLASS;->thick:F
         iget-object v14, v15, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
-        sget-object v13, $PLAYED_SECTIONS_CLASS;->SELECTED:Ljava/lang/reflect/Field;
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->selected:Ljava/lang/reflect/Field;
         invoke-virtual/range {v13 .. v14}, Ljava/lang/reflect/Field;->getInt(Ljava/lang/Object;)I
         move-result v13
         if-ne v1, v13, :plain
-        sget-object v13, $PLAYED_SECTIONS_CLASS;->THICK:Ljava/lang/reflect/Field;
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->thickField:Ljava/lang/reflect/Field;
         invoke-virtual/range {v13 .. v14}, Ljava/lang/reflect/Field;->getFloat(Ljava/lang/Object;)F
         move-result v12
-        sget-object v13, $PLAYED_SECTIONS_CLASS;->FACTOR:Ljava/lang/reflect/Field;
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->factor:Ljava/lang/reflect/Field;
         invoke-virtual/range {v13 .. v14}, Ljava/lang/reflect/Field;->getFloat(Ljava/lang/Object;)F
         move-result v13
         sub-float v12, v12, v6
@@ -1622,11 +1634,11 @@ private fun playedSectionsSmali(): String = """
         if-ge v1, v2, :done
         invoke-interface/range {v0 .. v1}, Ljava/util/List;->get(I)Ljava/lang/Object;
         move-result-object v3
-        sget-object v13, $PLAYED_SECTIONS_CLASS;->START:Ljava/lang/reflect/Field;
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->start:Ljava/lang/reflect/Field;
         move-object v14, v3
         invoke-static/range {v13 .. v14}, $PLAYED_SECTIONS_CLASS;->num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
         move-result v5
-        sget-object v13, $PLAYED_SECTIONS_CLASS;->END:Ljava/lang/reflect/Field;
+        iget-object v13, v15, $PLAYED_SECTIONS_CLASS;->end:Ljava/lang/reflect/Field;
         invoke-static/range {v13 .. v14}, $PLAYED_SECTIONS_CLASS;->num(Ljava/lang/reflect/Field;Ljava/lang/Object;)F
         move-result v7
         iget v13, v15, $PLAYED_SECTIONS_CLASS;->width:I
@@ -1823,6 +1835,18 @@ private fun seekbarSectionsSmali(): String = """
         goto :installed
 
         :add
+        invoke-virtual {v2}, Landroid/graphics/drawable/LayerDrawable;->getNumberOfLayers()I
+        move-result v5
+        add-int/lit8 v5, v5, -0x1
+        if-gez v5, :add_new
+        invoke-virtual {v2, v5}, Landroid/graphics/drawable/LayerDrawable;->getDrawable(I)Landroid/graphics/drawable/Drawable;
+        move-result-object v6
+        instance-of v7, v6, $PLAYED_SECTIONS_CLASS;
+        if-eqz v7, :add_new
+        move-object v9, v6
+        goto :installed
+
+        :add_new
         invoke-virtual {v2, v9}, Landroid/graphics/drawable/LayerDrawable;->addLayer(Landroid/graphics/drawable/Drawable;)V
         goto :installed
 
@@ -1882,7 +1906,7 @@ private fun skipButtonSmali(): String = """
         if-eqz v2, :create
         invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
         move-result-object v4
-        if-eqz v4, :update
+        if-nez v4, :update
         goto :attach
 
         :create
