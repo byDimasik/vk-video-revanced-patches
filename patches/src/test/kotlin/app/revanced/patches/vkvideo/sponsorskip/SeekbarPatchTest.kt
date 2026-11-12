@@ -45,7 +45,7 @@ class SeekbarPatchTest {
         assertTrue(apply.contains("if-nez v5, :reuse"), "a wrapped drawable is not reused")
         assertTrue(apply.contains("invalidateSelf()V"), "the wrapper is not repainted")
         assertFalse(apply.contains("setBounds(IIII)V"), "apply still forces the wrapper bounds")
-        assertFalse(apply.contains("setDrawable(ILandroid/graphics/drawable/Drawable;)V"), "layer 0 is replaced again")
+        assertTrue(apply.contains("setDrawable(ILandroid/graphics/drawable/Drawable;)V"), "the track layer is not replaced in place")
     }
 
     @Test
@@ -178,5 +178,97 @@ class SeekbarPatchTest {
         val at = lines.indexOfFirst { it.trim() == ":closed" }
         assertEquals("const/16 v10, 0x1f4", lines[at + 1].trim(), "the cap compare is not first in the closed block")
         assertEquals("if-gt v3, v10, :no_end", lines[at + 2].trim(), "the cap compare is not a size guard")
+    }
+
+    @Test
+    fun `apply walks the track layer after the played install and replaces it in place`() {
+        val apply = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
+        assertTrue(apply.contains("const v6, 0x102000d"), "the fill walk constant is missing")
+        assertTrue(apply.contains("const v7, 0x1020000"), "the track walk constant is missing")
+        assertTrue(apply.contains("if-ne v5, v7, :track_next"), "the track id match is missing")
+        val installed = apply.indexOf(":installed")
+        val trackWalk = apply.indexOf(":track_walk")
+        assertTrue(installed in 0 until trackWalk, "the track pass must follow the played install")
+        assertTrue(
+            apply.contains(
+                "invoke-virtual {v2, v0, v9}, Landroid/graphics/drawable/LayerDrawable;->setDrawable(ILandroid/graphics/drawable/Drawable;)V",
+            ),
+            "the track wrapper is not installed at its own index",
+        )
+        listOf(":track_walk", ":track_walked", ":track_indexed", ":track_next", ":track_reuse", ":track_wrap", ":track_add", ":track_installed")
+            .forEach { label ->
+                assertEquals(1, apply.lines().count { it.trim() == label }, "label $label is missing or duplicated")
+            }
+    }
+
+    @Test
+    fun `the track pass unwraps a clip and reuses before the type guard`() {
+        val track = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(":track_walked")
+        assertTrue(track.contains("instance-of v5, v6, Landroid/graphics/drawable/ClipDrawable;"), "the track clip check is missing")
+        assertTrue(track.contains("ClipDrawable;->getDrawable()Landroid/graphics/drawable/Drawable;"), "the track inner is not unwrapped")
+        val reuse = track.indexOf("instance-of v5, v6, $PLAYED_SECTIONS_CLASS")
+        val round = track.indexOf("instance-of v5, v6, Lyo7/b;")
+        assertTrue(reuse in 0 until round, "the reuse guard must precede the type guard")
+        listOf("Lyo7/b;", "Loo7/b;").forEach {
+            assertTrue(track.contains("instance-of v5, v6, $it"), "the track inner check for $it is missing")
+        }
+    }
+
+    @Test
+    fun `the track flag gates the background replay on the 4-arg constructor`() {
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val draw = drawable.substringAfter(".method public draw")
+        val flag = draw.indexOf("$PLAYED_SECTIONS_CLASS->track:Z")
+        val replay = draw.indexOf("Landroid/graphics/drawable/Drawable;->draw(Landroid/graphics/Canvas;)V")
+        val branch = draw.indexOf("if-eqz v11, :rect")
+        assertTrue(flag in 0 until replay, "draw does not read the track flag")
+        assertTrue(replay in 0 until branch, "the background replay must precede the bands")
+        assertTrue(
+            drawable.contains(".method public constructor <init>(Landroid/graphics/drawable/Drawable;IIZ)V"),
+            "the 4-arg constructor is missing",
+        )
+        assertFalse(
+            drawable.contains(".method public constructor <init>(Landroid/graphics/drawable/Drawable;)V"),
+            "the 1-arg constructor survived",
+        )
+        assertTrue(drawable.contains(".field private final strength:I"), "the strength field is missing")
+        assertTrue(drawable.contains(".field private final track:Z"), "the track field is missing")
+    }
+
+    @Test
+    fun `the track instance is dimmer and skips native bands in both draw branches`() {
+        val apply = sources[SEEK_SECTIONS_CLASS]!!
+        assertTrue(apply.contains("const/16 v5, 0xff"), "the played multiplier is missing")
+        assertTrue(apply.contains("const/16 v6, 0xff"), "the played strength is missing")
+        assertTrue(apply.contains("const/16 v5, 0xb2"), "the track alpha is missing")
+        assertTrue(apply.contains("const/16 v7, 0xf2"), "the track strength is missing")
+        assertTrue(apply.contains("const/4 v4, 0x1"), "the track flag is not set on the track instance")
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        listOf("drawRounds", "drawRects").forEach { method ->
+            val body = drawable.substringAfter(".method private $method")
+            assertTrue(body.contains("iget-boolean v13, v15, $PLAYED_SECTIONS_CLASS->track:Z") || body.contains("iget-boolean v14, v15, $PLAYED_SECTIONS_CLASS->track:Z"), "$method does not gate the skip on the track flag")
+            assertTrue(body.contains("NATIVE:I"), "$method does not compare the native colour")
+        }
+        val alpha = drawable.substringAfter(".method public setAlpha")
+        assertTrue(alpha.contains("$PLAYED_SECTIONS_CLASS->strength:I"), "setAlpha ignores the strength field")
+    }
+
+    @Test
+    fun `the constructor resolution stays guarded and degrades to the source draw`() {
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val init = drawable.substringAfter(".method public constructor <init>(Landroid/graphics/drawable/Drawable;IIZ)V")
+        assertTrue(init.contains(".catch Ljava/lang/Exception; {:try_start .. :try_end} :broken"), "the constructor resolution is unguarded")
+        assertTrue(init.contains("instance-of v0, p1, Lyo7/b;"), "the round family is not detected in the constructor")
+        val degraded = drawable.substringAfter(":broken")
+        assertTrue(degraded.contains("iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS->broken:Z"), "the guard does not set the failure flag")
+        assertTrue(drawable.contains("if-nez v0, :source"), "draw does not degrade to the source draw")
+    }
+
+    @Test
+    fun `the guard entry pins the 4-arg constructor and the added fields`() {
+        val methods = requiredMethods.getValue(PLAYED_SECTIONS_CLASS)
+        assertTrue(methods.contains("<init>:4"), "the guard entry does not pin the 4-arg constructor")
+        assertFalse(methods.contains("<init>:1"), "the stale 1-arg entry survived")
+        assertTrue(requiredFields.getValue(PLAYED_SECTIONS_CLASS).containsAll(listOf("strength", "track")), "the new fields are not pinned")
     }
 }
