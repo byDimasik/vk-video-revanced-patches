@@ -1467,6 +1467,11 @@ private fun playedSectionsSmali(): String = """
         div-int/lit16 v0, v0, 0xff
         div-int/lit16 v0, v0, 0xff
         invoke-virtual {v1, v0}, Landroid/graphics/Paint;->setAlpha(I)V
+        iget-object v1, p0, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
+        if-eqz v1, :keep
+        invoke-virtual {v1, p1}, Landroid/graphics/drawable/Drawable;->setAlpha(I)V
+
+        :keep
         invoke-virtual {p0}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
         return-void
     .end method

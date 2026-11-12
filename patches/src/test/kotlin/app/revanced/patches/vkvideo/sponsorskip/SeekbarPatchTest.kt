@@ -102,6 +102,7 @@ class SeekbarPatchTest {
         val drawable = sources[PLAYED_SECTIONS_CLASS]!!
         val alpha = drawable.substringAfter(".method public setAlpha")
         assertTrue(alpha.contains("Paint;->setAlpha(I)V"), "setAlpha does not reach the paint")
+        assertTrue(alpha.contains("Landroid/graphics/drawable/Drawable;->setAlpha(I)V"), "setAlpha is not forwarded to the source replay")
         assertTrue(drawable.contains(".field private static final NATIVE:I = 0xff528bcc"), "the native fill colour is not pinned")
         val colour = drawable.substringAfter(".method private colour")
         assertTrue(colour.indexOf(":native") < colour.indexOf("$CATEGORY_CLASS->color(I)I"), "the native branch is not the fallback")
