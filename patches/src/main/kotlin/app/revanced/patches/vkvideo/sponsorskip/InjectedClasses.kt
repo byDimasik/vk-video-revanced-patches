@@ -2434,10 +2434,11 @@ private fun skipButtonSmali(): String = """
         aget v4, v7, v4
         sub-int/2addr v15, v4
         if-lez v12, :zero_bar
+        const/4 v13, 0x2
         goto :bars_done
 
         :zero_bar
-        const/4 v13, 0x2
+        const/4 v13, 0x1
         goto :bars_done
 
         :no_bar

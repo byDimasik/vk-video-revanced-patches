@@ -258,7 +258,7 @@ class SponsorSkipPatchTest {
         assertTrue(place.contains("sub-int v15, v11, v5"), "the fallback does not lift the surface bottom by the offset")
         assertTrue(place.contains("if-eqz v1, :no_bar"), "a missing container does not reach the fallback")
         assertTrue(place.contains("if-lez v12, :zero_bar"), "a zero bar height does not reach the fallback")
-        assertTrue(place.contains(":zero_bar\n    const/4 v13, 0x2"), "the zero bar height is not the fallback form")
+        assertTrue(place.contains(":zero_bar\n    const/4 v13, 0x1"), "a zero bar height does not take the same form as an unlaid alternate bar")
         assertTrue(place.contains(":no_bar\n    const/4 v13, 0x2"), "the missing bar is not the fallback form")
     }
 
