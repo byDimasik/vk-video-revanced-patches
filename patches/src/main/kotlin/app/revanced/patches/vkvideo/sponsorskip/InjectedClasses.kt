@@ -2312,14 +2312,16 @@ private fun skipButtonSmali(): String = """
     .end method
 
     .method public static place($SKIP_STATE_CLASS;)V
-        .registers 16
+        .registers 17
         .param p0, "state"
+        move-object/from16 v15, p0
+        const/4 v12, 0x0
 
-        if-eqz p0, :return
-        iget-object v0, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
+        if-eqz v15, :return
+        iget-object v0, v15, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
         if-eqz v0, :return
         const/4 v14, 0x0
-        invoke-static {p0}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
+        invoke-static {v15}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
         move-result-object v1
         invoke-static {v1}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
         move-result-object v1
@@ -2327,7 +2329,7 @@ private fun skipButtonSmali(): String = """
         goto :live
 
         :fallback
-        iget-object v1, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
+        iget-object v1, v15, $SKIP_STATE_CLASS->controller:Lp73/a;
         if-eqz v1, :frame
         instance-of v4, v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
         if-eqz v4, :frame
@@ -2357,8 +2359,9 @@ private fun skipButtonSmali(): String = """
         const/4 v14, 0x1
 
         :live
-        iput-object v1, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
-        invoke-static {p0, v1, v0}, $SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;)V
+        iput-object v1, v15, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        invoke-static {v15, v1, v0}, $SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;)V
+        const/16 v15, 0x0
         invoke-virtual {v0}, Landroid/view/View;->getLayoutParams()Landroid/view/ViewGroup${'$'}LayoutParams;
         move-result-object v2
         if-eqz v2, :return
@@ -2387,6 +2390,61 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v1}, Landroid/view/View;->getHeight()I
         move-result v11
         add-int/2addr v11, v9
+        const/4 v13, 0x2
+        invoke-virtual {v0}, Landroid/view/View;->getRootView()Landroid/view/View;
+        move-result-object v4
+        const v5, 0x7f0b098b
+        invoke-virtual {v4, v5}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v1
+        if-eqz v1, :container_decor
+        goto :container_ok
+
+        :container_decor
+        const v5, 0x1020002
+        invoke-virtual {v4, v5}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v1
+        if-eqz v1, :container_root
+        goto :container_ok
+
+        :container_root
+        move-object v1, v4
+
+        :container_ok
+        if-eqz v1, :no_bar
+        const v4, 0x7f0b222b
+        invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v5
+        if-eqz v5, :bar_first
+        const/4 v13, 0x0
+        goto :bar_ready
+
+        :bar_first
+        const v4, 0x7f0b2224
+        invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v5
+        if-eqz v5, :no_bar
+        const/4 v13, 0x1
+
+        :bar_ready
+        invoke-virtual {v5}, Landroid/view/View;->getHeight()I
+        move-result v12
+        invoke-virtual {v5, v6}, Landroid/view/View;->getLocationInWindow([I)V
+        const/4 v4, 0x1
+        aget v15, v6, v4
+        aget v4, v7, v4
+        sub-int/2addr v15, v4
+        if-lez v12, :zero_bar
+        const/4 v13, 0x2
+        goto :bars_done
+
+        :zero_bar
+        const/4 v13, 0x1
+        goto :bars_done
+
+        :no_bar
+        const/4 v13, 0x2
+
+        :bars_done
         invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
         move-result-object v4
         if-eqz v14, :no_display
@@ -2407,6 +2465,27 @@ private fun skipButtonSmali(): String = """
         const/16 v5, 0x10
         invoke-static {v4, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
         move-result v7
+        move v5, v13
+        if-eqz v5, :target_page
+        const/4 v4, 0x2
+        if-ne v5, v4, :target_fallback
+        const/16 v5, 0xa
+        invoke-static {v14, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
+        move-result v5
+        sub-int/2addr v15, v5
+        goto :target_done
+
+        :target_page
+        sub-int/2addr v15, v6
+        goto :target_done
+
+        :target_fallback
+        const/16 v5, 0x1e
+        invoke-static {v14, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
+        move-result v5
+        sub-int v15, v11, v5
+
+        :target_done
         invoke-virtual {v0}, Landroid/view/View;->getWidth()I
         move-result v12
         if-lez v12, :w_measured
@@ -2467,14 +2546,15 @@ private fun skipButtonSmali(): String = """
         move v14, v5
 
         :x_done
-        sub-int v12, v11, v13
-        sub-int/2addr v12, v7
-        sub-int v5, v11, v13
-        sub-int/2addr v5, v6
-        if-le v12, v5, :y_high
-        move v12, v5
+        sub-int v12, v15, v13
 
         :y_high
+        sub-int v5, v11, v13
+        sub-int/2addr v5, v6
+        if-le v12, v5, :y_high2
+        move v12, v5
+
+        :y_high2
         add-int v5, v9, v6
         if-lt v12, v5, :y_low
         goto :y_done

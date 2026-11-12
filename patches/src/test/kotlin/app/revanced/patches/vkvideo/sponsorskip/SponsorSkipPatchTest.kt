@@ -13,6 +13,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -180,7 +181,7 @@ class SponsorSkipPatchTest {
     fun `the button clamps inside the player surface`() {
         val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
         val place = button.substring(button.indexOf(".method public static place"))
-        assertEquals(2, Regex("getLocationInWindow").findAll(place).count(), "place does not read both locations")
+        assertEquals(3, Regex("getLocationInWindow").findAll(place).count(), "place does not read the surface, the parent and the bar")
         assertTrue(place.contains("->leftMargin:I") && place.contains("->topMargin:I"))
         assertTrue(place.contains("0x800030"), "place does not pin the gravity")
         assertTrue(place.contains("if-eqz v1, :fallback"), "a null surface does not route to the fallback")
@@ -188,6 +189,77 @@ class SponsorSkipPatchTest {
         assertTrue(place.contains("setMaxWidth") && place.contains("setMaxHeight"), "the button is not capped to the surface")
         assertTrue(place.contains("if-eqz v3, :return"), "the layout is requested even when nothing changed")
         assertTrue(button.replace(";;", ";").contains("invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V".replace(";;", ";")))
+    }
+
+    @Test
+    fun `the raised anchor is measured from the bar bottom in the parent frame`() {
+        val place = placeBody()
+        assertTrue(
+            place.contains("invoke-virtual {v5, v6}, Landroid/view/View;->getLocationInWindow([I)V"),
+            "the bar location reuses another array than the parent one",
+        )
+        assertTrue(place.contains("aget v15, v6, v4"), "the bar top is not read from the bar array")
+        assertTrue(place.contains("aget v4, v7, v4"), "the parent top is not read from the parent array")
+        assertTrue(place.contains("sub-int/2addr v15, v4"), "the parent origin is not subtracted")
+        assertTrue(place.contains("sub-int/2addr v15, v4\n    if-lez v12, :zero_bar"), "the anchor is not the bar top in the parent frame")
+        assertTrue(place.contains("sub-int/2addr v15, v6"), "the page anchor does not subtract the 8 dp gap")
+        assertTrue(place.contains("sub-int v12, v15, v13"), "the anchor does not subtract the button height")
+    }
+
+    @Test
+    fun `the bar is looked up page id first, scoped to the content view with a decor fallback`() {
+        val place = placeBody()
+        val contentView = place.indexOf("const v5, 0x7f0b098b")
+        val pageBar = place.indexOf("const v4, 0x7f0b222b")
+        val cardBar = place.indexOf("const v4, 0x7f0b2224")
+        val decor = place.indexOf("const v5, 0x1020002", contentView)
+        assertTrue(contentView > 0 && pageBar > 0 && cardBar > 0, "the ids are not all looked up")
+        assertTrue(contentView < pageBar, "the bar is searched before the content view")
+        assertTrue(decor in (contentView + 1) until pageBar, "the decor fallback does not follow a missing content view")
+        assertTrue(pageBar < cardBar, "the page bar is not searched first")
+        assertTrue(place.contains("if-eqz v5, :bar_first"), "the page bar hit does not skip the card bar")
+        assertTrue(place.contains("if-eqz v5, :bar_first\n    const/4 v13, 0x0"), "the page host is not the guarded form")
+        assertTrue(place.contains("if-eqz v5, :no_bar\n    const/4 v13, 0x1"), "the card host is not recorded as the bar form")
+    }
+
+    @Test
+    fun `place runs on seventeen registers with the parameter window kept last`() {
+        val context = createBytecodeContext(*fixtures.toTypedArray())
+        sponsorSkipPatch.execute(context)
+        val method = MutableMethod(context.classDefs.first { it.type == SKIP_BUTTON_CLASS }.methods.first { it.name == "place" })
+        val source = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!.substringAfter(".method public static place")
+        assertTrue(source.contains("move-object/from16 v15, p0"), "the parameter is not copied into a low register")
+        assertEquals(17, method.implementation!!.registerCount, "the register count does not match the reference map")
+        assertTrue(source.contains(".registers 17"), "the source and the assembled frame disagree")
+        val bound = 16
+        method.getInstructions().forEach { instruction ->
+            if (instruction is OneRegisterInstruction) {
+                assertTrue(instruction.registerA in 0 until bound + 1, "${instruction.opcode} reads a register past the frame")
+            }
+            (instruction as? TwoRegisterInstruction)?.let {
+                assertTrue(it.registerA <= bound && it.registerB <= bound, "${instruction.opcode} reads a register past the frame")
+            }
+        }
+    }
+
+    @Test
+    fun `the raise adds no measure or size calls to place`() {
+        val place = placeBody()
+        assertEquals(0, Regex("->measure").findAll(place).count(), "place measures")
+        assertEquals(1, Regex("->setMaxWidth").findAll(place).count(), "the width cap is set more than once")
+        assertEquals(1, Regex("->setMaxHeight").findAll(place).count(), "the height cap is set more than once")
+    }
+
+    @Test
+    fun `an unlaid or missing bar falls back to the fixed offset`() {
+        val place = placeBody()
+        assertTrue(place.contains("const/16 v5, 0x1e"), "the fallback offset does not clear the bar")
+        assertTrue(place.contains(":target_fallback\n    const/16 v5, 0x1e"), "the fallback is not the anchor form")
+        assertTrue(place.contains("sub-int v15, v11, v5"), "the fallback does not lift the surface bottom by the offset")
+        assertTrue(place.contains("if-eqz v1, :no_bar"), "a missing container does not reach the fallback")
+        assertTrue(place.contains("if-lez v12, :zero_bar"), "a zero bar height does not reach the fallback")
+        assertTrue(place.contains(":zero_bar\n    const/4 v13, 0x1"), "a zero bar height does not take the same form as an unlaid alternate bar")
+        assertTrue(place.contains(":no_bar\n    const/4 v13, 0x2"), "the missing bar is not the fallback form")
     }
 
     @Test
