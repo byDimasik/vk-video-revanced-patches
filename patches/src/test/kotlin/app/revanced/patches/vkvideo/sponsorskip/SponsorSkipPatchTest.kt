@@ -201,7 +201,7 @@ class SponsorSkipPatchTest {
         assertTrue(place.contains("aget v15, v6, v4"), "the bar top is not read from the bar array")
         assertTrue(place.contains("aget v4, v7, v4"), "the parent top is not read from the parent array")
         assertTrue(place.contains("sub-int/2addr v15, v4"), "the parent origin is not subtracted")
-        assertTrue(place.contains("add-int v15, v15, v12"), "the bar height is not added to reach its bottom edge")
+        assertTrue(place.contains("sub-int/2addr v15, v4\n    if-lez v12, :zero_bar"), "the anchor is not the bar top in the parent frame")
         assertTrue(place.contains("sub-int/2addr v15, v6"), "the page anchor does not subtract the 8 dp gap")
         assertTrue(place.contains("sub-int v12, v15, v13"), "the anchor does not subtract the button height")
     }
@@ -253,11 +253,12 @@ class SponsorSkipPatchTest {
     @Test
     fun `an unlaid or missing bar falls back to the fixed offset`() {
         val place = placeBody()
-        assertTrue(place.contains("const/16 v5, 0x2c"), "the fallback offset does not clear the bar")
-        assertTrue(place.contains(":target_fallback\n    const/16 v5, 0x2c"), "the fallback is not the anchor form")
+        assertTrue(place.contains("const/16 v5, 0x1e"), "the fallback offset does not clear the bar")
+        assertTrue(place.contains(":target_fallback\n    const/16 v5, 0x1e"), "the fallback is not the anchor form")
         assertTrue(place.contains("sub-int v15, v11, v5"), "the fallback does not lift the surface bottom by the offset")
         assertTrue(place.contains("if-eqz v1, :no_bar"), "a missing container does not reach the fallback")
-        assertTrue(place.contains("if-lez v12, :bars_done"), "a zero bar height does not reach the fallback")
+        assertTrue(place.contains("if-lez v12, :zero_bar"), "a zero bar height does not reach the fallback")
+        assertTrue(place.contains(":zero_bar\n    const/4 v13, 0x2"), "the zero bar height is not the fallback form")
         assertTrue(place.contains(":no_bar\n    const/4 v13, 0x2"), "the missing bar is not the fallback form")
     }
 

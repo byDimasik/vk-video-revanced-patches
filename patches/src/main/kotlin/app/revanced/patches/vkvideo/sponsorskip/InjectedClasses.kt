@@ -2433,8 +2433,10 @@ private fun skipButtonSmali(): String = """
         aget v15, v6, v4
         aget v4, v7, v4
         sub-int/2addr v15, v4
-        add-int v15, v15, v12
-        if-lez v12, :bars_done
+        if-lez v12, :zero_bar
+        goto :bars_done
+
+        :zero_bar
         const/4 v13, 0x2
         goto :bars_done
 
@@ -2466,7 +2468,6 @@ private fun skipButtonSmali(): String = """
         if-eqz v5, :target_page
         const/4 v4, 0x2
         if-ne v5, v4, :target_fallback
-        sub-int v15, v11, v12
         const/16 v5, 0xa
         invoke-static {v14, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
         move-result v5
@@ -2478,7 +2479,7 @@ private fun skipButtonSmali(): String = """
         goto :target_done
 
         :target_fallback
-        const/16 v5, 0x2c
+        const/16 v5, 0x1e
         invoke-static {v14, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
         move-result v5
         sub-int v15, v11, v5
