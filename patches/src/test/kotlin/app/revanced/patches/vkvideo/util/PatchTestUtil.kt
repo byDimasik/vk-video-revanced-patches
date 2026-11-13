@@ -634,6 +634,38 @@ object PatchTestUtil {
     """.trimIndent()
 
     /** Fixture sets covering every fingerprint the settings patch resolves. */
+    /** The app alert builder the SponsorSkip settings popup is transcribed against. */
+    private val dialogBuilderFixture = """
+        .class public final Lhy1/c${'$'}a;
+        .super Ljava/lang/Object;
+
+        .method public constructor <init>(Landroid/content/Context;)V
+            .registers 2
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .method public final x(Ljava/lang/CharSequence;)Lhy1/c${'$'}a;
+            .registers 2
+
+            return-object p0
+        .end method
+
+        .method public final v([Ljava/lang/CharSequence;ILandroid/content/DialogInterface${'$'}OnClickListener;)Lhy1/c${'$'}a;
+            .registers 4
+
+            return-object p0
+        .end method
+
+        .method public final j()Landroidx/appcompat/app/d;
+            .registers 1
+
+            const/4 p0, 0x0
+            return-object p0
+        .end method
+    """.trimIndent()
+
     private val settingsExtras: List<String> = listOf(
         switchListenerInterfaceFixture,
         toolbarChromeFragmentFixture,
@@ -641,6 +673,7 @@ object PatchTestUtil {
         navOpenerCallFixture,
         navOpenerClassFixture,
         navOpenerSubclassFixture,
+        dialogBuilderFixture,
     )
 
     val settingsScreenFixture168: List<String> = profileMenuFixture + settingsExtras
@@ -652,18 +685,18 @@ object PatchTestUtil {
     private const val EMPTY_AUTO_PLAY = "Lcom/vk/libvideo/autoplay/e;"
 
     /**
-     * Core SponsorSkip fixture set: the `p73/a` implementations, `VideoFile`,
+     * Core SponsorSkip fixture set: the controller interface and its implementations, `VideoFile`,
      * `UserId` and the preference accessor the engine fingerprints resolve.
      */
     val sponsorCoreFixture: List<String> = listOf(
         """
-        .class public interface abstract Lp73/a;
+        .class public interface abstract Lb83/a;
         .super Ljava/lang/Object;
 
-        .method public abstract D(Lcom/vk/dto/common/VideoFile;)V
+        .method public abstract R(Lcom/vk/dto/common/VideoFile;)V
         .end method
 
-        .method public abstract W(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
+        .method public abstract g0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
         .end method
 
         .method public abstract getPosition()J
@@ -678,14 +711,14 @@ object PatchTestUtil {
         .method public abstract release()V
         .end method
 
-        .method public abstract s(J)V
+        .method public abstract t(J)V
         .end method
         """.trimIndent(),
 
         """
         .class public final Lcom/vk/libvideo/autoplay/VideoAutoPlay;
         .super Ljava/lang/Object;
-        .implements Lp73/a;
+        .implements Lb83/a;
 
         .field public C:Lcom/vk/dto/common/VideoFile;
         .field public K:Ljava/lang/ref/WeakReference;
@@ -693,7 +726,7 @@ object PatchTestUtil {
         .field public t0:Ljava/lang/Object;
         .field public r0:Z
 
-        .method public final D(Lcom/vk/dto/common/VideoFile;)V
+        .method public final R(Lcom/vk/dto/common/VideoFile;)V
             .locals 3
 
             iput-object p1, p0, ${VIDEO_AUTO_PLAY}->C:Lcom/vk/dto/common/VideoFile;
@@ -702,7 +735,7 @@ object PatchTestUtil {
             return-void
         .end method
 
-        .method public final W(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
+        .method public final g0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
             .locals 2
 
             iget-object v0, p0, ${VIDEO_AUTO_PLAY}->K:Ljava/lang/ref/WeakReference;
@@ -724,7 +757,7 @@ object PatchTestUtil {
             return-void
         .end method
 
-        .method public final h0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)Z
+        .method public final o0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)Z
             .locals 1
 
             if-eqz p1, :cond_0
@@ -736,7 +769,7 @@ object PatchTestUtil {
             return v0
         .end method
 
-        .method public final x0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;Lcom/vk/libvideo/autoplay/a;Landroidx/recyclerview/widget/RecyclerView${'$'}c0;)V
+        .method public final D0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;Lcom/vk/libvideo/autoplay/a;Landroidx/recyclerview/widget/RecyclerView${'$'}c0;)V
             .locals 3
 
             iget-object v0, p0, ${VIDEO_AUTO_PLAY}->K:Ljava/lang/ref/WeakReference;
@@ -767,7 +800,7 @@ object PatchTestUtil {
             return v0
         .end method
 
-        .method public final s(J)V
+        .method public final t(J)V
             .locals 1
 
             return-void
@@ -777,18 +810,18 @@ object PatchTestUtil {
         """
         .class public final ${EMPTY_AUTO_PLAY}
         .super Ljava/lang/Object;
-        .implements Lp73/a;
+        .implements Lb83/a;
 
         .field public a:Lcom/vk/dto/common/VideoFile;
 
-        .method public final D(Lcom/vk/dto/common/VideoFile;)V
+        .method public final R(Lcom/vk/dto/common/VideoFile;)V
             .registers 2
 
             iput-object p1, p0, ${EMPTY_AUTO_PLAY}->a:Lcom/vk/dto/common/VideoFile;
             return-void
         .end method
 
-        .method public final W(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
+        .method public final g0(Lcom/vk/libvideo/design/view/videotexture/VideoTextureView;)V
             .registers 2
 
             return-void
@@ -811,7 +844,7 @@ object PatchTestUtil {
         """
         .class public abstract Lone/video/player/BaseVideoPlayer;
         .super Ljava/lang/Object;
-        .implements Lp73/a;
+        .implements Lb83/a;
 
         .field public u0:J
 

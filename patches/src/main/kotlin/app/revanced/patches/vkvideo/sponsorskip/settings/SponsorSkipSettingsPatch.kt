@@ -9,6 +9,7 @@ import app.revanced.patches.vkvideo.settings.navOpenerFingerprint
 import app.revanced.patches.vkvideo.settings.resolveNavOpener
 import app.revanced.patches.vkvideo.settings.revancedSettingsPatch
 import app.revanced.patches.vkvideo.settings.switchListenerMethodFingerprint
+import app.revanced.patches.vkvideo.sponsorskip.settings.resolveDialogApi
 import app.revanced.patches.vkvideo.settings.toolbarChromeFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
 import com.android.tools.smali.dexlib2.Opcode
@@ -35,7 +36,8 @@ val sponsorSkipSettingsPatch = bytecodePatch(
         val opener = resolveNavOpener(navOpenerFingerprint.method, classDefs.toList())
         val switchListenerMethod = switchListenerMethodFingerprint.method.name
 
-        injectSponsorSkipSettingsClasses(this, chrome, opener, switchListenerMethod)
+        val dialog = resolveDialogApi(classDefs.toList())
+        injectSponsorSkipSettingsClasses(this, chrome, opener, switchListenerMethod, dialog)
 
         // The anchor only exists after the root builder was injected by the settings
         // patch, so an unexpected shape fails loudly instead of silently dropping the row.

@@ -24,10 +24,10 @@ internal const val PLAYED_SECTIONS_CLASS = "${SPONSOR_SKIP_PACKAGE}PlayedSection
 internal const val SEEK_SECTIONS_CLASS = "${SPONSOR_SKIP_PACKAGE}SeekbarSections;"
 
 /** The `OneVideoSeekBarView` id from `one_video_simple_controls_view.xml`. */
-internal const val SEEK_BAR_VIEW_ID = 0x7f0b222b
+internal const val SEEK_BAR_VIEW_ID = 0x7f0b223d
 
 /** The plain `AppCompatSeekBar` inside `VideoSeekViewOld`, used by the page player. */
-internal const val SEEK_BAR_ID = 0x7f0b2224
+internal const val SEEK_BAR_ID = 0x7f0b2236
 
 private const val PREF_FILE = "sponsorskip_settings"
 private const val KEY_ENABLED = "sponsorskip_enabled"
@@ -47,8 +47,8 @@ private const val BUTTON_PAD_DP = 8
  * Same contract as the settings injector: an existing descriptor is skipped, but
  * a stale generation missing methods is rejected instead of silently kept.
  */
-internal fun injectSponsorSkipClasses(context: BytecodePatchContext) {
-    sponsorSkipSources().forEach { (descriptor, source) ->
+internal fun injectSponsorSkipClasses(context: BytecodePatchContext, api: AutoPlayApi) {
+    sponsorSkipSources(api).forEach { (descriptor, source) ->
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
         if (existing != null) {
             val missing = requiredMethods[descriptor].orEmpty().filter { required ->
@@ -74,8 +74,11 @@ internal fun injectSponsorSkipClasses(context: BytecodePatchContext) {
     }
 }
 
+/** The controller the 1.171 bundle was built against; the default keeps pure-string tests stable. */
+internal val LEGACY_AUTO_PLAY_API = AutoPlayApi("Lp73/a;", "s")
+
 /** The injected class sources, keyed by descriptor; exposed for structural tests. */
-internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
+internal fun sponsorSkipSources(api: AutoPlayApi = LEGACY_AUTO_PLAY_API): Map<String, String> = linkedMapOf(
     CATEGORY_CLASS to categorySmali(),
     SEGMENT_CLASS to segmentSmali(),
     SEGMENT_ORDER_CLASS to segmentOrderSmali(),
@@ -91,7 +94,12 @@ internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
     SKIP_LAYOUT_CLASS to skipLayoutSmali(),
     PLAYED_SECTIONS_CLASS to playedSectionsSmali(),
     SEEK_SECTIONS_CLASS to seekbarSectionsSmali(),
-).mapValues { (_, source) -> source.replace(";;", ";") }
+).mapValues { (_, source) ->
+    source
+        .replace("Lp73/a;->s(J)V", "${api.controller}->${api.seekMethod}(J)V")
+        .replace("Lp73/a", api.controller)
+        .replace(";;", ";")
+}
 
 internal val requiredMethods = mapOf(
     CATEGORY_CLASS to listOf("color:1", "name:1", "label:1"),

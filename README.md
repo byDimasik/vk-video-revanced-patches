@@ -22,7 +22,7 @@ Target distribution is ReVanced Patch Bundle (`.rvp`) format for use in ReVanced
 * **Bytecode Patches**: Structural AST and opcode matching via ReVanced Fingerprints to mutate Dalvik bytecode instructions at build time.
 * **Extensions**: Injected runtime helper classes compiled and merged into target APK DEX files.
 * **Target Package**: `com.vk.vkvideo` (APKPure distribution).
-* **Validated Target**: 1.170 (versionCode 54881) — cold-launch tested on device; see
+* **Validated Target**: 1.171 (versionCode 55547) — cold-launch tested on device; see
   [skills/upgrading-base-app](skills/upgrading-base-app/SKILL.md) for the upgrade pipeline.
 * **Base-app upgrades**: run `skills/upgrading-base-app` when a new version ships; e2e tests pick
   up the newest `.cache/vkvideo-*.apk` snapshot automatically.

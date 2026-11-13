@@ -182,7 +182,7 @@ class RealApkSponsorSkipTest {
         val context = constructor.newInstance(apkFile, patchedDir)
         context.initializeCache()
 
-        listOf("Loo7/c;", "Lyo7/c;").forEach { descriptor ->
+        listOf("Ldp7/c;", "Lnp7/c;").forEach { descriptor ->
             val drawable = context.classDefs.firstOrNull { it.type == descriptor }
             assertNotNull(drawable, "the section drawable $descriptor is gone")
             assertEquals("Landroid/graphics/drawable/LayerDrawable;", drawable!!.superclass, "$descriptor is no longer a layer list")
@@ -194,20 +194,20 @@ class RealApkSponsorSkipTest {
             assertTrue(ids.contains(0x1020000), "$descriptor lost layer id 0x1020000")
         }
 
-        val pageDrawable = context.classDefs.firstOrNull { it.type == "Lyo7/c;" }
+        val pageDrawable = context.classDefs.firstOrNull { it.type == "Lnp7/c;" }
         assertNotNull(pageDrawable, "the page section drawable is gone")
         assertNotNull(
             pageDrawable!!.methods.firstOrNull { it.name == "findDrawableByLayerId" },
-            "yo7/c no longer overrides findDrawableByLayerId, the id lookup shortcut is back",
+            "np7/c no longer overrides findDrawableByLayerId, the id lookup shortcut is back",
         )
-        val compositeDrawable = context.classDefs.firstOrNull { it.type == "Loo7/c;" }
+        val compositeDrawable = context.classDefs.firstOrNull { it.type == "Ldp7/c;" }
         assertNotNull(compositeDrawable, "the composite section drawable is gone")
         assertTrue(
             compositeDrawable!!.methods.none { it.name == "findDrawableByLayerId" },
-            "oo7/c gained a findDrawableByLayerId override",
+            "dp7/c gained a findDrawableByLayerId override",
         )
 
-        listOf("Lyo7/c;", "Loo7/c;").forEach { descriptor ->
+        listOf("Lnp7/c;", "Ldp7/c;").forEach { descriptor ->
             val constructor = context.classDefs.first { it.type == descriptor }.methods.first { it.name == "<init>" }
             val instructions = constructor.implementation!!.instructions.toList()
             assertEquals(
@@ -226,16 +226,16 @@ class RealApkSponsorSkipTest {
             )
         }
 
-        val roundDrawable = context.classDefs.first { it.type == "Lyo7/b;" }
+        val roundDrawable = context.classDefs.first { it.type == "Lnp7/b;" }
         listOf("d" to "Ljava/util/List;", "a" to "F", "b" to "F", "e" to "I", "f" to "F").forEach { (name, type) ->
             assertTrue(
                 roundDrawable.fields.any { it.name == name && it.type == type },
-                "yo7/b lost the reflected field $name:$type",
+                "np7/b lost the reflected field $name:$type",
             )
         }
-        val rectDrawable = context.classDefs.first { it.type == "Loo7/b;" }
+        val rectDrawable = context.classDefs.first { it.type == "Ldp7/b;" }
         listOf("b" to "Ljava/util/List;", "a" to "F").forEach { (name, type) ->
-            assertTrue(rectDrawable.fields.any { it.name == name && it.type == type }, "oo7/b lost the reflected field $name:$type")
+            assertTrue(rectDrawable.fields.any { it.name == name && it.type == type }, "dp7/b lost the reflected field $name:$type")
         }
         val pair = context.classDefs.first { it.type == "Lkotlin/Pair;" }
         assertTrue(pair.fields.any { it.name == "first" } && pair.fields.any { it.name == "second" }, "kotlin/Pair lost first/second")

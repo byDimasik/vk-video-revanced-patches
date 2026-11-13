@@ -5,11 +5,13 @@ import app.revanced.patches.vkvideo.settings.ADS_SETTINGS_CLASS
 import app.revanced.patches.vkvideo.settings.extractToolbarChrome
 import app.revanced.patches.vkvideo.settings.navOpenerFingerprint
 import app.revanced.patches.vkvideo.settings.revancedSettingsPatch
+import app.revanced.patches.vkvideo.settings.remapAppTypes
 import app.revanced.patches.vkvideo.settings.resolveNavOpener
 import app.revanced.patches.vkvideo.settings.toolbarChromeFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.settings.FRAGMENT_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.settings.ROOT_ROW_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.settings.SETTINGS_CLASS
+import app.revanced.patches.vkvideo.sponsorskip.settings.resolveDialogApi
 import app.revanced.patches.vkvideo.sponsorskip.settings.settingsSources
 import app.revanced.patches.vkvideo.sponsorskip.settings.sponsorSkipSettingsPatch
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
@@ -72,14 +74,30 @@ class RealApkSponsorSkipSettingsTest {
         applyPatches(context, revancedSettingsPatch, sponsorSkipPatch, sponsorSkipSettingsPatch)
 
         // Every transcribed anchor exists in the shipped dexes with the emitted signature.
+        // Refs are remapped together: the answer to a renamed type is only learnable
+        // from a neighbouring app type, never from a single ref.
+        val refs = mutableListOf<String>()
         fun assertResolves(owner: String, name: String, params: List<String>, returnType: String) {
-            val def = context.classDefs.firstOrNull { it.type == owner }
-            assertNotNull(def, "referenced class $owner must exist")
+            refs += "$owner->$name(${params.joinToString("")})$returnType"
+            val remapped = remapAppTypes(context, refs.joinToString("\n")).lines().last()
+            val mappedOwner = remapped.substringBefore("->")
+            val spec = remapped.substringAfter("(").substringBefore(")")
+            val types = mutableListOf<String>()
+            var i = 0
+            while (i < spec.length) {
+                val start = i
+                while (spec[i] == '[') i++
+                if (spec[i] == 'L') i = spec.indexOf(';', i) + 1 else i++
+                types += spec.substring(start, i)
+            }
+            val def = context.classDefs.firstOrNull { it.type == mappedOwner }
+            assertNotNull(def, "referenced class $mappedOwner must exist")
             assertNotNull(
                 def!!.methods.firstOrNull {
-                    it.name == name && it.parameterTypes.toList() == params && it.returnType == returnType
+                    it.name == name && it.parameterTypes.toList() == types &&
+                        it.returnType.toString() == remapped.substringAfterLast(')')
                 },
-                "referenced method $owner->$name(${params.joinToString("")})$returnType must exist",
+                "referenced method $mappedOwner->$name(${types.joinToString("")})$returnType must exist",
             )
         }
         assertResolves("Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}d;", "<init>", listOf(
@@ -92,12 +110,13 @@ class RealApkSponsorSkipSettingsTest {
             "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}d;",
             "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}c;", "I",
         ), "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}b;")
-        assertResolves("Lhy1/c${'$'}a;", "<init>", listOf("Landroid/content/Context;"), "V")
-        assertResolves("Lhy1/c${'$'}a;", "x", listOf("Ljava/lang/CharSequence;"), "Lhy1/c${'$'}a;")
-        assertResolves("Lhy1/c${'$'}a;", "v", listOf(
+        val dialog = resolveDialogApi(context.classDefs.toList())
+        assertResolves(dialog.builder, "<init>", listOf("Landroid/content/Context;"), "V")
+        assertResolves(dialog.builder, dialog.titleMethod, listOf("Ljava/lang/CharSequence;"), dialog.itemsReturn)
+        assertResolves(dialog.builder, dialog.itemsMethod, listOf(
             "[Ljava/lang/CharSequence;", "I", "Landroid/content/DialogInterface${'$'}OnClickListener;",
-        ), "Lhy1/c${'$'}a;")
-        assertResolves("Lhy1/c${'$'}a;", "j", emptyList(), "Landroidx/appcompat/app/d;")
+        ), dialog.itemsReturn)
+        assertResolves(dialog.showOwner, dialog.showMethod, emptyList(), "Landroidx/appcompat/app/d;")
         // `show()` is inherited from the framework Dialog, which is not a dexed class.
         assertTrue(context.classDefs.any { it.type == "Landroidx/appcompat/app/d;" })
         assertResolves("Lpx1/a${'$'}h;", "<init>", listOf("Ljava/lang/CharSequence;"), "V")
@@ -110,6 +129,7 @@ class RealApkSponsorSkipSettingsTest {
             extractToolbarChrome(context.classDefs.first { it.type == toolbarChromeFingerprint.getMethod(context).definingClass }),
             resolveNavOpener(navOpenerFingerprint.getMethod(context), context.classDefs.toList()),
             app.revanced.patches.vkvideo.settings.switchListenerMethodFingerprint.getMethod(context).name,
+            dialog,
         )
         for (descriptor in sources.keys) {
             assertTrue(context.classDefs.any { it.type == descriptor }, "$descriptor must be injected")

@@ -16,23 +16,24 @@ val sponsorSkipPatch = bytecodePatch(
 
     apply {
         LebedevRules.verify()
-        injectSponsorSkipClasses(this)
+        val api = resolveAutoPlayApi(classDefs.toList()).also { autoPlayApi = it }
+        injectSponsorSkipClasses(this, api)
 
         sponsorSkipVideoHandoffFingerprint.method.insertCall(
-            "$SKIP_ENGINE_CLASS->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V",
+            "$SKIP_ENGINE_CLASS->onVideoChanged(${api.controller}$VIDEO_FILE_TYPE)V",
         )
         sponsorSkipViewAttachedFingerprint.method.insertCall(
-            "$SKIP_ENGINE_CLASS->onViewAttached(Lp73/a;Landroid/view/View;)V",
+            "$SKIP_ENGINE_CLASS->onViewAttached(${api.controller}Landroid/view/View;)V",
         )
         sponsorSkipViewSetupFingerprint.method.insertCall(
-            "$SKIP_ENGINE_CLASS->onViewAttached(Lp73/a;Landroid/view/View;)V",
+            "$SKIP_ENGINE_CLASS->onViewAttached(${api.controller}Landroid/view/View;)V",
         )
         sponsorSkipHolderFingerprint.method.insertCall(
-            "$SKIP_ENGINE_CLASS->onViewAttached(Lp73/a;Landroid/view/View;)V",
+            "$SKIP_ENGINE_CLASS->onViewAttached(${api.controller}Landroid/view/View;)V",
             width = 2,
         )
         sponsorSkipReleaseFingerprint.method.insertCall(
-            "$SKIP_ENGINE_CLASS->onRelease(Lp73/a;)V",
+            "$SKIP_ENGINE_CLASS->onRelease(${api.controller})V",
         )
         sponsorSkipSeekFingerprint.method.insertBeforeReturns(
             "invoke-static {v3, v4, v5}, $SKIP_ENGINE_CLASS->onSeek(Ljava/lang/Object;J)V",
