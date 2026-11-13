@@ -33,8 +33,8 @@ not cold-launch tested via adb**.
      -p tools/vk-video-patches.rvp -b -o out/patched-<ver>.apk <base.apk>
    ```
    - Flag is `-p`, not `--patches`; `-b` bypasses signature verification of the input APK.
-   - RAM: the host has 15 GB and no swap — add swap first (`fallocate 8G /swapfile; mkswap; swapon`)
-     or the JVM gets OOM-killed (exit 137) during "Decoding resources".
+   - RAM: `-Xmx4g` peaked at ~3 GB with zero swap use on 1.170 and 1.171 — the host now has an
+     8 GB swapfile. Only add swap if `free` shows none AND the run swaps.
    - Any `SEVERE: ... failed` line = a fingerprint that no longer matches. Fix before proceeding.
 
 3. **Fix fingerprint drift**: strings anchors survive renames best. Baksmali the dexes that contain
@@ -43,6 +43,26 @@ not cold-launch tested via adb**.
    and compare method shapes between old and new versions. Loosen over-specified fingerprints
    (drop params/strings that moved) but keep at least one unique stable string anchor.
    Rebuild the bundle: `ANDROID_HOME=~/android ./gradlew rvp`, then copy to `tools/`.
+
+   Observed drift classes (1.170 → 1.171) and the resolution each needs — do not just retype the
+   new names, they move again:
+   - **Obfuscated type names in injected smali.** Templates hardcode types they borrow from the
+     app. `remapAppTypes` resolves each method ref by owner, name, arity and the most identical
+     parameter types, and follows owners that moved with their package; a ref without a unique
+     best match stays unchanged. Keep the ref shapes exact so the scoring has anchors.
+   - **Interfaces that exist only as a role.** `Lp73/a` became an unrelated validator; the
+     autoplay interface is found from the two implementations the app always ships
+     (`com/vk/libvideo/autoplay/VideoAutoPlay` and its empty stub) and their shared methods.
+   - **Twin methods differing only by a branch.** Two `(J)V` seeks exist; the wanted one jumps
+     with a `goto`, the other returns early. Pick by that, never by name.
+   - **Builders whose setters return another class.** Resolve `(Context)` ctor + title setter +
+     items setter on the same return type + terminal `Dialog` factory, and prefer the delegating
+     pair over a self-returning one.
+   - **Resource ids** move every version: re-read them from `aapt2 dump resources` and interpolate
+     the constants (`SEEK_BAR_*`) instead of baking ids into smali.
+   - **Drawable families** come in outer (`instance-of`, `const-class`) and inner variants plus a
+     reflected interval class — update all three sites or the overlay silently refuses the new
+     classes while every test still passes.
 
 4. **Build the distributable as a MERGED-APK split set** (do NOT ship the CLI's apktool-rebuilt
    resources — they corrupt: spurious `@null` refs, wrong XML resource-id refs):
@@ -61,7 +81,9 @@ not cold-launch tested via adb**.
    base (never rebuild resources via apktool). Beware: an empty `${N}` in `sed -i "${N}d"` deletes
    the WHOLE file.
 
-6. **Native tamper check (1.170+)**: `libvkcore.so` verifies the APK and calls `_exit(1)` on
+6. **Native tamper check (1.170+)**: the lib has been byte-identical across 1.170/1.171 —
+   compare `sha256` with the last verified split first; if it matches, reuse the known patched
+   copy instead of re-deriving. Otherwise: `libvkcore.so` verifies the APK and calls `_exit(1)` on
    mismatch (log tag: "error! verify new libraries in application!"). Symptom: process "exited
    cleanly (1)" seconds after launch, no Java crash. Fix: patch the check helper to a bare `ret`
    (find the function referencing the message string in .rodata, NOP-free single-instruction patch
@@ -72,6 +94,11 @@ not cold-launch tested via adb**.
    `apksigner sign --ks <keystore> --ks-pass pass:... --ks-key-alias <alias> --min-sdk-version 28`.
    Verify with `apksigner verify --min-sdk-version 28` (default verify may fail on old-API digest
    checks — pass the flag).
+
+7b. **Logged-out reachability differs by version.** 1.171 gates the whole Profile tab behind a
+   "Sign in to account" placeholder, so the profile-menu ReVanced row (and the settings screen
+   behind it) is unreachable on a freshly uninstalled device. Check the same tab on a stock control
+   build before calling a missing menu item a patch regression.
 
 8. **Device validation (required)**: uninstall stock, `adb install-multiple`, cold-launch
    `MainActivity` ≥3 times, each time: `pidof` non-empty after ~20 s, `logcat -b crash` free of
