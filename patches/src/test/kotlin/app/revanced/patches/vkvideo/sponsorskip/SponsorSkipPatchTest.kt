@@ -210,8 +210,8 @@ class SponsorSkipPatchTest {
     fun `the bar is looked up page id first, scoped to the content view with a decor fallback`() {
         val place = placeBody()
         val contentView = place.indexOf("const v5, 0x7f0b098b")
-        val pageBar = place.indexOf("const v4, 0x7f0b222b")
-        val cardBar = place.indexOf("const v4, 0x7f0b2224")
+        val pageBar = place.indexOf("const v4, 0x7f0b223d")
+        val cardBar = place.indexOf("const v4, 0x7f0b2236")
         val decor = place.indexOf("const v5, 0x1020002", contentView)
         assertTrue(contentView > 0 && pageBar > 0 && cardBar > 0, "the ids are not all looked up")
         assertTrue(contentView < pageBar, "the bar is searched before the content view")

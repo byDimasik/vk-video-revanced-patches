@@ -1377,7 +1377,7 @@ private fun playedSectionsSmali(): String = """
         iput-object v0, p0, $PLAYED_SECTIONS_CLASS;->paint:Landroid/graphics/Paint;
         const-string v0, "ctor"
         invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        instance-of v0, p1, Lyo7/b;
+        instance-of v0, p1, Lnp7/b;
         iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->round:Z
         invoke-virtual {p1}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
         move-result-object v2
@@ -1423,7 +1423,7 @@ private fun playedSectionsSmali(): String = """
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
         iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->thin:Ljava/lang/reflect/Field;
-        const-class v2, Loo7/a;
+        const-class v2, Ldp7/a;
         const-string v1, "a"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
@@ -1836,9 +1836,9 @@ private fun seekbarSectionsSmali(): String = """
         .param p1, "drawable"
 
         if-eqz p1, :return
-        instance-of v0, p1, Loo7/c;
+        instance-of v0, p1, Ldp7/c;
         if-nez v0, :family
-        instance-of v0, p1, Lyo7/c;
+        instance-of v0, p1, Lnp7/c;
         if-eqz v0, :return
 
         :family
@@ -1901,12 +1901,12 @@ private fun seekbarSectionsSmali(): String = """
         :wrap
         instance-of v5, v8, $PLAYED_SECTIONS_CLASS;
         if-nez v5, :reuse
-        instance-of v5, v8, Lyo7/b;
+        instance-of v5, v8, Lnp7/b;
         if-eqz v5, :rect
         goto :create
 
         :rect
-        instance-of v5, v8, Loo7/b;
+        instance-of v5, v8, Ldp7/b;
         if-eqz v5, :return
 
         :create
@@ -1995,12 +1995,12 @@ private fun seekbarSectionsSmali(): String = """
         :track_type
         instance-of v5, v6, $PLAYED_SECTIONS_CLASS;
         if-nez v5, :track_reuse
-        instance-of v5, v6, Lyo7/b;
+        instance-of v5, v6, Lnp7/b;
         if-eqz v5, :track_rect
         goto :track_wrap
 
         :track_rect
-        instance-of v5, v6, Loo7/b;
+        instance-of v5, v6, Ldp7/b;
         if-eqz v5, :return
 
         :track_wrap
@@ -2419,7 +2419,7 @@ private fun skipButtonSmali(): String = """
 
         :container_ok
         if-eqz v1, :no_bar
-        const v4, 0x7f0b222b
+        const v4, 0x${SEEK_BAR_VIEW_ID.toString(16)}
         invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v5
         if-eqz v5, :bar_first
@@ -2427,7 +2427,7 @@ private fun skipButtonSmali(): String = """
         goto :bar_ready
 
         :bar_first
-        const v4, 0x7f0b2224
+        const v4, 0x${SEEK_BAR_ID.toString(16)}
         invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v5
         if-eqz v5, :no_bar

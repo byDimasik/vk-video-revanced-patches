@@ -3,6 +3,8 @@ package app.revanced.patches.vkvideo.e2e
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patches.vkvideo.sponsorskip.SEEK_BAR_ID
 import app.revanced.patches.vkvideo.sponsorskip.SEEK_BAR_VIEW_ID
+import app.revanced.patches.vkvideo.sponsorskip.autoPlayApi
+import app.revanced.patches.vkvideo.sponsorskip.resolveAutoPlayApi
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionListFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionDrawableFingerprint
@@ -66,6 +68,9 @@ class RealApkSponsorSkipTest {
         constructor.isAccessible = true
         val context = constructor.newInstance(apkFile, patchedDir)
         context.initializeCache()
+        // The controller interface is resolved by the patch; matching its fingerprints
+        // directly here would otherwise depend on another test having run first.
+        autoPlayApi = resolveAutoPlayApi(context.classDefs.toList())
 
         assertNotNull(sponsorSkipVideoHandoffFingerprint.matchOrNull(context), "video handoff not found")
         assertNotNull(sponsorSkipViewAttachedFingerprint.matchOrNull(context), "view attach not found")

@@ -28,7 +28,7 @@ class SeekbarPatchTest {
         val apply = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
         assertTrue(apply.contains("instance-of v6, v5, Landroid/graphics/drawable/ClipDrawable;"), "the clip check is missing")
         assertTrue(apply.contains("getDrawable()Landroid/graphics/drawable/Drawable;"), "the inner drawable is not read")
-        listOf("Lyo7/b;", "Loo7/b;").forEach {
+        listOf("Lnp7/b;", "Ldp7/b;").forEach {
             assertTrue(apply.contains("instance-of v5, v8, $it"), "the inner type check for $it is missing")
         }
         assertTrue(apply.contains("addLayer(Landroid/graphics/drawable/Drawable;)V"), "the no-clip fallback adds no layer")
@@ -51,8 +51,8 @@ class SeekbarPatchTest {
     @Test
     fun `apply rejects foreign drawables and a missing active state`() {
         val apply = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
-        val composite = apply.indexOf("instance-of v0, p1, Loo7/c;")
-        val page = apply.indexOf("instance-of v0, p1, Lyo7/c;")
+        val composite = apply.indexOf("instance-of v0, p1, Ldp7/c;")
+        val page = apply.indexOf("instance-of v0, p1, Lnp7/c;")
         val walk = apply.indexOf("getNumberOfLayers()I")
         assertTrue(composite > 0 && page > composite, "the family guards are missing")
         assertTrue(apply.contains("if-nez v0, :family"), "a composite drawable does not reach the installer")
@@ -81,7 +81,7 @@ class SeekbarPatchTest {
         listOf("d", "a", "b", "e", "f").forEach {
             assertTrue(init.contains("const-string v1, \"$it\""), "the round field $it is not resolved")
         }
-        assertTrue(init.contains("const-class v2, Loo7/a;"), "the rect item class is not resolved")
+        assertTrue(init.contains("const-class v2, Ldp7/a;"), "the rect item class is not resolved")
         assertTrue(drawable.contains(".method private static field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;"))
         val rounds = drawable.substringAfter(".method private drawRounds")
         assertTrue(rounds.contains("$PLAYED_SECTIONS_CLASS->selected:Ljava/lang/reflect/Field;"), "the current segment is not read")
@@ -208,9 +208,9 @@ class SeekbarPatchTest {
         assertTrue(track.contains("instance-of v5, v6, Landroid/graphics/drawable/ClipDrawable;"), "the track clip check is missing")
         assertTrue(track.contains("ClipDrawable;->getDrawable()Landroid/graphics/drawable/Drawable;"), "the track inner is not unwrapped")
         val reuse = track.indexOf("instance-of v5, v6, $PLAYED_SECTIONS_CLASS")
-        val round = track.indexOf("instance-of v5, v6, Lyo7/b;")
+        val round = track.indexOf("instance-of v5, v6, Lnp7/b;")
         assertTrue(reuse in 0 until round, "the reuse guard must precede the type guard")
-        listOf("Lyo7/b;", "Loo7/b;").forEach {
+        listOf("Lnp7/b;", "Ldp7/b;").forEach {
             assertTrue(track.contains("instance-of v5, v6, $it"), "the track inner check for $it is missing")
         }
     }
@@ -259,7 +259,7 @@ class SeekbarPatchTest {
         val drawable = sources[PLAYED_SECTIONS_CLASS]!!
         val init = drawable.substringAfter(".method public constructor <init>(Landroid/graphics/drawable/Drawable;IIZ)V")
         assertTrue(init.contains(".catch Ljava/lang/Exception; {:try_start .. :try_end} :broken"), "the constructor resolution is unguarded")
-        assertTrue(init.contains("instance-of v0, p1, Lyo7/b;"), "the round family is not detected in the constructor")
+        assertTrue(init.contains("instance-of v0, p1, Lnp7/b;"), "the round family is not detected in the constructor")
         val degraded = drawable.substringAfter(":broken")
         assertTrue(degraded.contains("iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS->broken:Z"), "the guard does not set the failure flag")
         assertTrue(drawable.contains("if-nez v0, :source"), "draw does not degrade to the source draw")
