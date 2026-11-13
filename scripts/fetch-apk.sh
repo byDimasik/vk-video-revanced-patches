@@ -237,9 +237,27 @@ print(f"Target APK saved: {target_apk_path}")
 print(f"APK badging: versionName={obtained_vname}, versionCode={obtained_vcode}")
 print(f"SHA-256: {final_sha256}")
 
-# The checked-in pin may come from a device pull; the mirror bytes must match it
-# before the pin is rewritten, or verification downstream silently changes target.
-if recorded_sha256 and recorded_vname == obtained_vname and final_sha256 != recorded_sha256:
+# The checked-in pin may come from a device pull, and the header records that
+# provenance. Rewriting version.mk from mirror bytes is only honest if the
+# version is unchanged; a version change means the operator must bump the pin
+# (and the provenance header) deliberately instead of letting the mirror silently
+# retarget the build.
+if recorded_vname and recorded_vname != obtained_vname:
+    print(
+        f"Error: downloaded APK is version {obtained_vname}, but version.mk pins "
+        f"{recorded_vname}; refusing to rewrite the pin from the mirror "
+        f"(provenance header still says how the pinned bytes were obtained). Bump "
+        f"version.mk deliberately: TARGET_VERSION := {obtained_vname}, "
+        f"TARGET_VERSION_CODE := {obtained_vcode}, TARGET_SHA256 := {final_sha256}, "
+        f"and update the provenance header if the new source is the mirror. "
+        f"version.mk left unchanged.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+# Same version: the mirror bytes must match the recorded pin, or verification
+# downstream silently changes target.
+if recorded_sha256 and final_sha256 != recorded_sha256:
     print(
         f"Error: downloaded APK sha256 {final_sha256} does not match the recorded "
         f"TARGET_SHA256 {recorded_sha256} for {obtained_vname}; keeping version.mk unchanged",
