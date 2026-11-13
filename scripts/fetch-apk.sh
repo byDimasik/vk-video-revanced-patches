@@ -228,12 +228,8 @@ if not successful_apk_bytes or not obtained_vname or not obtained_vcode:
 
 target_apk_filename = f"vkvideo-{obtained_vname}.apk"
 target_apk_path = os.path.join(CACHE_DIR, target_apk_filename)
-with open(target_apk_path, "wb") as f:
-    f.write(successful_apk_bytes)
-
 final_sha256 = hashlib.sha256(successful_apk_bytes).hexdigest()
 
-print(f"Target APK saved: {target_apk_path}")
 print(f"APK badging: versionName={obtained_vname}, versionCode={obtained_vcode}")
 print(f"SHA-256: {final_sha256}")
 
@@ -264,6 +260,13 @@ if recorded_sha256 and final_sha256 != recorded_sha256:
         file=sys.stderr,
     )
     sys.exit(1)
+
+# Only a download that passed both guards may land in the cache: the e2e
+# loaders take the newest .cache/vkvideo-*.apk by lastModified() and never
+# re-check TARGET_SHA256, so a rejected candidate must not replace a good file.
+with open(target_apk_path, "wb") as f:
+    f.write(successful_apk_bytes)
+print(f"Target APK saved: {target_apk_path}")
 
 header = []
 if os.path.exists(VERSION_MK):

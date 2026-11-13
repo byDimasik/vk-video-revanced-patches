@@ -18,9 +18,20 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class SponsorSkipPatchTest {
+
+    /**
+     * The fingerprint predicates read the process-global controller resolved from
+     * the fixture, so tests that match without executing the patch must not rely
+     * on another test having set it.
+     */
+    @BeforeEach
+    fun resolveFixtureAutoPlayApi() {
+        autoPlayApi = resolveAutoPlayApi(createBytecodeContext(*fixtures.toTypedArray()).classDefs.toList())
+    }
 
     @Test
     fun `every injected class compiles`() {
