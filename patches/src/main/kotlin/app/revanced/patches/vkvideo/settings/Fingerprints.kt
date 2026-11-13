@@ -57,10 +57,11 @@ internal const val PROFILE_MENU_ITEM_TYPE =
     "Lcom/vk/video/screens/profile/adapter/ProfileMenuItemType;"
 
 /**
- * The app-wide fragment opener builder (1.170: `o54/r`): the method that opens the
- * app's own General settings screen — `const-class VideoUserSettingsFragment` →
- * `new <opener>(Class, Class, Bundle)` → `h(Context)`. The opener type is extracted
- * from the match, never hardcoded.
+ * The app-wide fragment opener builder: the method that opens the app's own General
+ * settings screen — `const-class VideoUserSettingsFragment` →
+ * `new <opener>(Class, Class, Bundle)` → `<open>(Context)`. Neither the opener nor its
+ * method names survive obfuscation; the opener type and both open-method names are
+ * extracted from the match.
  */
 val navOpenerFingerprint = fingerprint {
     custom { method, _ ->
@@ -85,8 +86,8 @@ val navOpenerFingerprint = fingerprint {
                 val reference = (instruction as? ReferenceInstruction)?.reference
                 instruction.opcode in setOf(Opcode.INVOKE_VIRTUAL, Opcode.INVOKE_VIRTUAL_RANGE) &&
                     reference is MethodReference &&
-                    reference.name == "h" &&
-                    reference.parameterTypes == listOf("Landroid/content/Context;")
+                    reference.parameterTypes == listOf("Landroid/content/Context;") &&
+                    reference.returnType == "V"
             }
     }
 }

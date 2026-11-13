@@ -24,10 +24,10 @@ internal const val PLAYED_SECTIONS_CLASS = "${SPONSOR_SKIP_PACKAGE}PlayedSection
 internal const val SEEK_SECTIONS_CLASS = "${SPONSOR_SKIP_PACKAGE}SeekbarSections;"
 
 /** The `OneVideoSeekBarView` id from `one_video_simple_controls_view.xml`. */
-internal const val SEEK_BAR_VIEW_ID = 0x7f0b222b
+internal const val SEEK_BAR_VIEW_ID = 0x7f0b223d
 
 /** The plain `AppCompatSeekBar` inside `VideoSeekViewOld`, used by the page player. */
-internal const val SEEK_BAR_ID = 0x7f0b2224
+internal const val SEEK_BAR_ID = 0x7f0b2236
 
 private const val PREF_FILE = "sponsorskip_settings"
 private const val KEY_ENABLED = "sponsorskip_enabled"
@@ -47,8 +47,8 @@ private const val BUTTON_PAD_DP = 8
  * Same contract as the settings injector: an existing descriptor is skipped, but
  * a stale generation missing methods is rejected instead of silently kept.
  */
-internal fun injectSponsorSkipClasses(context: BytecodePatchContext) {
-    sponsorSkipSources().forEach { (descriptor, source) ->
+internal fun injectSponsorSkipClasses(context: BytecodePatchContext, api: AutoPlayApi) {
+    sponsorSkipSources(api).forEach { (descriptor, source) ->
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
         if (existing != null) {
             val missing = requiredMethods[descriptor].orEmpty().filter { required ->
@@ -74,8 +74,11 @@ internal fun injectSponsorSkipClasses(context: BytecodePatchContext) {
     }
 }
 
+/** The controller the 1.171 bundle was built against; the default keeps pure-string tests stable. */
+internal val LEGACY_AUTO_PLAY_API = AutoPlayApi("Lp73/a;", "s")
+
 /** The injected class sources, keyed by descriptor; exposed for structural tests. */
-internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
+internal fun sponsorSkipSources(api: AutoPlayApi = LEGACY_AUTO_PLAY_API): Map<String, String> = linkedMapOf(
     CATEGORY_CLASS to categorySmali(),
     SEGMENT_CLASS to segmentSmali(),
     SEGMENT_ORDER_CLASS to segmentOrderSmali(),
@@ -91,7 +94,12 @@ internal fun sponsorSkipSources(): Map<String, String> = linkedMapOf(
     SKIP_LAYOUT_CLASS to skipLayoutSmali(),
     PLAYED_SECTIONS_CLASS to playedSectionsSmali(),
     SEEK_SECTIONS_CLASS to seekbarSectionsSmali(),
-).mapValues { (_, source) -> source.replace(";;", ";") }
+).mapValues { (_, source) ->
+    source
+        .replace("Lp73/a;->s(J)V", "${api.controller}->${api.seekMethod}(J)V")
+        .replace("Lp73/a", api.controller)
+        .replace(";;", ";")
+}
 
 internal val requiredMethods = mapOf(
     CATEGORY_CLASS to listOf("color:1", "name:1", "label:1"),
@@ -1369,7 +1377,7 @@ private fun playedSectionsSmali(): String = """
         iput-object v0, p0, $PLAYED_SECTIONS_CLASS;->paint:Landroid/graphics/Paint;
         const-string v0, "ctor"
         invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        instance-of v0, p1, Lyo7/b;
+        instance-of v0, p1, Lnp7/b;
         iput-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->round:Z
         invoke-virtual {p1}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
         move-result-object v2
@@ -1415,7 +1423,7 @@ private fun playedSectionsSmali(): String = """
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
         iput-object v1, p0, $PLAYED_SECTIONS_CLASS;->thin:Ljava/lang/reflect/Field;
-        const-class v2, Loo7/a;
+        const-class v2, Ldp7/a;
         const-string v1, "a"
         invoke-static {v2, v1}, $PLAYED_SECTIONS_CLASS;->field(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
         move-result-object v1
@@ -1828,9 +1836,9 @@ private fun seekbarSectionsSmali(): String = """
         .param p1, "drawable"
 
         if-eqz p1, :return
-        instance-of v0, p1, Loo7/c;
+        instance-of v0, p1, Ldp7/c;
         if-nez v0, :family
-        instance-of v0, p1, Lyo7/c;
+        instance-of v0, p1, Lnp7/c;
         if-eqz v0, :return
 
         :family
@@ -1893,12 +1901,12 @@ private fun seekbarSectionsSmali(): String = """
         :wrap
         instance-of v5, v8, $PLAYED_SECTIONS_CLASS;
         if-nez v5, :reuse
-        instance-of v5, v8, Lyo7/b;
+        instance-of v5, v8, Lnp7/b;
         if-eqz v5, :rect
         goto :create
 
         :rect
-        instance-of v5, v8, Loo7/b;
+        instance-of v5, v8, Ldp7/b;
         if-eqz v5, :return
 
         :create
@@ -1987,12 +1995,12 @@ private fun seekbarSectionsSmali(): String = """
         :track_type
         instance-of v5, v6, $PLAYED_SECTIONS_CLASS;
         if-nez v5, :track_reuse
-        instance-of v5, v6, Lyo7/b;
+        instance-of v5, v6, Lnp7/b;
         if-eqz v5, :track_rect
         goto :track_wrap
 
         :track_rect
-        instance-of v5, v6, Loo7/b;
+        instance-of v5, v6, Ldp7/b;
         if-eqz v5, :return
 
         :track_wrap
@@ -2411,7 +2419,7 @@ private fun skipButtonSmali(): String = """
 
         :container_ok
         if-eqz v1, :no_bar
-        const v4, 0x7f0b222b
+        const v4, 0x${SEEK_BAR_VIEW_ID.toString(16)}
         invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v5
         if-eqz v5, :bar_first
@@ -2419,7 +2427,7 @@ private fun skipButtonSmali(): String = """
         goto :bar_ready
 
         :bar_first
-        const v4, 0x7f0b2224
+        const v4, 0x${SEEK_BAR_ID.toString(16)}
         invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v5
         if-eqz v5, :no_bar

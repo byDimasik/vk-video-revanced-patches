@@ -16,7 +16,11 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
  * against `res/values/public.xml`.
  */
 
-/** `Lni0/k;.<init>` inflates `catalog_video_topshelf` into the root View field that `getView()` returns. */
+/**
+ * The block's constructor inflates `catalog_video_topshelf` into the root View field that
+ * `getView()` returns. The class is obfuscated (`ni0/k` in 1.170, `pi0/k` in 1.171), so
+ * the parameter list plus the shelf-inflate and root-field shapes carry the match.
+ */
 val videoTopshelfBlockFingerprint = fingerprint {
     returns("V")
     parameters(
@@ -27,8 +31,7 @@ val videoTopshelfBlockFingerprint = fingerprint {
         "Z",
     )
     custom { method, classDef ->
-        classDef.type == "Lni0/k;" &&
-            method.name == "<init>" &&
+        method.name == "<init>" &&
             hasShelfInflate(method) &&
             // The root field is the View that getView() hands to the catalog block holder.
             classDef.methods.any { candidate ->

@@ -5,6 +5,7 @@ import app.revanced.patches.vkvideo.settings.ADS_SETTINGS_CLASS
 import app.revanced.patches.vkvideo.settings.ROOT_FRAGMENT_CLASS
 import app.revanced.patches.vkvideo.settings.SETTINGS_FRAGMENT_CLASS
 import app.revanced.patches.vkvideo.settings.extractToolbarChrome
+import app.revanced.patches.vkvideo.settings.remapAppTypes
 import app.revanced.patches.vkvideo.settings.navOpenerFingerprint
 import app.revanced.patches.vkvideo.settings.profileMenuItemsFingerprint
 import app.revanced.patches.vkvideo.settings.resolveNavOpener
@@ -71,18 +72,18 @@ class RealApkSettingsScreenTest {
         assertNotNull(navOpenerFingerprint.matchOrNull(context))
         assertNotNull(switchListenerMethodFingerprint.matchOrNull(context))
 
-        // Chrome ids pinned to the 1.170 res/values/public.xml values.
+        // Chrome ids pinned to the 1.171 res/values/public.xml values.
         val chrome = extractToolbarChrome(
             context.classDefs.first { it.type == "Lcom/vk/prefui/fragments/MaterialPreferenceToolbarFragment;" },
         )
         assertEquals(0x7f0e0062, chrome.chromeLayoutId, "appkit_toolbar_fragment_hidable_with_coordinator")
-        assertEquals(0x7f0b01a0, chrome.contentId, "appkit_content")
-        assertEquals(0x7f0b270c, chrome.legacyToolbarId, "legacy toolbar")
-        assertEquals(0x7f0b2292, chrome.shadowId, "app bar shadow")
-        assertEquals(0x7f0b0191, chrome.appBarLayoutId, "app_bar_layout")
+        assertEquals(0x7f0b01a3, chrome.contentId, "appkit_content")
+        assertEquals(0x7f0b2731, chrome.legacyToolbarId, "legacy toolbar")
+        assertEquals(0x7f0b22a4, chrome.shadowId, "app bar shadow")
+        assertEquals(0x7f0b0194, chrome.appBarLayoutId, "app_bar_layout")
         assertEquals(0x7f140052, chrome.accessibilityBackId, "accessibility_back")
-        assertEquals("Lty1/i0;->m(Landroid/view/View;)V", chrome.hideHelperRef)
-        assertEquals("Lg57/a;->f(Lcom/vk/core/fragments/FragmentImpl;Lcom/vk/core/view/components/topbar/VkTopBar;)Z", chrome.chromeCheckRef)
+        assertEquals("Lxy1/j0;->m(Landroid/view/View;)V", chrome.hideHelperRef)
+        assertEquals("Lv57/a;->f(Lcom/vk/core/fragments/FragmentImpl;Lcom/vk/core/view/components/topbar/VkTopBar;)Z", chrome.chromeCheckRef)
         assertEquals(6, chrome.topBarStyleInt)
         assertEquals(30, chrome.titleStyleInt)
         assertEquals(14, chrome.textStyleInt)
@@ -124,13 +125,32 @@ class RealApkSettingsScreenTest {
         // Every method the injected UI calls must exist in the real APK with the
         // emitted owner/name/signature — a transcribed class the 1.170 dexes do not
         // actually carry (or a renamed overload) fails here, not on device.
-        /** Asserts the APK carries `owner->name(params)` so a stale transcription fails in CI. */
+        /**
+         * Asserts the APK carries `owner->name(params)` so a stale transcription fails
+         * in CI. The signature is remapped first: the latency is written against one
+         * version and R8 renames the obfuscated types in it.
+         */
+        val resolvedRefs = mutableListOf<String>()
         fun assertResolves(owner: String, name: String, params: List<String>) {
-            val def = context.classDefs.firstOrNull { it.type == owner }
-            assertNotNull(def, "referenced class $owner must exist")
+            resolvedRefs += "$owner->$name(${params.joinToString("")})V"
+            // Remap the accumulated refs together: a package move is only learnable
+            // from a neighbouring type, never from a single obstinate ref.
+            val remapped = remapAppTypes(context, resolvedRefs.joinToString("\n")).lines().last()
+            val mappedOwner = remapped.substringBefore("->")
+            val spec = remapped.substringAfter("(").substringBefore(")")
+            val types = mutableListOf<String>()
+            var i = 0
+            while (i < spec.length) {
+                val start = i
+                while (spec[i] == '[') i++
+                if (spec[i] == 'L') i = spec.indexOf(';', i) + 1 else i++
+                types += spec.substring(start, i)
+            }
+            val def = context.classDefs.firstOrNull { it.type == mappedOwner }
+            assertNotNull(def, "referenced class $mappedOwner must exist")
             assertNotNull(
-                def!!.methods.firstOrNull { it.name == name && it.parameterTypes.toList() == params },
-                "referenced method $owner->$name(${params.joinToString("")}) must exist",
+                def!!.methods.firstOrNull { it.name == name && it.parameterTypes.toList() == types },
+                "referenced method $mappedOwner->$name(${types.joinToString("")}) must exist",
             )
         }
         assertResolves("Lcom/vk/core/view/components/cell/VkCell;", "<init>", listOf(
@@ -146,7 +166,7 @@ class RealApkSettingsScreenTest {
             "Lcom/vk/core/view/components/cell/VkCell\$Right\$d;",
         ))
         assertResolves("Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$c;", "<init>", listOf(
-            "Lp72/g;", "Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$Size;", "Lp72/r\$a;", "I",
+            "Lp72/g;", "Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$Size;", "Lp72/r;",
         ))
         assertResolves("Lcom/vk/core/view/components/cell/VkCell\$Middle\$e;", "<init>", listOf(
             "Lpx1/a;", "I", "Landroid/text/TextUtils\$TruncateAt;",
@@ -161,7 +181,7 @@ class RealApkSettingsScreenTest {
         ))
         assertResolves("Lp72/j;", "<init>", listOf("I"))
         assertResolves("Lp72/b;", "<init>", listOf("I"))
-        assertResolves(opener.iOwner, "i", listOf("Lcom/vk/core/fragments/FragmentImpl;"))
+        assertResolves(opener.iOwner, opener.openFragmentMethod, listOf("Lcom/vk/core/fragments/FragmentImpl;"))
 
         // StartReVancedSettings opens the screen via the resolved opener and returns null.
         val start = context.classDefs.first { it.type == "Lapp/revanced/extension/vkvideo/StartReVancedSettings;" }

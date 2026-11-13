@@ -68,6 +68,8 @@ internal data class ToolbarChrome(
     val backCtor: String,
     val backStyleInt: Int,
     val companionFieldRef: String,
+    /** The obfuscated CharSequence resource wrapper, e.g. `Ltx1/a;`. */
+    val wrapperType: String,
     val resHelperRef: String,
     val accessibilityBackId: Int,
     val chromeCheckRef: String,
@@ -97,7 +99,8 @@ internal fun injectSettingsClasses(
         BACK_CLICK_CLASS to backClickSmali(),
     )
 
-    sources.forEach { (descriptor, source) ->
+    sources.mapValues { (_, source) -> remapAppTypes(context, source.replace("Lpx1/a", chrome.wrapperType.removeSuffix(";"))) }
+        .forEach { (descriptor, source) ->
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
         if (existing != null) {
             // An already-patched input may carry an older generation of the helper
@@ -332,8 +335,7 @@ private fun buildRootContentSmali(): String = """
 
         new-instance v1, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}c;
         sget-object v3, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}Size;->Medium:Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}Size;
-        const/16 v4, 0x8
-        invoke-direct {v1, v0, v3, v2, v4}, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}c;-><init>(Lp72/g;Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}Size;Lp72/r${'$'}a;I)V
+        invoke-direct {v1, v0, v3, v2}, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}c;-><init>(Lp72/g;Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main${'$'}Size;Lp72/r${'$'}a;)V
         new-instance v0, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}b;
         const/4 v2, 0x0
         invoke-direct {v0, v1, v2}, Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}b;-><init>(Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}Main;Lcom/vk/core/view/components/cell/VkCell${'$'}Left${'$'}c;)V
@@ -593,7 +595,7 @@ private fun startSettingsSmali(opener: NavOpener): String = """
         const/4 v2, 0x0
         const/4 v3, 0x0
         invoke-direct {v0, v1, v2, v3}, ${opener.ctorOwner}-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
-        invoke-virtual {v0, p1}, ${opener.hOwner}->h(Landroid/content/Context;)V
+        invoke-virtual {v0, p1}, ${opener.hOwner}->${opener.openContextMethod}(Landroid/content/Context;)V
         const/4 v0, 0x0
         return-object v0
     .end method
@@ -632,7 +634,7 @@ internal fun groupClickSmali(opener: NavOpener, className: String, targetClass: 
         const/4 v3, 0x0
         invoke-direct {v0, v1, v2, v3}, ${opener.ctorOwner}-><init>(Ljava/lang/Class;Ljava/lang/Class;Landroid/os/Bundle;)V
         iget-object v1, p0, $className->fragment:Lcom/vk/core/fragments/FragmentImpl;
-        invoke-virtual {v0, v1}, ${opener.iOwner}->i(Lcom/vk/core/fragments/FragmentImpl;)V
+        invoke-virtual {v0, v1}, ${opener.iOwner}->${opener.openFragmentMethod}(Lcom/vk/core/fragments/FragmentImpl;)V
         return-void
     .end method
 """.trimIndent()

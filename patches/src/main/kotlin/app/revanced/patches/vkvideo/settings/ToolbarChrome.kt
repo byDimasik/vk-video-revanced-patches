@@ -183,24 +183,30 @@ internal fun extractToolbarChrome(classDef: ClassDef): ToolbarChrome {
     val (backCtor, backRegs, backCtorIndex) = onViewCreated.findConstructor(backTokenType)
     val backStyleInt = onViewCreated.constFeeding(backCtorIndex, backRegs.last())
 
+    // The CharSequence resource wrapper is obfuscated per version (`px1/a` in 1.170,
+    // `tx1/a` in 1.171): its base is taken from the Companion field's own type, so
+    // the wrapper, its Companion class and the `$f` resource helper all follow.
     val companionIndex = onViewCreated.indexOfFirst { instruction ->
         val reference = (instruction as? ReferenceInstruction)?.reference
         instruction.opcode == Opcode.SGET_OBJECT &&
             reference is FieldReference &&
             reference.name == "Companion" &&
-            reference.definingClass == "Lpx1/a;"
+            reference.type.startsWith("L") &&
+            reference.type.endsWith("\$a;")
     }
-    if (companionIndex < 0) error("chrome onViewCreated: px1/a Companion not found")
+    if (companionIndex < 0) error("chrome onViewCreated: resource wrapper Companion not found")
     val companionFieldRef = (onViewCreated[companionIndex] as ReferenceInstruction)
         .reference.let { it as FieldReference }
         .let { "${it.definingClass}->${it.name}:${it.type}" }
     val companionReg = (onViewCreated[companionIndex] as OneRegisterInstruction).registerA
+    val wrapperType = (onViewCreated[companionIndex] as ReferenceInstruction)
+        .reference.let { (it as FieldReference).type }.removeSuffix("\$a;") + ";"
 
     val resHelperIndex = onViewCreated.indexOfFirst { instruction ->
         val reference = (instruction as? ReferenceInstruction)?.reference
         instruction.opcode == Opcode.INVOKE_STATIC &&
             reference is MethodReference &&
-            reference.returnType == "Lpx1/a\$f;" &&
+            reference.returnType == "${wrapperType.removeSuffix(";")}\$f;" &&
             invokeArgRegs(instruction).firstOrNull() == companionReg
     }
     if (resHelperIndex < 0) error("chrome onViewCreated: accessibility-back resource helper not found")
@@ -243,6 +249,7 @@ internal fun extractToolbarChrome(classDef: ClassDef): ToolbarChrome {
         backCtor = methodRefString(backCtor),
         backStyleInt = backStyleInt,
         companionFieldRef = companionFieldRef,
+        wrapperType = wrapperType,
         resHelperRef = resHelperRef,
         accessibilityBackId = accessibilityBackId,
         chromeCheckRef = chromeCheckRef,
@@ -259,10 +266,14 @@ internal data class NavOpener(
     val instanceType: String,
     /** Defining class of the `(Class, Class, Bundle)` constructor. */
     val ctorOwner: String,
-    /** Defining class of the `h(Context)` opener. */
+    /** Defining class of the `(Context)` opener. */
     val hOwner: String,
-    /** Defining class of the `i(FragmentImpl)` opener (fragment-bound navigation). */
+    /** Name of the `(Context)` opener, e.g. `h`. */
+    val openContextMethod: String,
+    /** Defining class of the `(FragmentImpl)` opener (fragment-bound navigation). */
     val iOwner: String,
+    /** Name of the `(FragmentImpl)` opener, e.g. `i`. */
+    val openFragmentMethod: String,
 )
 
 internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOpener {
@@ -299,18 +310,20 @@ internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOp
         }
     } ?: error("nav opener: new-instance not found for the opener"))
 
-    // h(Context) dispatched on the same instance — the method may be declared on a
-    // superclass of the instantiated opener (R8 subclasses openers), so match by
-    // receiver register, not by defining class.
+    // The `(Context)` open dispatched on the same instance — the method may be declared
+    // on a superclass of the instantiated opener (R8 subclasses openers), so match by
+    // receiver register and shape, not by defining class. The name is obfuscated per
+    // version (`h` in 1.170, `s` in 1.171); the `V` return keeps it apart from the
+    // `(Context)Intent` builder.
     val hIndex = instructions.indexOfFirst { instruction ->
         val reference = (instruction as? ReferenceInstruction)?.reference
         instruction.opcode in VIRTUAL_OPS &&
             reference is MethodReference &&
-            reference.name == "h" &&
             reference.parameterTypes == listOf("Landroid/content/Context;") &&
+            reference.returnType == "V" &&
             invokeArgRegs(instruction).firstOrNull() == receiverReg
     }
-    if (hIndex < 0) error("nav opener: h(Context) not found on the opener instance")
+    if (hIndex < 0) error("nav opener: (Context)V opener not found on the opener instance")
     val hOwner = ((instructions[hIndex] as ReferenceInstruction).reference as MethodReference).definingClass
 
     // The injected callback lives in a foreign package: the opener class, its
@@ -321,21 +334,21 @@ internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOp
     val ctorRef = (instructions[ctorIndex] as ReferenceInstruction).reference as MethodReference
     val hRef = (instructions[hIndex] as ReferenceInstruction).reference as MethodReference
 
-    // Fragment-bound navigation (`i(FragmentImpl)`): the injected row click runs
-    // inside a fragment, where the Context overload silently no-ops on device.
-    // The call site only exercises `h(Context)`, so `i` is looked up along the
-    // opener's own superclass chain instead — and a missing or non-public method
-    // fails the patch loudly rather than shipping a dead row.
+    // Fragment-bound navigation: the injected row click runs inside a fragment, where
+    // the Context overload silently no-ops on device. The call site only exercises the
+    // Context open, so this one is looked up along the opener's own superclass chain
+    // instead — and a missing or non-public method fails the patch loudly rather than
+    // shipping a dead row.
     var searchType: String? = instanceType
     var iOwner: String? = null
     while (searchType != null && searchType != "Ljava/lang/Object;") {
         val def = classDef(searchType)
         val service = def.methods.firstOrNull {
-            it.name == "i" && it.parameterTypes == listOf(FRAGMENT_IMPL) && it.returnType == "V"
+            it.parameterTypes == listOf(FRAGMENT_IMPL) && it.returnType == "V"
         }
         if (service != null) {
             check(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(service.accessFlags)) {
-                "nav opener $searchType.i(Lcom/vk/core/fragments/FragmentImpl;)V is not public"
+                "nav opener $searchType.${service.name}(Lcom/vk/core/fragments/FragmentImpl;)V is not public"
             }
             iOwner = searchType
             break
@@ -343,7 +356,7 @@ internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOp
         searchType = def.superclass
     }
     val iOwnerResolved = iOwner
-        ?: error("nav opener: i(Lcom/vk/core/fragments/FragmentImpl;)V not found on the opener hierarchy")
+        ?: error("nav opener: (Lcom/vk/core/fragments/FragmentImpl;)V not found on the opener hierarchy")
     for ((label, type) in listOf(
         "instance" to instanceType,
         "constructor owner" to ctorOwner,
@@ -361,10 +374,13 @@ internal fun resolveNavOpener(method: Method, allClasses: List<ClassDef>): NavOp
         "nav opener constructor $ctorOwner.<init> is not public"
     }
     val hDef = classDef(hOwner).methods.first {
-        it.name == "h" && it.parameterTypes == hRef.parameterTypes
+        it.name == hRef.name && it.parameterTypes == hRef.parameterTypes
     }
     check(com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(hDef.accessFlags)) {
-        "nav opener $hOwner.h is not public"
+        "nav opener $hOwner.${hRef.name} is not public"
     }
-    return NavOpener(instanceType, ctorOwner, hOwner, iOwnerResolved)
+    val fragmentOpenName = classDef(iOwnerResolved).methods.first {
+        it.parameterTypes == listOf(FRAGMENT_IMPL) && it.returnType == "V"
+    }.name
+    return NavOpener(instanceType, ctorOwner, hOwner, hRef.name, iOwnerResolved, fragmentOpenName)
 }

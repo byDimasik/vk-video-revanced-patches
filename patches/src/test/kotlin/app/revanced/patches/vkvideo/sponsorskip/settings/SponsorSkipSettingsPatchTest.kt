@@ -2,6 +2,7 @@ package app.revanced.patches.vkvideo.sponsorskip.settings
 
 import app.revanced.patches.vkvideo.settings.CONTENT_ADD_CLASS
 import app.revanced.patches.vkvideo.settings.extractToolbarChrome
+import app.revanced.patches.vkvideo.sponsorskip.settings.resolveDialogApi
 import app.revanced.patches.vkvideo.settings.navOpenerFingerprint
 import app.revanced.patches.vkvideo.settings.resolveNavOpener
 import app.revanced.patches.vkvideo.settings.revancedSettingsPatch
@@ -39,7 +40,12 @@ class SponsorSkipSettingsPatchTest {
                 val chromeMethod = toolbarChromeFingerprint.getMethod(context)
                 val chrome = extractToolbarChrome(context.classDefs.first { it.type == chromeMethod.definingClass })
                 val opener = resolveNavOpener(navOpenerFingerprint.getMethod(context), context.classDefs.toList())
-                return settingsSources(chrome, opener, switchListenerMethodFingerprint.getMethod(context).name)
+                return settingsSources(
+                    chrome,
+                    opener,
+                    switchListenerMethodFingerprint.getMethod(context).name,
+                    resolveDialogApi(context.classDefs.toList()),
+                )
             }
 
         fun apply() {

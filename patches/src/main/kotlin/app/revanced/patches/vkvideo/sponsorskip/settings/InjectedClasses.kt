@@ -2,12 +2,14 @@ package app.revanced.patches.vkvideo.sponsorskip.settings
 
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patches.vkvideo.settings.ToolbarChrome
+import app.revanced.patches.vkvideo.settings.remapAppTypes
 import app.revanced.patches.vkvideo.settings.CONTENT_ADD_CLASS
 import app.revanced.patches.vkvideo.settings.contentAddSmali
 import app.revanced.patches.vkvideo.settings.groupClickSmali
 import app.revanced.patches.vkvideo.settings.settingsFragmentSmali
 import app.revanced.patches.vkvideo.sponsorskip.BEHAVIOR_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.BEHAVIOR_STORE_CLASS
+import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.smali.SmaliTestUtils
 
 internal const val SPONSOR_SKIP_SETTINGS_PACKAGE = "Lapp/revanced/extension/sponsorskip/settings/"
@@ -28,6 +30,67 @@ internal const val LABEL_ENABLE = "Enable SponsorSkip"
 internal const val ROOT_ROW_ICON_ID = 0x7f082020
 
 /**
+ * The app's popup builder as found in this input. The builder, its setters and the
+ * terminal factory are obfuscated per version, and the setters return a different
+ * class than the one they are declared on (`ky1/f$a` -> `ly1/b$a` in 1.171), so
+ * every type and name is resolved from shapes rather than hardcoded.
+ */
+internal data class DialogApi(
+    val builder: String,
+    val titleMethod: String,
+    val itemsMethod: String,
+    val itemsReturn: String,
+    val showOwner: String,
+    val showMethod: String,
+)
+
+private const val DIALOG_TYPE = "Landroidx/appcompat/app/d;"
+private const val CHARS = "Ljava/lang/CharSequence;"
+private const val ITEMS = "[Ljava/lang/CharSequence;"
+private const val ITEM_CLICK = "Landroid/content/DialogInterface\$OnClickListener;"
+
+/**
+ * Finds the alert builder by its constructor and the title/items/show shapes. The
+ * title setter takes a `CharSequence` and the items setter a `CharSequence[]` plus
+ * the preselected index; the terminal factory returns a Dialog and is looked up on
+ * whatever type the title setter returns.
+ */
+internal fun resolveDialogApi(classes: List<ClassDef>): DialogApi {
+    fun types(method: com.android.tools.smali.dexlib2.iface.Method) =
+        method.parameterTypes.map(CharSequence::toString)
+
+    val candidates = classes.mapNotNull { def ->
+        def.methods.firstOrNull {
+            it.name == "<init>" && types(it) == listOf("Landroid/content/Context;")
+        } ?: return@mapNotNull null
+
+        // The builder carries several `CharSequence` setters returning different
+        // interfaces; the one paired with the items setter on the same return type
+        // is the alert builder.
+        def.methods.firstNotNullOfOrNull { title ->
+            val result = title.returnType.toString()
+            if (types(title) != listOf(CHARS) || !result.startsWith("L")) return@firstNotNullOfOrNull null
+            val items = def.methods.firstOrNull {
+                types(it) == listOf(ITEMS, "I", ITEM_CLICK) && it.returnType.toString() == result
+            } ?: return@firstNotNullOfOrNull null
+            val showDef = classes.firstOrNull { it.type.toString() == result } ?: return@firstNotNullOfOrNull null
+            val show = showDef.methods.firstOrNull {
+                it.parameterTypes.isEmpty() && it.returnType.toString() == DIALOG_TYPE
+            } ?: return@firstNotNullOfOrNull null
+            DialogApi(def.type.toString(), title.name.toString(), items.name.toString(), result, result, show.name.toString())
+        }
+    }
+    // The setters may return their own class (the stub fixture) or the shared builder
+    // interface they delegate to; prefer the delegating pair, which is what the app ships.
+    val delegating = candidates.filter { it.builder != it.showOwner }
+    return when {
+        delegating.size == 1 -> delegating.single()
+        delegating.isEmpty() && candidates.size == 1 -> candidates.single()
+        else -> error("dialog: expected one alert builder, found $candidates")
+    }
+}
+
+/**
  * Injector for the SponsorSkip settings screen. Same contract as the other
  * injectors: an existing descriptor is skipped, a stale generation missing a
  * required method is rejected.
@@ -37,8 +100,11 @@ internal fun injectSponsorSkipSettingsClasses(
     chrome: ToolbarChrome,
     opener: app.revanced.patches.vkvideo.settings.NavOpener,
     switchListenerMethod: String,
+    dialog: DialogApi,
 ) {
-    settingsSources(chrome, opener, switchListenerMethod).forEach { (descriptor, source) ->
+    settingsSources(chrome, opener, switchListenerMethod, dialog)
+        .mapValues { (_, source) -> remapAppTypes(context, source.replace("Lpx1/a", chrome.wrapperType.removeSuffix(";"))) }
+        .forEach { (descriptor, source) ->
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
         if (existing != null) {
             val missing = requiredMethods[descriptor].orEmpty().filter { required ->
@@ -65,11 +131,12 @@ internal fun settingsSources(
     chrome: ToolbarChrome,
     opener: app.revanced.patches.vkvideo.settings.NavOpener,
     switchListenerMethod: String,
+    dialog: DialogApi,
 ): Map<String, String> = linkedMapOf(
     SETTINGS_CLASS to settingsSmali(),
     ROWS_CLASS to rowsSmali(),
     DIALOG_CLICK_CLASS to dialogClickSmali(),
-    DIALOG_CLASS to dialogSmali(),
+    DIALOG_CLASS to dialogSmali(dialog),
     TOGGLE_CLASS to toggleSmali(switchListenerMethod),
     GROUP_CLICK_CLASS to groupClickSmali(opener, GROUP_CLICK_CLASS, FRAGMENT_CLASS, "sponsorskip group row clicked"),
     ROOT_ROW_CLASS to rootRowSmali(),
@@ -344,7 +411,7 @@ private fun rowsSmali(): String = """
 """.trimIndent()
 
 /** The behavior popup: an `OnClickListener` on the row that opens the app-styled single-choice dialog. */
-private fun dialogSmali(): String = """
+private fun dialogSmali(dialog: DialogApi): String = """
     .class public final $DIALOG_CLASS
     .super Ljava/lang/Object;
     .implements Landroid/view/View${'$'}OnClickListener;
@@ -379,14 +446,14 @@ private fun dialogSmali(): String = """
     .method public show()V
         .registers 6
 
-        new-instance v0, Lhy1/c${'$'}a;
+        new-instance v0, ${dialog.builder}
         iget-object v1, p0, $DIALOG_CLASS->context:Landroid/content/Context;
-        invoke-direct {v0, v1}, Lhy1/c${'$'}a;-><init>(Landroid/content/Context;)V
+        invoke-direct {v0, v1}, ${dialog.builder}-><init>(Landroid/content/Context;)V
 
         iget v1, p0, $DIALOG_CLASS->category:I
         invoke-static {v1}, $SETTINGS_CLASS->categoryLabel(I)Ljava/lang/String;
         move-result-object v1
-        invoke-virtual {v0, v1}, Lhy1/c${'$'}a;->x(Ljava/lang/CharSequence;)Lhy1/c${'$'}a;
+        invoke-virtual {v0, v1}, ${dialog.builder}->${dialog.titleMethod}(Ljava/lang/CharSequence;)${dialog.itemsReturn}
 
         const/4 v1, 0x3
         new-array v1, v1, [Ljava/lang/CharSequence;
@@ -412,9 +479,9 @@ private fun dialogSmali(): String = """
         move-result v2
         new-instance v3, $DIALOG_CLICK_CLASS
         invoke-direct {v3, p0}, $DIALOG_CLICK_CLASS-><init>($DIALOG_CLASS)V
-        invoke-virtual {v0, v1, v2, v3}, Lhy1/c${'$'}a;->v([Ljava/lang/CharSequence;ILandroid/content/DialogInterface${'$'}OnClickListener;)Lhy1/c${'$'}a;
+        invoke-virtual {v0, v1, v2, v3}, ${dialog.builder}->${dialog.itemsMethod}([Ljava/lang/CharSequence;ILandroid/content/DialogInterface${'$'}OnClickListener;)${dialog.itemsReturn}
 
-        invoke-virtual {v0}, Lhy1/c${'$'}a;->j()Landroidx/appcompat/app/d;
+        invoke-virtual {v0}, ${dialog.showOwner}->${dialog.showMethod}()Landroidx/appcompat/app/d;
         move-result-object v0
         if-eqz v0, :done
         invoke-virtual {v0}, Landroid/app/Dialog;->show()V
