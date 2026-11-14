@@ -1032,10 +1032,10 @@ private fun skipEngineSmali(): String = """
         aget-object v4, v0, v3
         iget-wide v5, v4, $SEGMENT_CLASS->startMs:J
         cmp-long v7, p1, v5
-        if-gez v7, :next                # position < startMs → outside
+        if-ltz v7, :next                # position < startMs → outside
         iget-wide v5, v4, $SEGMENT_CLASS->endMs:J
         cmp-long v7, p1, v5
-        if-ltz v7, :next                # position >= endMs → outside
+        if-gez v7, :next                # position >= endMs → outside
         const/4 v4, 0x0
         aput-boolean v4, v1, v3
 
@@ -1079,7 +1079,7 @@ private fun skipEngineSmali(): String = """
         if-eqz v10, :changed
         iget-wide v10, p0, $SKIP_STATE_CLASS->lastPosMs:J
         cmp-long v11, v10, v12
-        if-nez v11, :changed
+        if-eqz v11, :changed
         iget v10, p0, $SKIP_STATE_CLASS->stallTicks:I
         add-int/lit8 v10, v10, 0x1
         iput v10, p0, $SKIP_STATE_CLASS->stallTicks:I
@@ -1276,7 +1276,7 @@ private fun skipEngineSmali(): String = """
         cmp-long v8, v4, v6
         if-eqz v8, :over
         cmp-long v8, v4, v2
-        if-gez v8, :seek
+        if-ltz v8, :seek
 
         :over
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V

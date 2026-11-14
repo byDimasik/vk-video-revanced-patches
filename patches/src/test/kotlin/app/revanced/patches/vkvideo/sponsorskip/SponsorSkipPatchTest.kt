@@ -548,7 +548,7 @@ class SponsorSkipPatchTest {
         assertEquals(Opcode.CMP_LONG, endCompare.opcode, "the endMs compare does not follow the -1 check")
         assertEquals(positionRegister, (endCompare as ThreeRegisterInstruction).registerB, "the end compare reads another value")
         val endGuard = instructions[position + 6]
-        assertEquals(Opcode.IF_GEZ, endGuard.opcode, "the live arm is not `if-gez` (equals IF_GEZ)")
+        assertEquals(Opcode.IF_LTZ, endGuard.opcode, "the live arm is not `if-ltz` (position before the end)")
 
         // The -1 arm jumps to the no-seek block; the live arm jumps over it to `:seek`,
         // and a live position that is not before the end falls through into it.
@@ -631,7 +631,7 @@ class SponsorSkipPatchTest {
         }
         assertTrue(lastPos >= 0, "tick does not read lastPosMs")
         assertEquals(Opcode.CMP_LONG, tick[lastPos + 1].opcode, "the position is not compared with the last one")
-        assertEquals(Opcode.IF_NEZ, tick[lastPos + 2].opcode, "a changed position does not reach the reset")
+        assertEquals(Opcode.IF_EQZ, tick[lastPos + 2].opcode, "an unchanged position is not detected")
 
         val counterRead = tick.indexOfFirst {
             it.opcode == Opcode.IGET &&
@@ -669,7 +669,7 @@ class SponsorSkipPatchTest {
         }
         assertTrue(frozenRead >= 0, "the reveal does not read frozen")
         val guard = evaluate[frozenRead + 1]
-        assertEquals(Opcode.IF_NEZ, guard.opcode, "the reveal is not blocked by frozen")
+        assertEquals(Opcode.IF_NEZ, guard.opcode, "a frozen position is not blocked from showing")
         val target = branchTarget(evaluate, frozenRead + 1)
         assertEquals(Opcode.INVOKE_STATIC, evaluate[target].opcode)
         assertTrue((evaluate[target] as ReferenceInstruction).reference.toString().contains("SkipButton;->hide"))
@@ -705,13 +705,13 @@ class SponsorSkipPatchTest {
         assertTrue(aput > 0, "rearm never clears a flag")
         assertEquals(Opcode.CONST_4, body[aput - 1].opcode)
         assertEquals(0, (body[aput - 1] as NarrowLiteralInstruction).narrowLiteral)
-        val startGuard = body.indexOfFirst { it.opcode == Opcode.IF_GEZ }
-        val endGuard = body.indexOfFirst { it.opcode == Opcode.IF_LTZ }
+        val startGuard = body.indexOfFirst { it.opcode == Opcode.IF_LTZ }
+        val endGuard = body.indexOfFirst { it.opcode == Opcode.IF_GEZ }
         assertTrue(startGuard in 0 until endGuard, "the start range guard is missing")
         assertTrue(endGuard < aput, "the end range guard does not precede the clear")
         assertEquals(2, body.count { it.opcode == Opcode.IGET_WIDE }, "the guards must read startMs and endMs")
-        // cmp-long yields sign(position - boundary): if-gez means "below start",
-        // if-ltz means "at or past end", so a position inside [start, end) falls through.
+        // cmp-long yields sign(position - boundary): if-ltz means "below start",
+        // if-gez means "at or past end", so a position inside [start, end) falls through.
         assertEquals(Opcode.CMP_LONG, body[startGuard - 1].opcode)
         assertEquals(Opcode.CMP_LONG, body[endGuard - 1].opcode)
         assertTrue(branchTarget(body, startGuard) > aput, "the start guard does not skip the clear")
