@@ -1,6 +1,7 @@
 package app.revanced.patches.vkvideo.e2e
 
 import app.revanced.patcher.patch.BytecodePatchContext
+import com.android.tools.smali.smali.SmaliTestUtils
 import com.android.tools.smali.dexlib2.DexFileFactory
 import com.android.tools.smali.dexlib2.Opcodes
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -95,5 +96,24 @@ class SignatureResolutionTest {
                 "a declared method must resolve",
             )
         }
+    }
+
+    @Test
+    fun testAbsentAncestorIsNotFragment() {
+        val context = loadContext()
+        assumeTrue(context != null, "Skipping: APK snapshot not found in .cache")
+
+        // Both ancestors are absent from the dex; only the exact Fragment counts.
+        context!!.classDefs.add(SmaliTestUtils.compileSmali(".class public Lcom/test/PlainChild;\n.super Landroidx/fragment/app/AbsentFragmentBase;\n"))
+        assertFalse(
+            context.appMethodResolves("Lcom/test/PlainChild;", "requireActivity", emptyList(), "Landroidx/fragment/app/FragmentActivity;"),
+            "an absent, unrelated ancestor must not satisfy requireActivity()",
+        )
+
+        context.classDefs.add(SmaliTestUtils.compileSmali(".class public Lcom/test/FragmentChild;\n.super Landroidx/fragment/app/Fragment;\n"))
+        assertTrue(
+            context.appMethodResolves("Lcom/test/FragmentChild;", "requireActivity", emptyList(), "Landroidx/fragment/app/FragmentActivity;"),
+            "the exact Fragment ancestor must satisfy requireActivity()",
+        )
     }
 }
