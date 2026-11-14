@@ -631,7 +631,7 @@ class SponsorSkipPatchTest {
         }
         assertTrue(lastPos >= 0, "tick does not read lastPosMs")
         assertEquals(Opcode.CMP_LONG, tick[lastPos + 1].opcode, "the position is not compared with the last one")
-        assertEquals(Opcode.IF_EQZ, tick[lastPos + 2].opcode, "an unchanged position is not detected")
+        assertEquals(Opcode.IF_NEZ, tick[lastPos + 2].opcode, "a changed position does not reach the reset")
 
         val counterRead = tick.indexOfFirst {
             it.opcode == Opcode.IGET &&
@@ -642,12 +642,20 @@ class SponsorSkipPatchTest {
             (tick[counterRead + 2] as ReferenceInstruction).reference.toString().contains("stallTicks:I"),
             "the tick counter is not stored",
         )
+        assertEquals(Opcode.CONST_4, tick[counterRead + 3].opcode, "the stall threshold is not loaded")
+        assertEquals(4, (tick[counterRead + 3] as NarrowLiteralInstruction).narrowLiteral, "the stall window is not four ticks")
+        assertEquals(Opcode.IF_LT, tick[counterRead + 4].opcode, "sub-threshold counts do not stay in the grace window")
 
         val frozenWrite = tick.indexOfFirst {
             it.opcode == Opcode.IPUT_BOOLEAN &&
                 (it as ReferenceInstruction).reference.toString().contains("frozen:Z")
         }
         assertTrue(frozenWrite >= 0, "frozen is never set")
+        assertTrue(frozenWrite > counterRead + 4, "the freeze does not follow the threshold guard")
+        assertTrue(
+            branchTarget(tick, counterRead + 4) > frozenWrite,
+            "the sub-threshold branch re-enters the freeze",
+        )
         val deadHide = tick.indexOfFirst {
             it.opcode == Opcode.INVOKE_STATIC &&
                 (it as ReferenceInstruction).reference.toString().contains("SkipButton;->hide")
@@ -660,9 +668,9 @@ class SponsorSkipPatchTest {
                 (it as ReferenceInstruction).reference.toString().contains("frozen:Z")
         }
         assertTrue(frozenRead >= 0, "the reveal does not read frozen")
-        val guard = evaluate[frozenRead + 2]
-        assertEquals(Opcode.IF_EQ, guard.opcode)
-        val target = branchTarget(evaluate, frozenRead + 2)
+        val guard = evaluate[frozenRead + 1]
+        assertEquals(Opcode.IF_NEZ, guard.opcode, "the reveal is not blocked by frozen")
+        val target = branchTarget(evaluate, frozenRead + 1)
         assertEquals(Opcode.INVOKE_STATIC, evaluate[target].opcode)
         assertTrue((evaluate[target] as ReferenceInstruction).reference.toString().contains("SkipButton;->hide"))
         val show = evaluate.indexOfFirst {
@@ -702,6 +710,12 @@ class SponsorSkipPatchTest {
         assertTrue(startGuard in 0 until endGuard, "the start range guard is missing")
         assertTrue(endGuard < aput, "the end range guard does not precede the clear")
         assertEquals(2, body.count { it.opcode == Opcode.IGET_WIDE }, "the guards must read startMs and endMs")
+        // cmp-long yields sign(position - boundary): if-gez means "below start",
+        // if-ltz means "at or past end", so a position inside [start, end) falls through.
+        assertEquals(Opcode.CMP_LONG, body[startGuard - 1].opcode)
+        assertEquals(Opcode.CMP_LONG, body[endGuard - 1].opcode)
+        assertTrue(branchTarget(body, startGuard) > aput, "the start guard does not skip the clear")
+        assertTrue(branchTarget(body, endGuard) > aput, "the end guard does not skip the clear")
     }
 
     /** Builder instructions of an interface-typed method. */

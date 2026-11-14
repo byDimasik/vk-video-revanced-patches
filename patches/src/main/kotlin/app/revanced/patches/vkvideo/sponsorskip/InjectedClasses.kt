@@ -1079,12 +1079,12 @@ private fun skipEngineSmali(): String = """
         if-eqz v10, :changed
         iget-wide v10, p0, $SKIP_STATE_CLASS->lastPosMs:J
         cmp-long v11, v10, v12
-        if-eqz v11, :changed
+        if-nez v11, :changed
         iget v10, p0, $SKIP_STATE_CLASS->stallTicks:I
         add-int/lit8 v10, v10, 0x1
         iput v10, p0, $SKIP_STATE_CLASS->stallTicks:I
         const/4 v11, 0x4
-        if-ge v10, v11, :repost
+        if-lt v10, v11, :repost
         const/4 v10, 0x0
         iput v10, p0, $SKIP_STATE_CLASS->stallTicks:I
         const/4 v10, 0x1
@@ -1205,8 +1205,7 @@ private fun skipEngineSmali(): String = """
 
         :reveal
         iget-boolean v10, p0, $SKIP_STATE_CLASS->frozen:Z
-        const/4 v11, 0x0
-        if-eq v10, v11, :hidden
+        if-nez v10, :hidden
         const/4 v10, 0x0
         aput-boolean v10, v5, v7
         invoke-static {p0, v7}, $SKIP_BUTTON_CLASS;->show($SKIP_STATE_CLASS;I)V
