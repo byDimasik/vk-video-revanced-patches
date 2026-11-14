@@ -24,6 +24,12 @@ private val EXTERNAL_PREFIXES = listOf(
  * ancestor proves nothing: `ordinal()` only exists once `Enum` is reached, not
  * for a plain `Object` subclass.
  */
+private const val FRAGMENT_ACTIVITY = "Landroidx/fragment/app/FragmentActivity;"
+
+/** R8 renames `androidx.fragment.app.Fragment`; the sibling activity keeps its name. */
+private val FRAGMENT_ANCESTOR: (String) -> Boolean =
+    { it.startsWith("Landroidx/fragment/app/") && it != FRAGMENT_ACTIVITY }
+
 private val FRAMEWORK_MEMBERS = mapOf<String, (String) -> Boolean>(
     "equals(Ljava/lang/Object;)Z" to { it == "Ljava/lang/Object;" },
     "hashCode()I" to { it == "Ljava/lang/Object;" },
@@ -33,11 +39,12 @@ private val FRAMEWORK_MEMBERS = mapOf<String, (String) -> Boolean>(
     "ordinal()I" to { it == "Ljava/lang/Enum;" },
     "name()Ljava/lang/String;" to { it == "Ljava/lang/Enum;" },
     "compareTo(Ljava/lang/Object;)I" to { it == "Ljava/lang/Comparable;" },
-    // R8 renames the Fragment class itself (`x0`), so match its package.
-    "getActivity()Landroidx/fragment/app/FragmentActivity;" to { it.startsWith("Landroidx/fragment/app/") },
-    "getContext()Landroid/content/Context;" to { it.startsWith("Landroidx/fragment/app/") },
-    "requireActivity()Landroidx/fragment/app/FragmentActivity;" to { it.startsWith("Landroidx/fragment/app/") },
-    "requireContext()Landroid/content/Context;" to { it.startsWith("Landroidx/fragment/app/") },
+    // R8 renames the Fragment class itself (`x0`), so match its package — but not
+    // `FragmentActivity`, which is a sibling, not the activity-declaring ancestor.
+    "getActivity()Landroidx/fragment/app/FragmentActivity;" to FRAGMENT_ANCESTOR,
+    "getContext()Landroid/content/Context;" to FRAGMENT_ANCESTOR,
+    "requireActivity()Landroidx/fragment/app/FragmentActivity;" to FRAGMENT_ANCESTOR,
+    "requireContext()Landroid/content/Context;" to FRAGMENT_ANCESTOR,
 )
 
 private fun isExternal(type: String) = !type.startsWith("L") || EXTERNAL_PREFIXES.any { type.startsWith(it) }

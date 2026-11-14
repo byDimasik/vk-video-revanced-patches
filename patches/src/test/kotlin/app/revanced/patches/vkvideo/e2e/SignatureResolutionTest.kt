@@ -15,6 +15,8 @@ import java.nio.file.Files
  * proves the members it actually declares. `ordinal()` lives on `Enum`, so a plain
  * `Object` subclass must not pass for it.
  */
+private const val FRAGMENT_ACTIVITY_TYPE = "Landroidx/fragment/app/FragmentActivity;"
+
 class SignatureResolutionTest {
 
     private fun findApkFile(): File? = listOf(File(".cache"), File("/app/.cache"), File("../.cache"))
@@ -57,6 +59,23 @@ class SignatureResolutionTest {
         assertFalse(
             context.appMethodResolves(plainClass!!.type, "ordinal", emptyList(), "I"),
             "ordinal() must not resolve on a plain Object subclass",
+        )
+
+        // A Fragment subclass resolves the activity accessors; a FragmentActivity
+        // subclass (sibling in the same package) must not.
+        assertTrue(
+            context.appMethodResolves(
+                "Lcom/vk/core/fragments/FragmentImpl;", "requireActivity", emptyList(), "Landroidx/fragment/app/FragmentActivity;",
+            ),
+            "requireActivity() must resolve on a Fragment subclass",
+        )
+        val activity = context.classDefs.firstOrNull { it.superclass == FRAGMENT_ACTIVITY_TYPE }
+        assertTrue(activity != null, "no FragmentActivity subclass to test against")
+        assertFalse(
+            context.appMethodResolves(
+                activity!!.type, "requireActivity", emptyList(), "Landroidx/fragment/app/FragmentActivity;",
+            ),
+            "requireActivity() must not resolve on a FragmentActivity subclass",
         )
 
         // A member the class really declares always wins.
