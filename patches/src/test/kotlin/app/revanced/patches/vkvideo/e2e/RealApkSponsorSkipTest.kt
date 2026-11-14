@@ -90,6 +90,21 @@ class RealApkSponsorSkipTest {
         assertHook(sponsorSkipHolderFingerprint.getMethod(context), "onViewAttached", 3, 4)
         assertHook(sponsorSkipReleaseFingerprint.getMethod(context), "onRelease", 2, null)
 
+        // The UserId getter was renamed P0 -> O0 in 1.171; the engine must call the
+        // real one, and every other app reference must still resolve by signature.
+        val engine = context.classDefs.first { it.type.startsWith("$SKIP_ENGINE_CLASS") }
+        val videoRefs = engine.methods.flatMap { it.implementation?.instructions?.toList().orEmpty() }
+            .mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+            .filter { it.definingClass == "Lcom/vk/dto/common/VideoFile;" }
+            .map { it.name to it.returnType.toString() }
+        assertTrue(
+            videoRefs.contains("O0" to "Lcom/vk/dto/common/id/UserId;"),
+            "SkipEngine must call VideoFile.O0()Lcom/vk/dto/common/id/UserId;, saw $videoRefs",
+        )
+        assertTrue(videoRefs.none { it.first == "P0" }, "stale VideoFile.P0 reference survived the remap: $videoRefs")
+        val checked = context.assertInjectedReferencesResolve()
+        assertTrue(checked > 25, "reference sweep must cover the injected engine, only $checked checked")
+
         val seekInstructions = seek.method.getInstructions()
         val seekAt = seekInstructions.indexOfFirst { it.opcode == Opcode.RETURN_VOID } - 1
         val seekHook = seekInstructions[seekAt] as FiveRegisterInstruction

@@ -152,5 +152,9 @@ class RealApkSponsorSkipSettingsTest {
         assertEquals("Lcom/vk/core/fragments/FragmentImpl;", fragment.superclass)
         assertTrue(fragment.methods.any { it.name == "<init>" && it.parameterTypes.isEmpty() })
         assertTrue(context.classDefs.any { it.type == SETTINGS_CLASS })
+
+        // Every app reference the injected screens make, by exact signature.
+        val checked = context.assertInjectedReferencesResolve()
+        assertTrue(checked > 50, "reference sweep must cover the injected settings screens, only $checked checked")
     }
 }

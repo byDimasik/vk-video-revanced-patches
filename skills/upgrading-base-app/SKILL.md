@@ -50,6 +50,20 @@ not cold-launch tested via adb**.
      app. `remapAppTypes` resolves each method ref by owner, name, arity and the most identical
      parameter types, and follows owners that moved with their package; a ref without a unique
      best match stays unchanged. Keep the ref shapes exact so the scoring has anchors.
+   - **Whole obfuscated packages moved.** 1.171 renamed every `p72` class to `v72`; the
+     template's `r$a` ctor argument `p72/q` survived as a `NoSuchMethodError` because no
+     owner in the moved set was matched directly. `remapAppTypes` now matches an absent
+     package to the existing package carrying the same referenced simple names, then
+     resolves signatures against the new owners.
+   - **Interface methods renamed in place.** 1.171 renamed `VideoFile.P0()` to `O0()` (82 app
+     callers moved with it, the 3-caller namesake `n()` stayed). When the name is gone, the
+     ref is matched by arity, return type and parameter shape, and ties break by call-site
+     count, which the rename preserves.
+   - **Class-presence tests are not enough.** A stale ctor argument or a renamed interface
+     method compiles, injects and passes an existence check while crashing with
+     `NoSuchMethodError` on device. `assertInjectedReferencesResolve()` walks every
+     instruction of every injected class and requires each app reference to resolve by exact
+     signature — keep it in the real-APK tests.
    - **Interfaces that exist only as a role.** `Lp73/a` became an unrelated validator; the
      autoplay interface is found from the two implementations the app always ships
      (`com/vk/libvideo/autoplay/VideoAutoPlay` and its empty stub) and their shared methods.

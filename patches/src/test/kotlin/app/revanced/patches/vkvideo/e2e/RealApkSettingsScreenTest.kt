@@ -166,8 +166,10 @@ class RealApkSettingsScreenTest {
             "Lcom/vk/core/view/components/cell/VkCell\$Right\$d;",
         ))
         assertResolves("Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$c;", "<init>", listOf(
-            "Lp72/g;", "Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$Size;", "Lp72/r;",
+            "Lp72/g;", "Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$Size;", "Lp72/r\$a;",
         ))
+        // 1.171 renamed the whole p72 package to v72: owner and ctor argument must follow.
+        assertResolves("Lp72/r\$a;", "<init>", listOf("Lp72/q;"))
         assertResolves("Lcom/vk/core/view/components/cell/VkCell\$Middle\$e;", "<init>", listOf(
             "Lpx1/a;", "I", "Landroid/text/TextUtils\$TruncateAt;",
             "Lcom/vk/core/view/components/cell/VkCell\$Middle\$e\$b\$b;",
@@ -182,6 +184,10 @@ class RealApkSettingsScreenTest {
         assertResolves("Lp72/j;", "<init>", listOf("I"))
         assertResolves("Lp72/b;", "<init>", listOf("I"))
         assertResolves(opener.iOwner, opener.openFragmentMethod, listOf("Lcom/vk/core/fragments/FragmentImpl;"))
+
+        // Every other app reference the injected screen makes, by exact signature.
+        val checked = context.assertInjectedReferencesResolve()
+        assertTrue(checked > 50, "reference sweep must cover the injected screen, only $checked checked")
 
         // StartReVancedSettings opens the screen via the resolved opener and returns null.
         val start = context.classDefs.first { it.type == "Lapp/revanced/extension/vkvideo/StartReVancedSettings;" }
