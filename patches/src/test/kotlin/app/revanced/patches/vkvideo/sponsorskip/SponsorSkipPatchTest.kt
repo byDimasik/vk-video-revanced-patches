@@ -460,7 +460,7 @@ class SponsorSkipPatchTest {
         val removeAt = block.indexOf("->removeView(Landroid/view/View;)V")
         assertTrue(removeAt > 0, "a stale parent is not detached")
         assertTrue(block.contains("if-eqz v4, :attach_add"), "a detached button does not fall into the add")
-        val same = block.indexOf("if-ne v4, v5, :update")
+        val same = block.indexOf("if-eq v4, v5, :update")
         assertTrue(same in 0 until removeAt, "a same-parent button is re-attached")
         assertTrue(
             block.contains("check-cast v4, Landroid/view/ViewGroup;\n    invoke-virtual {v4, v2}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V"),
@@ -559,8 +559,29 @@ class SponsorSkipPatchTest {
     }
 
     @Test
+    fun `the null-video teardown is deferred to main too`() {
+        val body = engineBody("onVideoChanged", "Lp73/a;Lcom/vk/dto/common/VideoFile;")
+        val guard = body.indexOf("onMain()Z")
+        val defer = body.indexOf("if-nez", guard)
+        assertTrue(defer > guard, "the off-main branch is not behind the guard")
+        val bodyLabel = body.indexOf("\n    :on_main", defer)
+        assertTrue(bodyLabel > defer, "the main-thread body label is missing")
+        val nullCheck = body.indexOf("if-eqz v1, :v1null")
+        assertTrue(nullCheck > bodyLabel, "the null-video test runs before the off-main deferral")
+        val nullLabel = body.indexOf("\n    :v1null")
+        assertTrue(nullLabel > nullCheck, "the null-video label is missing")
+        val nullPath = body.substring(nullLabel, body.indexOf("\n    :clear", nullLabel))
+        assertTrue(nullPath.contains("goto :clear"), "the null-video path does not reach the clear")
+        val clear = body.substringAfter("\n    :clear").substringBefore("\n    :return")
+        assertTrue(clear.contains("->clear(Lp73/a;)V"), "the null-video path no longer clears the state")
+        val mainPath = body.substring(defer, bodyLabel)
+        assertTrue(mainPath.trimEnd().endsWith("return-void"), "the off-main branch falls through into the body")
+        assertTrue(bodyLabel < body.indexOf("getDuration"), "the video is dereferenced before the null test")
+    }
+
+    @Test
     fun `onViewAttached stays inline`() {
-        val attach = engineBody("onViewAttached", "Landroid/view/View;Landroid/view/View;")
+        val attach = engineBody("onViewAttached", "Lp73/a;Landroid/view/View;")
         assertTrue(!attach.contains("onMain()Z"), "onViewAttached was deferred")
         assertTrue(
             sponsorSkipSources()[SKIP_ENGINE_CLASS]!!.contains(".field private static volatile LAST_VIEW:"),
@@ -698,9 +719,10 @@ class SponsorSkipPatchTest {
     /** One engine method body, sliced out for source assertions. */
     private fun engineBody(name: String, parameters: String, public: Boolean = true): String {
         val visibility = if (public) "public" else "private"
-        return sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
-            .substringAfter(".method $visibility static $name($parameters)")
-            .substringBefore(".end method")
+        val source = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
+        val header = ".method $visibility static $name($parameters)"
+        require(header in source) { "no engine method header: $header" }
+        return source.substringAfter(header).substringBefore(".end method")
     }
 
     /** The op literal loaded into the range window of a `SKIP_MAIN_CLASS` construction at [from]. */

@@ -837,7 +837,10 @@ private fun skipMainSmali(): String = """
 /**
  * `onVideoChanged` guards a null video: `D(VideoFile)` has several invoking bodies —
  * the autoplay and catalog delegates, the compose lazy delegate, the live view and
- * `gg1/v` — none of which is audited for null.
+ * `gg1/v` — none of which is audited for null. The off-main deferral is checked before
+ * that null test, so the null path's `clear` (and the `stop` behind it) also runs on
+ * the main thread; the null check itself sits on the main-thread side, ahead of any
+ * `getDuration()` dereference.
  */
 private fun skipEngineSmali(): String = """
     .class public final $SKIP_ENGINE_CLASS
@@ -962,7 +965,6 @@ private fun skipEngineSmali(): String = """
         const-string v10, "hook"
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         if-eqz v0, :v0null
-        if-eqz v1, :v1null
         invoke-static {}, $SKIP_ENGINE_CLASS;->onMain()Z
         move-result v10
         if-nez v10, :on_main
@@ -977,6 +979,7 @@ private fun skipEngineSmali(): String = """
         return-void
 
         :on_main
+        if-eqz v1, :v1null
         invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
         move-result v2
         new-instance v10, Ljava/lang/StringBuilder;
@@ -2319,7 +2322,7 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
         move-result-object v4
         if-eqz v4, :attach_add
-        if-ne v4, v5, :update
+        if-eq v4, v5, :update
         check-cast v4, Landroid/view/ViewGroup;
         invoke-virtual {v4, v2}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V
 
