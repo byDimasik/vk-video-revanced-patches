@@ -80,6 +80,13 @@ class SignatureResolutionTest {
             )
         }
 
+        // The allowance is the exact Fragment type, not the package: only Fragment
+        // declares the accessor, and a sibling in its package must not stand in.
+        val fragment = context.classDefs.first { it.type == "Landroidx/fragment/app/Fragment;" }
+        assertTrue(fragment.methods.any { it.name == "requireActivity" }, "Fragment must declare requireActivity()")
+        val activity = context.classDefs.first { it.type == "Landroidx/fragment/app/FragmentActivity;" }
+        assertTrue(activity.methods.none { it.name == "requireActivity" }, "FragmentActivity must not declare it")
+
         // A member the class really declares always wins.
         val declared = plainClass.methods.firstOrNull { it.parameterTypes.isEmpty() && it.name != "<init>" }
         if (declared != null) {

@@ -24,11 +24,8 @@ private val EXTERNAL_PREFIXES = listOf(
  * ancestor proves nothing: `ordinal()` only exists once `Enum` is reached, not
  * for a plain `Object` subclass.
  */
-private const val FRAGMENT_ACTIVITY = "Landroidx/fragment/app/FragmentActivity;"
-
-/** R8 renames `androidx.fragment.app.Fragment`; the sibling activity keeps its name. */
-private val FRAGMENT_ANCESTOR: (String) -> Boolean =
-    { it.startsWith("Landroidx/fragment/app/") && it != FRAGMENT_ACTIVITY }
+/** The only class that declares the Fragment activity accessors. */
+private const val FRAGMENT_ANCESTOR_TYPE = "Landroidx/fragment/app/Fragment;"
 
 private val FRAMEWORK_MEMBERS = mapOf<String, (String) -> Boolean>(
     "equals(Ljava/lang/Object;)Z" to { it == "Ljava/lang/Object;" },
@@ -39,12 +36,11 @@ private val FRAMEWORK_MEMBERS = mapOf<String, (String) -> Boolean>(
     "ordinal()I" to { it == "Ljava/lang/Enum;" },
     "name()Ljava/lang/String;" to { it == "Ljava/lang/Enum;" },
     "compareTo(Ljava/lang/Object;)I" to { it == "Ljava/lang/Comparable;" },
-    // Fallback only: androidx ships in the dex, so the normal walk finds these on
-    // `Fragment`; a renamed or repackaged build still matches the fragment package.
-    "getActivity()Landroidx/fragment/app/FragmentActivity;" to FRAGMENT_ANCESTOR,
-    "getContext()Landroid/content/Context;" to FRAGMENT_ANCESTOR,
-    "requireActivity()Landroidx/fragment/app/FragmentActivity;" to FRAGMENT_ANCESTOR,
-    "requireContext()Landroid/content/Context;" to FRAGMENT_ANCESTOR,
+    // AndroidX ships inside the APK, so this is an exact type, not a package guess.
+    "getActivity()Landroidx/fragment/app/FragmentActivity;" to { it == FRAGMENT_ANCESTOR_TYPE },
+    "getContext()Landroid/content/Context;" to { it == FRAGMENT_ANCESTOR_TYPE },
+    "requireActivity()Landroidx/fragment/app/FragmentActivity;" to { it == FRAGMENT_ANCESTOR_TYPE },
+    "requireContext()Landroid/content/Context;" to { it == FRAGMENT_ANCESTOR_TYPE },
 )
 
 private fun hasExternalPrefix(type: String) = !type.startsWith("L") || EXTERNAL_PREFIXES.any { type.startsWith(it) }
