@@ -103,17 +103,23 @@ class SignatureResolutionTest {
         val context = loadContext()
         assumeTrue(context != null, "Skipping: APK snapshot not found in .cache")
 
-        // Both ancestors are absent from the dex; only the exact Fragment counts.
-        context!!.classDefs.add(SmaliTestUtils.compileSmali(".class public Lcom/test/PlainChild;\n.super Landroidx/fragment/app/AbsentFragmentBase;\n"))
+        // Drop the Fragment classes so the walk cannot find a declaration: only the
+        // ancestor allowlist can decide now.
+        val fragment = "Landroidx/fragment/app/Fragment;"
+        val unrelated = "Landroidx/fragment/app/AbsentFragmentBase;"
+        context!!.classDefs.removeAll { it.type == fragment || it.superclass == fragment && it.type.startsWith("Landroidx/") }
+        assertTrue(context.classDefs.none { it.type == fragment || it.type == unrelated }, "both ancestors must be absent")
+
+        context.classDefs.add(SmaliTestUtils.compileSmali(".class public Lcom/test/PlainChild;\n.super $unrelated\n"))
+        context.classDefs.add(SmaliTestUtils.compileSmali(".class public Lcom/test/FragmentChild;\n.super $fragment\n"))
+
         assertFalse(
             context.appMethodResolves("Lcom/test/PlainChild;", "requireActivity", emptyList(), "Landroidx/fragment/app/FragmentActivity;"),
             "an absent, unrelated ancestor must not satisfy requireActivity()",
         )
-
-        context.classDefs.add(SmaliTestUtils.compileSmali(".class public Lcom/test/FragmentChild;\n.super Landroidx/fragment/app/Fragment;\n"))
         assertTrue(
             context.appMethodResolves("Lcom/test/FragmentChild;", "requireActivity", emptyList(), "Landroidx/fragment/app/FragmentActivity;"),
-            "the exact Fragment ancestor must satisfy requireActivity()",
+            "the exact Fragment ancestor must satisfy requireActivity() without a declaration",
         )
     }
 }
