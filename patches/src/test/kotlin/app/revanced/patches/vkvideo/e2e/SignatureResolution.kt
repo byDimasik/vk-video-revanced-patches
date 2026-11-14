@@ -189,6 +189,7 @@ internal fun BytecodePatchContext.assertInjectedReferencesResolve(): Int {
         }
     }
 
+    System.err.println("SWEEP checked=$checked")
     assertTrue(
         failures.isEmpty(),
         "injected code references ${failures.size} member(s) absent from the shipped dexes:\n" + failures.joinToString("\n"),
