@@ -39,17 +39,25 @@ private val FRAMEWORK_MEMBERS = mapOf<String, (String) -> Boolean>(
     "ordinal()I" to { it == "Ljava/lang/Enum;" },
     "name()Ljava/lang/String;" to { it == "Ljava/lang/Enum;" },
     "compareTo(Ljava/lang/Object;)I" to { it == "Ljava/lang/Comparable;" },
-    // R8 renames the Fragment class itself (`x0`), so match its package — but not
-    // `FragmentActivity`, which is a sibling, not the activity-declaring ancestor.
+    // Fallback only: androidx ships in the dex, so the normal walk finds these on
+    // `Fragment`; a renamed or repackaged build still matches the fragment package.
     "getActivity()Landroidx/fragment/app/FragmentActivity;" to FRAGMENT_ANCESTOR,
     "getContext()Landroid/content/Context;" to FRAGMENT_ANCESTOR,
     "requireActivity()Landroidx/fragment/app/FragmentActivity;" to FRAGMENT_ANCESTOR,
     "requireContext()Landroid/content/Context;" to FRAGMENT_ANCESTOR,
 )
 
-private fun isExternal(type: String) = !type.startsWith("L") || EXTERNAL_PREFIXES.any { type.startsWith(it) }
+private fun hasExternalPrefix(type: String) = !type.startsWith("L") || EXTERNAL_PREFIXES.any { type.startsWith(it) }
 
 private fun BytecodePatchContext.classDef(type: String): ClassDef? = classDefs.firstOrNull { it.type == type }
+
+/**
+ * Not resolvable from the app dexes. AndroidX ships *inside* the APK, so a
+ * prefixed type is only external when it is genuinely absent — that keeps
+ * `Fragment.requireActivity()` resolvable while an unrelated sibling does not
+ * accidentally count.
+ */
+private fun BytecodePatchContext.isExternal(type: String) = hasExternalPrefix(type) && classDef(type) == null
 
 /**
  * Walk the app supertypes of `type`. Returns true when one declares exactly

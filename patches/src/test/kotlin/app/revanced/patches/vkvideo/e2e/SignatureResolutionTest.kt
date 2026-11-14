@@ -69,14 +69,16 @@ class SignatureResolutionTest {
             ),
             "requireActivity() must resolve on a Fragment subclass",
         )
-        val activity = context.classDefs.firstOrNull { it.superclass == FRAGMENT_ACTIVITY_TYPE }
-        assertTrue(activity != null, "no FragmentActivity subclass to test against")
-        assertFalse(
-            context.appMethodResolves(
-                activity!!.type, "requireActivity", emptyList(), "Landroidx/fragment/app/FragmentActivity;",
-            ),
-            "requireActivity() must not resolve on a FragmentActivity subclass",
-        )
+        // Neither a FragmentActivity subclass nor an unrelated class in the same
+        // package declares the accessor.
+        for (sibling in listOf(FRAGMENT_ACTIVITY_TYPE, "Landroidx/appcompat/app/AppCompatActivity;")) {
+            assertFalse(
+                context.appMethodResolves(
+                    sibling, "requireActivity", emptyList(), "Landroidx/fragment/app/FragmentActivity;",
+                ),
+                "requireActivity() must not resolve on $sibling",
+            )
+        }
 
         // A member the class really declares always wins.
         val declared = plainClass.methods.firstOrNull { it.parameterTypes.isEmpty() && it.name != "<init>" }

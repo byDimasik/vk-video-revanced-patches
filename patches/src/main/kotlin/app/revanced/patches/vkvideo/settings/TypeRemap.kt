@@ -34,6 +34,13 @@ private fun parseTypes(spec: String): List<String> {
 
 private fun packageOf(descriptor: String) = descriptor.substringBeforeLast('/') + "/"
 
+/**
+ * Packages that never get obfuscated, so a missing type there means the template
+ * name is wrong rather than moved (`Landroid/util/Log` must not be re-pointed at
+ * `Lorg/chromium/base/Log` just because both end in `Log`).
+ */
+private val FIXED_PACKAGES = listOf("Landroid/", "Landroidx/", "Ljava/", "Ljavax/", "Lkotlin/", "Lkotlinx/", "Ldalvik/")
+
 /** Every package in the dex, mapped to its top-level simple names. */
 private fun packageContents(context: BytecodePatchContext): Map<String, Set<String>> {
     val contents = linkedMapOf<String, MutableSet<String>>()
@@ -191,6 +198,7 @@ internal fun remapAppTypes(context: BytecodePatchContext, source: String): Strin
     val unresolved = refs.filter { classDef(it.owner) == null && !it.owner.startsWith("Lapp/revanced/") }
     val contents by lazy { packageContents(context) }
     unresolved.map { packageOf(it.owner) }.distinct().forEach { from ->
+        if (FIXED_PACKAGES.any { from.startsWith(it) }) return@forEach
         val group = unresolved.filter { packageOf(it.owner) == from }
         // A package move already learned from a resolved ref outranks content matching.
         packages[from]?.let { known ->
