@@ -166,7 +166,7 @@ class RealApkSettingsScreenTest {
             "Lcom/vk/core/view/components/cell/VkCell\$Right\$d;",
         ))
         assertResolves("Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$c;", "<init>", listOf(
-            "Lp72/g;", "Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$Size;", "Lp72/r\$a;",
+            "Lp72/g;", "Lcom/vk/core/view/components/cell/VkCell\$Left\$Main\$Size;", "Lp72/r;",
         ))
         // 1.171 renamed the whole p72 package to v72: owner and ctor argument must follow.
         assertResolves("Lp72/r\$a;", "<init>", listOf("Lp72/q;"))

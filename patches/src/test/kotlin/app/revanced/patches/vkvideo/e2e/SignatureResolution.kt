@@ -18,32 +18,69 @@ private val EXTERNAL_PREFIXES = listOf(
     "Lorg/", "Ldalvik/", "Lcom/google/", "Lio/reactivex/", "Lj$/",
 )
 
-private fun isExternal(type: String) =
-    !type.startsWith("L") || EXTERNAL_PREFIXES.any { type.startsWith(it) }
+/**
+ * Framework members that app classes legitimately inherit without declaring:
+ * `Enum.ordinal()`/`name()`, the `Object` basics and `Comparable`. Anything else
+ * reached only through framework supertypes is treated as unresolved, because the
+ * sweep has no framework declarations to check against.
+ */
+private val FRAMEWORK_MEMBERS = setOf(
+    "equals(Ljava/lang/Object;)Z",
+    "hashCode()I",
+    "toString()Ljava/lang/String;",
+    "getClass()Ljava/lang/Class;",
+    "clone()Ljava/lang/Object;",
+    "ordinal()I",
+    "name()Ljava/lang/String;",
+    "compareTo(Ljava/lang/Object;)I",
+    "getActivity()Landroidx/fragment/app/FragmentActivity;",
+    "getContext()Landroid/content/Context;",
+    "requireActivity()Landroidx/fragment/app/FragmentActivity;",
+    "requireContext()Landroid/content/Context;",
+)
+
+private fun isExternal(type: String) = !type.startsWith("L") || EXTERNAL_PREFIXES.any { type.startsWith(it) }
 
 private fun BytecodePatchContext.classDef(type: String): ClassDef? = classDefs.firstOrNull { it.type == type }
 
 /**
- * `type` or any of its supertypes declares `name` with exactly `params`.
- * Framework supertypes are not dexed here, so the walk simply ends there.
+ * Walk the app supertypes of `type`. Returns true when one declares exactly
+ * `name(params)returnType`; `externalTail` collects whether the chain left the
+ * app dexes, so the caller can decide about framework inheritance.
  */
-private fun BytecodePatchContext.methodExists(type: String, name: String, params: List<String>, seen: MutableSet<String>): Boolean {
+private fun BytecodePatchContext.methodExists(
+    type: String,
+    name: String,
+    params: List<String>,
+    returnType: String,
+    seen: MutableSet<String>,
+    externalTail: MutableSet<Boolean>,
+): Boolean {
+    if (isExternal(type)) {
+        externalTail += true
+        return false
+    }
     if (!seen.add(type)) return false
-    // Inherited from a framework supertype: not dexed here and never drifting.
-    if (isExternal(type)) return true
     val def = classDef(type) ?: return false
-    if (def.methods.any { it.name == name && it.parameterTypes.toList() == params }) return true
-    if (def.superclass?.let { methodExists(it, name, params, seen) } == true) return true
-    return def.interfaces.any { methodExists(it, name, params, seen) }
+    if (def.methods.any {
+            it.name == name && it.parameterTypes.toList() == params && it.returnType.toString() == returnType
+        }) return true
+    if (def.superclass?.let { methodExists(it, name, params, returnType, seen, externalTail) } == true) return true
+    return def.interfaces.any { methodExists(it, name, params, returnType, seen, externalTail) }
 }
 
-private fun BytecodePatchContext.fieldExists(type: String, name: String, seen: MutableSet<String>): Boolean {
+private fun BytecodePatchContext.fieldExists(
+    type: String,
+    name: String,
+    fieldType: String,
+    seen: MutableSet<String>,
+): Boolean {
+    if (isExternal(type)) return false
     if (!seen.add(type)) return false
-    if (isExternal(type)) return true
     val def = classDef(type) ?: return false
-    if (def.fields.any { it.name == name }) return true
-    if (def.superclass?.let { fieldExists(it, name, seen) } == true) return true
-    return def.interfaces.any { fieldExists(it, name, seen) }
+    if (def.fields.any { it.name == name && it.type == fieldType }) return true
+    if (def.superclass?.let { fieldExists(it, name, fieldType, seen) } == true) return true
+    return def.interfaces.any { fieldExists(it, name, fieldType, seen) }
 }
 
 /**
@@ -53,8 +90,9 @@ private fun BytecodePatchContext.fieldExists(type: String, name: String, seen: M
  * Class existence is not enough: a stale ctor argument (`Lp72/q;`) or a renamed
  * interface method (`VideoFile.P0`) both compile, inject and pass a
  * class-presence check while crashing with `NoSuchMethodError` on device.
- * Types outside the app (framework, AndroidX, Kotlin) are skipped — they are not
- * in the dex and never drift.
+ * Types outside the app (framework, AndroidX, Kotlin) are not in the dex and
+ * never drift, but a framework supertype only proves the few members in
+ * [FRAMEWORK_MEMBERS] — constructors resolve on their declaring class alone.
  *
  * Returns the number of checked references so callers can demand real coverage.
  */
@@ -68,19 +106,31 @@ internal fun BytecodePatchContext.assertInjectedReferencesResolve(): Int {
                 if (isExternal(reference.definingClass) || reference.definingClass.startsWith(INJECTED_PREFIX)) return
                 checked++
                 val params = reference.parameterTypes.map { it.toString() }
-                if (classDef(reference.definingClass) == null) {
+                val returns = reference.returnType.toString()
+                val signature = "${reference.name}(${params.joinToString("")})$returns"
+                val owner = classDef(reference.definingClass)
+                if (owner == null) {
                     failures += "$where: owner class ${reference.definingClass} does not exist"
                     return
                 }
-                if (!methodExists(reference.definingClass, reference.name, params, mutableSetOf())) {
-                    failures += "$where: ${reference.definingClass}->${reference.name}(${params.joinToString("")}) does not exist"
+                // A constructor is never inherited.
+                if (reference.name == "<init>") {
+                    if (owner.methods.none { it.name == "<init>" && it.parameterTypes.toList() == params }) {
+                        failures += "$where: ${reference.definingClass}->$signature does not exist"
+                    }
+                    return
                 }
+                val externalTail = mutableSetOf<Boolean>()
+                if (methodExists(reference.definingClass, reference.name, params, returns, mutableSetOf(), externalTail)) return
+                if (externalTail.isNotEmpty() && signature in FRAMEWORK_MEMBERS) return
+                failures += "$where: ${reference.definingClass}->$signature does not exist"
             }
             is FieldReference -> {
                 if (isExternal(reference.definingClass) || reference.definingClass.startsWith(INJECTED_PREFIX)) return
                 checked++
-                if (!fieldExists(reference.definingClass, reference.name, mutableSetOf())) {
-                    failures += "$where: field ${reference.definingClass}->${reference.name} does not exist"
+                val type = reference.type.toString()
+                if (!fieldExists(reference.definingClass, reference.name, type, mutableSetOf())) {
+                    failures += "$where: field ${reference.definingClass}->${reference.name}:$type does not exist"
                 }
             }
             is TypeReference -> {
