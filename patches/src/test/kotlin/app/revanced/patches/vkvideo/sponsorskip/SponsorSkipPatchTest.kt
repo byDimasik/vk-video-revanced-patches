@@ -11,6 +11,7 @@ import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
@@ -375,39 +376,208 @@ class SponsorSkipPatchTest {
     }
 
     @Test
-    fun `stop drops the button and show re-attaches a detached one`() {
-        val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
-        val stop = engine.substringAfter(".method private static stop")
-        assertTrue(stop.contains("if-eqz v0, :overlay"), "stop does not skip a missing button")
+    fun `every view-mutating entry point guards before its body`() {
+        guardedEntries.forEach { entry ->
+            val body = engineBody(entry.name, entry.parameters)
+            val guard = body.indexOf("onMain()Z")
+            assertTrue(guard > 0, "${entry.name} has no guard")
+            val prefix = body.substring(0, guard)
+            val calls = prefix.lines().map { it.trim() }.filter { it.startsWith("invoke-") }
+            assertTrue(calls.dropLast(1).all { it.contains("->log(Ljava/lang/String;)V") }, "${entry.name} calls its body first: $calls")
+            assertTrue(calls.isNotEmpty() && calls.last().endsWith("->"), "${entry.name} guard is not the next call: $calls")
+            val defer = body.indexOf("if-nez", guard)
+            assertTrue(defer in (guard + 1) until body.length, "${entry.name} does not branch on off-main")
+            val bodyLabel = body.indexOf("\n    :on_main", defer)
+            assertTrue(bodyLabel > defer, "${entry.name} has no body label")
+            val block = body.substring(defer, bodyLabel)
+            val built = block.indexOf("new-instance")
+            assertTrue(built > 0 && block.contains(SKIP_MAIN_CLASS), "${entry.name} does not build a dispatch")
+            assertEquals(entry.op, rangeOp(block, built), "${entry.name} posts the wrong op")
+            assertTrue(block.contains("postMain(Ljava/lang/Runnable;)V"), "${entry.name} does not post the dispatch")
+            assertTrue(block.trimEnd().endsWith("return-void"), "${entry.name} falls through after posting")
+            val after = body.substring(bodyLabel)
+            val contact = after.indexOf(entry.firstBody)
+            val nextLabel = after.indexOf("\n    :", 1)
+            assertTrue(contact > 0, "${entry.name} does not open its body with ${entry.firstBody}")
+            assertTrue(nextLabel < 0 || contact < nextLabel, "${entry.name} opens its body late")
+        }
+    }
+
+    @Test
+    fun `stop posts its removal instead of removing inline`() {
+        val stop = engineBody("stop", "$SKIP_STATE_CLASS", public = false)
+        assertTrue(!stop.contains("ViewGroup;->removeView"), "stop still removes inline")
+        val guard = stop.indexOf("if-eqz v5, :overlay")
+        assertTrue(guard > 0, "the deferral is not on the button-non-null path")
+        val block = stop.substring(guard, stop.indexOf("\n    :overlay"))
+        val built = block.indexOf("new-instance v0, $SKIP_MAIN_CLASS")
+        assertTrue(built >= 0, "the removal is not a SKIP_MAIN_CLASS")
+        assertEquals(3, rangeOp(block, built), "the op is not the removal op")
         assertTrue(
-            stop.contains("invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
-            "stop does not detach through the view's own parent",
+            block.contains("iget-object v3, p0, $SKIP_STATE_CLASS->controller:Lp73/a;"),
+            "the full window is not filled: controller",
         )
-        assertTrue(stop.contains("move-result-object v1\n    if-eqz v1, :overlay"), "stop does not skip a null parent")
-        assertTrue(stop.contains("if-eqz v0, :overlay\n    invoke-virtual {v0}, Landroid/view/View;->getParent()"), "the missing-button branch skips the parent read")
-        assertTrue(
-            stop.contains("check-cast v1, Landroid/view/ViewGroup;\n    invoke-virtual {v1, v0}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V"),
-            "stop does not remove from the resolved parent",
-        )
+        assertTrue(block.contains("const/4 v4, 0x0"), "the full window is not filled: video")
+        assertTrue(block.indexOf("postMain(Ljava/lang/Runnable;)V") > built, "the runnable is not posted")
+        assertTrue(block.contains("const-string v1, \"stop\""), "the deferral is not traced")
         val cleared = stop.substringAfter(":overlay")
+        assertTrue(cleared.contains("iput-object v0, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;"), "stop drops the view")
         assertTrue(
-            cleared.contains("iput-object v0, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;"),
-            "the null-parent path leaves a stale button behind",
+            !cleared.contains("$SKIP_STATE_CLASS->button:Landroid/widget/TextView;"),
+            "stop nulls the button before the posted op can identity-check it",
+        )
+    }
+
+    @Test
+    fun `the deferred removal is identity-guarded and cleans up`() {
+        val run = sponsorSkipSources()[SKIP_MAIN_CLASS]!!
+        val op3 = run.substringAfter("\n    :op3")
+        val removeAt = op3.indexOf("->removeView(Landroid/view/View;)V")
+        assertTrue(removeAt >= 0, "op 3 does not remove")
+        val stateAt = op3.indexOf("->state:$SKIP_STATE_CLASS")
+        assertTrue(stateAt in 0 until removeAt, "the state is read after the mutation")
+        val nullButton = op3.indexOf("->button:Landroid/widget/TextView;\n    if-eqz")
+        assertTrue(nullButton >= 0 && nullButton < removeAt, "a null button does not return before the mutation")
+        val otherButton = op3.indexOf("if-ne v2, v3, :return")
+        assertTrue(otherButton > nullButton && otherButton < removeAt, "another button does not return before the mutation")
+        assertTrue(op3.indexOf("trace(") < removeAt, "the removal is not traced")
+        val buttonWrite = op3.indexOf("iput-object v0, v1, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;")
+        val viewWrite = op3.indexOf("iput-object v0, v1, $SKIP_STATE_CLASS->view:Landroid/view/View;")
+        assertTrue(buttonWrite > removeAt, "the button is nulled before the removal")
+        assertTrue(viewWrite > removeAt, "the view is nulled before the removal")
+    }
+
+    @Test
+    fun `show keeps the button in its current container`() {
+        val show = showBody()
+        val attach = show.indexOf("\n    :attach")
+        val add = show.indexOf("\n    :attach_add")
+        assertTrue(attach in 0 until add, "the attach/add labels moved")
+        assertTrue(!show.substring(0, attach).contains("if-nez v4, :update"), "the early-out is still before the resolution")
+        val block = show.substring(attach, add)
+        assertTrue(block.indexOf("getRootView") in 0 until block.indexOf("check-cast v5, Landroid/view/ViewGroup;"), "the container is not resolved first")
+        assertTrue(block.contains("move-result-object v4") && block.contains("getParent()Landroid/view/ViewParent;"), "the current parent is not re-read")
+        val removeAt = block.indexOf("->removeView(Landroid/view/View;)V")
+        assertTrue(removeAt > 0, "a stale parent is not detached")
+        assertTrue(block.contains("if-eqz v4, :attach_add"), "a detached button does not fall into the add")
+        val same = block.indexOf("if-ne v4, v5, :update")
+        assertTrue(same in 0 until removeAt, "a same-parent button is re-attached")
+        assertTrue(
+            block.contains("check-cast v4, Landroid/view/ViewGroup;\n    invoke-virtual {v4, v2}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V"),
+            "the current parent is not the checked receiver",
+        )
+    }
+
+    @Test
+    fun `no mutator runs before the guard and every mutator keeps a declared root`() {
+        val context = createBytecodeContext(*fixtures.toTypedArray())
+        sponsorSkipPatch.execute(context)
+        val injected = sponsorSkipSources().keys
+        val classes = context.classDefs.filter { it.type in injected }
+        val methods = classes.flatMap { it.methods }
+
+        guardedEntries.forEach { entry ->
+            val method = methods.firstOrNull {
+                it.name == entry.name && it.parameterTypes.size == entry.parameterCount
+            } ?: error("${entry.name} missing among ${methods.map { it.name }.distinct()}")
+            val instructions = method.implementation!!.instructions.toList()
+            val guard = instructions.indexOfFirst {
+                it.opcode == Opcode.INVOKE_STATIC &&
+                    (it as ReferenceInstruction).reference.toString() == "$SKIP_ENGINE_CLASS->onMain()Z"
+            }
+            assertTrue(guard >= 0, "${entry.name} has no guard")
+            val branch = instructions[guard + 2]
+            assertEquals(Opcode.IF_NEZ, branch.opcode, "${entry.name}: the guard does not branch")
+            val bodyAt = instructions.indexOfFirst {
+                it.opcode == branch.opcode && (it as OffsetInstruction).codeOffset == (branch as OffsetInstruction).codeOffset
+            }
+            instructions.subList(0, bodyAt).forEach { instruction ->
+                val reference = (instruction as? ReferenceInstruction)?.reference as? MethodReference ?: return@forEach
+                val callee = classes.firstOrNull { it.type == reference.definingClass }
+                    ?.methods?.firstOrNull {
+                        it.name == reference.name && it.parameterTypes.joinToString("") == reference.parameterTypes.joinToString("")
+                    }
+                assertTrue(callee == null || !callee.mutatesStructure(), "${entry.name}: ${reference.name} mutates before the guard")
+            }
+        }
+
+        val keys = methods.associateBy { it.key() }
+        val mutators = methods.filter { it.mutatesStructure() }.map { it.key() }.toSet()
+        assertEquals(
+            setOf("$SKIP_MAIN_CLASS->run()V", "$SKIP_BUTTON_CLASS->show(${SKIP_STATE_CLASS}I)V"),
+            mutators,
+            "the mutator inventory moved",
         )
 
-        val show = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
-            .substringAfter(".method public static show")
-            .substringBefore(".method public static hide")
-        assertTrue(show.contains("if-eqz v2, :create"), "show does not create only for a missing button")
-        val existing = show.substringAfter("if-eqz v2, :create").substringBefore(":create\n")
-        assertTrue(
-            existing.contains("invoke-virtual {v2}, Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
-            "show does not check for a detached button",
+        val callers = mutableMapOf<String, MutableSet<String>>()
+        methods.forEach { method ->
+            val owner = method.key()
+            method.implementation?.instructions?.forEach { instruction ->
+                val reference = (instruction as? ReferenceInstruction)?.reference as? MethodReference ?: return@forEach
+                val target = "${reference.definingClass}->${reference.name}(${reference.parameterTypes.joinToString("")})${reference.returnType}"
+                if (target in keys) callers.getOrPut(target) { mutableSetOf() }.add(owner)
+            }
+        }
+
+        val roots = mutators.flatMap { mutator ->
+            val seen = mutableSetOf(mutator)
+            val queue = ArrayDeque(listOf(mutator))
+            val reached = mutableSetOf<String>()
+            while (queue.isNotEmpty()) {
+                val node = queue.removeFirst()
+                val parents = callers[node].orEmpty() - seen
+                seen += parents
+                queue += parents
+                if (callers[node].isNullOrEmpty()) reached += node
+            }
+            reached
+        }.toSet()
+
+        // Each root carries why it may reach a mutation at all.
+        val allowed = mapOf(
+            "$SKIP_ENGINE_CLASS->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V" to "guarded entry, posts op 0",
+            "$SKIP_ENGINE_CLASS->onRelease(Lp73/a;)V" to "guarded entry, posts op 1",
+            "$SKIP_ENGINE_CLASS->onSeek(Ljava/lang/Object;J)V" to "guarded entry, posts op 2",
+            "$SKIP_TICK_CLASS->run()V" to "reposted only on the handler built from getMainLooper()",
+            "$SKIP_CLICK_CLASS->onClick(Landroid/view/View;)V" to "view dispatch is main",
+            "$SKIP_LAYOUT_CLASS->onLayoutChange(Landroid/view/View;IIIIIIII)V" to "dispatched by the layout pass, main by construction",
+            "$SKIP_MAIN_CLASS->run()V" to "drained from the main Handler",
         )
-        assertTrue(existing.contains("if-nez v4, :update"), "an attached button re-attaches anyway")
-        assertTrue(existing.contains("goto :attach"), "a detached button does not fall into the attach block")
-        assertTrue(show.contains("check-cast v4, Landroid/view/ViewGroup;"), "the attach block does not detach a stale parent first")
-        assertTrue(!show.substringAfter("\n    :create").substringBefore(":attach").contains("getParent"), "the create block reads the parent")
+        assertTrue(roots.all { it in allowed }, "mutators lost their declared root: ${roots - allowed.keys}")
+    }
+
+    @Test
+    fun `the guard handler is the main looper`() {
+        val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
+        val clinit = engine.substringAfter(".method static constructor <clinit>").substringBefore(".end method")
+        assertTrue(clinit.contains("getMainLooper()Landroid/os/Looper;"), "MAIN is not built on the main looper")
+        assertTrue(clinit.contains("Landroid/os/Handler;-><init>(Landroid/os/Looper;)V"), "MAIN is not a Handler for it")
+        val onMain = engineBody("onMain", "")
+        assertTrue(onMain.contains("myLooper()Landroid/os/Looper;"), "onMain does not read the current looper")
+        assertTrue(onMain.contains("getMainLooper()Landroid/os/Looper;"), "onMain does not compare against the main looper")
+        assertTrue(onMain.contains("if-eq v0, v1, :same"), "a looper-less thread is not the false path")
+    }
+
+    @Test
+    fun `onViewAttached stays inline`() {
+        val attach = engineBody("onViewAttached", "Landroid/view/View;Landroid/view/View;")
+        assertTrue(!attach.contains("onMain()Z"), "onViewAttached was deferred")
+        assertTrue(
+            sponsorSkipSources()[SKIP_ENGINE_CLASS]!!.contains(".field private static volatile LAST_VIEW:"),
+            "the cross-thread view handoff is not volatile",
+        )
+    }
+
+    @Test
+    fun `the diagnostic reports thread and layout state`() {
+        val trace = engineBody("trace", "Ljava/lang/String;Landroid/view/View;")
+        assertTrue(trace.contains("Thread;->currentThread()"), "the thread is not reported")
+        assertTrue(trace.contains("Thread;->getName()"), "the thread name is not reported")
+        assertTrue(trace.contains("ViewGroup;->isInLayout()Z"), "the layout state is not reported")
+        assertTrue(trace.contains("|inLayout=1") && trace.contains("|inLayout=0"), "both layout states are not distinguished")
+        assertTrue(showBody().contains("const-string v10, \"show\"") && showBody().contains("trace(Ljava/lang/String;Landroid/view/View;)V"), "show is not traced")
+        assertTrue(engineBody("stop", "$SKIP_STATE_CLASS", public = false).contains("trace("), "stop is not traced")
+        assertTrue(sponsorSkipSources()[SKIP_MAIN_CLASS]!!.contains("trace("), "the removal is not traced")
     }
 
     @Test
@@ -448,6 +618,11 @@ class SponsorSkipPatchTest {
         assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9", "watch:3")))
         assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("view", "button", "listener", "listenerView", "buttonView")))
         assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
+        assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).containsAll(listOf("onMain:0", "mainHandler:0", "postMain:1", "trace:2")))
+        assertTrue(requiredMethods.getValue(SKIP_MAIN_CLASS).containsAll(listOf("<init>:5", "run:0")))
+        assertTrue(requiredFields.getValue(SKIP_ENGINE_CLASS).contains("MAIN"))
+        assertTrue(requiredFields.getValue(SKIP_MAIN_CLASS).containsAll(listOf("op", "state", "controller", "video", "target")))
+        assertTrue(sponsorSkipSources().containsKey(SKIP_MAIN_CLASS))
     }
 
     /** The `show` body, sliced out for ordering assertions. */
@@ -504,6 +679,48 @@ class SponsorSkipPatchTest {
         assertEquals(receiver, fiveRegister.registerC)
         if (argument != null) assertEquals(argument, fiveRegister.registerD)
     }
+
+    private data class GuardedEntry(
+        val name: String,
+        val parameters: String,
+        val op: Int,
+        val firstBody: String,
+        val parameterCount: Int,
+    )
+
+    /** The three entry hooks, each with its posted op and the first token of its body. */
+    private val guardedEntries = listOf(
+        GuardedEntry("onVideoChanged", "Lp73/a;Lcom/vk/dto/common/VideoFile;", 0, "->isEnabled()Z", 2),
+        GuardedEntry("onRelease", "Lp73/a;", 1, "clear(Lp73/a;)V", 1),
+        GuardedEntry("onSeek", "Ljava/lang/Object;J", 2, "MAP:", 2),
+    )
+
+    /** One engine method body, sliced out for source assertions. */
+    private fun engineBody(name: String, parameters: String, public: Boolean = true): String {
+        val visibility = if (public) "public" else "private"
+        return sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
+            .substringAfter(".method $visibility static $name($parameters)")
+            .substringBefore(".end method")
+    }
+
+    /** The op literal loaded into the range window of a `SKIP_MAIN_CLASS` construction at [from]. */
+    private fun rangeOp(block: String, from: Int): Int {
+        val construction = block.substring(from)
+        val range = Regex("invoke-direct/range \\{v(\\d+) .. v\\d+\\}").find(construction) ?: error("no range ctor")
+        // The window is [instance, op, state, controller, video, target].
+        val op = range.groupValues[1].toInt() + 1
+        val literal = Regex("const/4 v$op, 0x([0-9a-f]+)").find(construction.substring(0, range.range.first))
+        return literal!!.groupValues[1].toInt(16)
+    }
+
+    private fun Method.key(): String = "$definingClass->$name(${parameterTypes.joinToString("")})$returnType"
+
+    private fun Method.mutatesStructure(): Boolean =
+        implementation?.instructions?.any {
+            val reference = (it as? ReferenceInstruction)?.reference?.toString().orEmpty()
+            it.opcode == Opcode.INVOKE_VIRTUAL &&
+                (reference.endsWith("ViewGroup;->removeView(Landroid/view/View;)V") || reference.contains("->addView("))
+        } == true
 
     private val VIDEO_AUTO_PLAY = "Lcom/vk/libvideo/autoplay/VideoAutoPlay;"
     private val EMPTY_AUTO_PLAY = "Lcom/vk/libvideo/autoplay/e;"

@@ -7,6 +7,7 @@ import app.revanced.patches.vkvideo.sponsorskip.autoPlayApi
 import app.revanced.patches.vkvideo.sponsorskip.resolveAutoPlayApi
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionListFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS
+import app.revanced.patches.vkvideo.sponsorskip.SKIP_MAIN_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionDrawableFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint
@@ -113,6 +114,98 @@ class RealApkSponsorSkipTest {
         assertEquals(4, seekHook.registerD)
         assertEquals(5, seekHook.registerE)
         assertEquals(Opcode.RETURN_VOID, seekInstructions[seekAt + 1].opcode)
+    }
+
+    @Test
+    fun testInjectedMainGuardOnRealApk() {
+        val apkFile = findApkFile()
+        val isStrictE2e = System.getProperty("vkvideo.e2e") == "true" || System.getenv("VKVIDEO_E2E") == "true"
+
+        if (isStrictE2e) {
+            check(apkFile != null && apkFile.exists()) {
+                "VK Video target APK snapshot (vkvideo-*.apk) not found in .cache"
+            }
+        } else {
+            assumeTrue(
+                apkFile != null && apkFile.exists(),
+                "Skipping RealApkSponsorSkipTest: VK Video target APK snapshot not found in .cache",
+            )
+        }
+
+        val patchedDir = Files.createTempDirectory("patched-main-guard-test").toFile().apply { deleteOnExit() }
+        val constructor = BytecodePatchContext::class.java.getDeclaredConstructor(File::class.java, File::class.java)
+        constructor.isAccessible = true
+        val context = constructor.newInstance(apkFile, patchedDir)
+        context.initializeCache()
+        autoPlayApi = resolveAutoPlayApi(context.classDefs.toList())
+
+        // The guard changes nothing about the hooked bodies except a prepended call,
+        // so every exit count must survive.
+        val hooked = listOf(
+            sponsorSkipVideoHandoffFingerprint.getMethod(context),
+            sponsorSkipReleaseFingerprint.getMethod(context),
+            sponsorSkipSeekFingerprint.getMethod(context),
+            sponsorSkipViewAttachedFingerprint.getMethod(context),
+            sponsorSkipViewSetupFingerprint.getMethod(context),
+            sponsorSkipHolderFingerprint.getMethod(context),
+        )
+        val exits = hooked.map { method -> method.getInstructions().count { it.opcode == Opcode.RETURN_VOID } }
+
+        applyPatches(context, sponsorSkipPatch)
+
+        hooked.zip(exits).forEach { (method, expected) ->
+            assertEquals(
+                expected,
+                method.getInstructions().count { it.opcode == Opcode.RETURN_VOID },
+                "${method.definingClass}->${method.name}: the hook changed the exit count",
+            )
+        }
+
+        val engine = context.classDefs.first { it.type == SKIP_ENGINE_CLASS }
+        listOf("onVideoChanged", "onRelease", "onSeek").forEach { name ->
+            val instructions = engine.methods.first { it.name == name }.implementation!!.instructions.toList()
+            val guardAt = instructions.indexOfFirst {
+                (it as? ReferenceInstruction)?.reference?.toString() == "$SKIP_ENGINE_CLASS->onMain()Z"
+            }
+            assertTrue(guardAt >= 0, "$name has no guard")
+            assertEquals(Opcode.INVOKE_STATIC, instructions[guardAt].opcode)
+            val before = instructions.take(guardAt).mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+                .filterNot { it.name == "log" || it.definingClass == "Ljava/lang/StringBuilder;" }
+            assertTrue(before.isEmpty(), "$name calls its body before the guard: $before")
+            assertEquals(Opcode.MOVE_RESULT, instructions[guardAt + 1].opcode, "$name does not keep the guard result")
+            assertEquals(Opcode.IF_NEZ, instructions[guardAt + 2].opcode, "$name does not branch on off-main")
+            assertTrue(
+                instructions.any { (it as? ReferenceInstruction)?.reference?.toString() == "$SKIP_ENGINE_CLASS->postMain(Ljava/lang/Runnable;)V" },
+                "$name does not defer through postMain",
+            )
+        }
+
+        // Framework references cannot be resolved against classDefs (the dex does not
+        // ship Landroid/os/*), so they are pinned verbatim against the injected code.
+        val mainClass = context.classDefs.firstOrNull { it.type == SKIP_MAIN_CLASS }
+        assertNotNull(mainClass, "the dispatch class is not injected")
+        assertEquals(
+            setOf("<init>", "run"),
+            mainClass!!.methods.map { it.name }.toSet(),
+            "the dispatch class changed shape",
+        )
+        val injectedReferences = context.classDefs
+            .filter { it.type.startsWith("Lapp/revanced/extension/sponsorskip/Skip") }
+            .flatMap { it.methods }
+            .flatMap { it.implementation?.instructions?.toList().orEmpty() }
+            .mapNotNull { (it as? ReferenceInstruction)?.reference?.toString() }
+            .toSet()
+        listOf(
+            "Landroid/os/Looper;->myLooper()Landroid/os/Looper;",
+            "Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;",
+            "Landroid/os/Handler;-><init>(Landroid/os/Looper;)V",
+            "Landroid/os/Handler;->post(Ljava/lang/Runnable;)Z",
+        ).forEach { reference ->
+            assertTrue(reference in injectedReferences, "the guard reference $reference did not resolve")
+        }
+
+        val checked = context.assertInjectedReferencesResolve()
+        assertTrue(checked > 25, "reference sweep must still cover the injected engine, only $checked checked")
     }
 
     @Test
