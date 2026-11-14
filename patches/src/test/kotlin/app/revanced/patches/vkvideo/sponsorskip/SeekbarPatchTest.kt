@@ -139,7 +139,10 @@ class SeekbarPatchTest {
         val invalidate = sections.substringAfter(".method public static invalidate")
         assertTrue(invalidate.contains("$SEEK_SECTIONS_CLASS->CURRENT:Ljava/lang/ref/WeakReference"), "the reference is not read")
         assertTrue(invalidate.contains("invalidateSelf()V"), "the drawable is never invalidated")
-        assertTrue(sections.contains(".field private static CURRENT:Ljava/lang/ref/WeakReference;"))
+        assertTrue(
+            sections.contains(".field private static volatile CURRENT:Ljava/lang/ref/WeakReference;"),
+            "the cross-thread reference is not volatile",
+        )
     }
 
     @Test
