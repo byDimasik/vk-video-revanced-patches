@@ -19,24 +19,25 @@ private val EXTERNAL_PREFIXES = listOf(
 )
 
 /**
- * Framework members that app classes legitimately inherit without declaring:
- * `Enum.ordinal()`/`name()`, the `Object` basics and `Comparable`. Anything else
- * reached only through framework supertypes is treated as unresolved, because the
- * sweep has no framework declarations to check against.
+ * Framework members an app class may legitimately inherit without declaring,
+ * each with the ancestor that has to be in its chain. Presence of *any* external
+ * ancestor proves nothing: `ordinal()` only exists once `Enum` is reached, not
+ * for a plain `Object` subclass.
  */
-private val FRAMEWORK_MEMBERS = setOf(
-    "equals(Ljava/lang/Object;)Z",
-    "hashCode()I",
-    "toString()Ljava/lang/String;",
-    "getClass()Ljava/lang/Class;",
-    "clone()Ljava/lang/Object;",
-    "ordinal()I",
-    "name()Ljava/lang/String;",
-    "compareTo(Ljava/lang/Object;)I",
-    "getActivity()Landroidx/fragment/app/FragmentActivity;",
-    "getContext()Landroid/content/Context;",
-    "requireActivity()Landroidx/fragment/app/FragmentActivity;",
-    "requireContext()Landroid/content/Context;",
+private val FRAMEWORK_MEMBERS = mapOf<String, (String) -> Boolean>(
+    "equals(Ljava/lang/Object;)Z" to { it == "Ljava/lang/Object;" },
+    "hashCode()I" to { it == "Ljava/lang/Object;" },
+    "toString()Ljava/lang/String;" to { it == "Ljava/lang/Object;" },
+    "getClass()Ljava/lang/Class;" to { it == "Ljava/lang/Object;" },
+    "clone()Ljava/lang/Object;" to { it == "Ljava/lang/Object;" },
+    "ordinal()I" to { it == "Ljava/lang/Enum;" },
+    "name()Ljava/lang/String;" to { it == "Ljava/lang/Enum;" },
+    "compareTo(Ljava/lang/Object;)I" to { it == "Ljava/lang/Comparable;" },
+    // R8 renames the Fragment class itself (`x0`), so match its package.
+    "getActivity()Landroidx/fragment/app/FragmentActivity;" to { it.startsWith("Landroidx/fragment/app/") },
+    "getContext()Landroid/content/Context;" to { it.startsWith("Landroidx/fragment/app/") },
+    "requireActivity()Landroidx/fragment/app/FragmentActivity;" to { it.startsWith("Landroidx/fragment/app/") },
+    "requireContext()Landroid/content/Context;" to { it.startsWith("Landroidx/fragment/app/") },
 )
 
 private fun isExternal(type: String) = !type.startsWith("L") || EXTERNAL_PREFIXES.any { type.startsWith(it) }
@@ -45,8 +46,8 @@ private fun BytecodePatchContext.classDef(type: String): ClassDef? = classDefs.f
 
 /**
  * Walk the app supertypes of `type`. Returns true when one declares exactly
- * `name(params)returnType`; `externalTail` collects whether the chain left the
- * app dexes, so the caller can decide about framework inheritance.
+ * `name(params)returnType`; `externalChain` collects the external types the walk
+ * actually reached, so only the right ancestor can justify an inherited member.
  */
 private fun BytecodePatchContext.methodExists(
     type: String,
@@ -54,10 +55,10 @@ private fun BytecodePatchContext.methodExists(
     params: List<String>,
     returnType: String,
     seen: MutableSet<String>,
-    externalTail: MutableSet<Boolean>,
+    externalChain: MutableSet<String>,
 ): Boolean {
     if (isExternal(type)) {
-        externalTail += true
+        externalChain += type
         return false
     }
     if (!seen.add(type)) return false
@@ -65,8 +66,8 @@ private fun BytecodePatchContext.methodExists(
     if (def.methods.any {
             it.name == name && it.parameterTypes.toList() == params && it.returnType.toString() == returnType
         }) return true
-    if (def.superclass?.let { methodExists(it, name, params, returnType, seen, externalTail) } == true) return true
-    return def.interfaces.any { methodExists(it, name, params, returnType, seen, externalTail) }
+    if (def.superclass?.let { methodExists(it, name, params, returnType, seen, externalChain) } == true) return true
+    return def.interfaces.any { methodExists(it, name, params, returnType, seen, externalChain) }
 }
 
 private fun BytecodePatchContext.fieldExists(
@@ -81,6 +82,28 @@ private fun BytecodePatchContext.fieldExists(
     if (def.fields.any { it.name == name && it.type == fieldType }) return true
     if (def.superclass?.let { fieldExists(it, name, fieldType, seen) } == true) return true
     return def.interfaces.any { fieldExists(it, name, fieldType, seen) }
+}
+
+/**
+ * Whether an app method reference resolves: declared in the app class or its app
+ * supertypes, or a framework member whose exact declaring ancestor is reached.
+ * `owner` must exist.
+ */
+internal fun BytecodePatchContext.appMethodResolves(
+    owner: String,
+    name: String,
+    params: List<String>,
+    returnType: String,
+): Boolean {
+    if (classDef(owner) == null) return false
+    val signature = "$name(${params.joinToString("")})$returnType"
+    if (name == "<init>") {
+        return classDef(owner)!!.methods.any { it.name == name && it.parameterTypes.toList() == params }
+    }
+    val externalChain = mutableSetOf<String>()
+    if (methodExists(owner, name, params, returnType, mutableSetOf(), externalChain)) return true
+    val declaredOn = FRAMEWORK_MEMBERS[signature] ?: return false
+    return externalChain.any(declaredOn)
 }
 
 /**
@@ -120,10 +143,9 @@ internal fun BytecodePatchContext.assertInjectedReferencesResolve(): Int {
                     }
                     return
                 }
-                val externalTail = mutableSetOf<Boolean>()
-                if (methodExists(reference.definingClass, reference.name, params, returns, mutableSetOf(), externalTail)) return
-                if (externalTail.isNotEmpty() && signature in FRAMEWORK_MEMBERS) return
-                failures += "$where: ${reference.definingClass}->$signature does not exist"
+                if (!appMethodResolves(reference.definingClass, reference.name, params, returns)) {
+                    failures += "$where: ${reference.definingClass}->$signature does not exist"
+                }
             }
             is FieldReference -> {
                 if (isExternal(reference.definingClass) || reference.definingClass.startsWith(INJECTED_PREFIX)) return
