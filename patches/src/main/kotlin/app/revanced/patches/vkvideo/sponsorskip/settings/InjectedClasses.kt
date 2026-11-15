@@ -636,8 +636,13 @@ ${listenerConstruction(dialog)}        invoke-virtual {v0, v1, v2, v3}, ${dialog
 
 /** Builds the app's own (final) listener over a throwaway host object. */
 private fun listenerConstruction(dialog: DialogApi): String {
-    val arg = dialog.listenerArg ?: return ""
-    val field = dialog.listenerIndexField ?: return ""
+    val arg = dialog.listenerArg
+    val field = dialog.listenerIndexField
+    // No narrowed listener in this input: our own class is the items listener.
+    if (arg == null || field == null) return """"
+        new-instance v3, $DIALOG_CLICK_CLASS
+        invoke-direct {v3, p0}, $DIALOG_CLICK_CLASS-><init>($DIALOG_CLASS)V
+""".trimStart()
     return """
         new-instance v5, $arg
         invoke-direct {v5}, $arg-><init>()V

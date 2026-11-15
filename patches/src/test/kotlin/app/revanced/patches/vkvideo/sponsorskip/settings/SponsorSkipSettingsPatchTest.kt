@@ -277,6 +277,28 @@ class SponsorSkipSettingsPatchTest {
         assertTrue(violations.any { it.kind.startsWith("arg1") }, "the object after the J went unchecked: $violations")
     }
 
+    /** Without a narrowed listener in the input, the dialog still builds its own. */
+    @Test
+    fun `an input without a narrowed listener falls back to our own`() {
+        val fixture = Fixture()
+        val chromeMethod = toolbarChromeFingerprint.getMethod(fixture.context)
+        val chrome = extractToolbarChrome(fixture.context.classDefs.first { it.type == chromeMethod.definingClass })
+        val opener = resolveNavOpener(navOpenerFingerprint.getMethod(fixture.context), fixture.context.classDefs.toList())
+        val plain = resolveDialogApi(fixture.context.classDefs.toList())
+            .copy(listenerArg = null, listenerIndexField = null)
+        val sources = settingsSources(
+            chrome,
+            opener,
+            switchListenerMethodFingerprint.getMethod(fixture.context).name,
+            plain,
+        )
+
+        assertTrue(sources[DIALOG_CLASS]!!.contains("new-instance v3, $DIALOG_CLICK_CLASS"), "the items listener must be constructed")
+        assertTrue(sources[DIALOG_CLASS]!!.contains("invoke-direct {v4, p0}, $DIALOG_CLICK_CLASS-><init>($DIALOG_CLASS)V"))
+        assertTrue(sources[DIALOG_CLICK_CLASS]!!.contains(".implements Landroid/content/DialogInterface${'$'}OnClickListener;"))
+        assertTrue(sources[DIALOG_CLICK_CLASS]!!.contains("invoke-interface {p1}, Landroid/content/DialogInterface;->dismiss()V"))
+    }
+
     @Test
     fun `category labels are the exact English titles`() {
         val settings = Fixture().sources[SETTINGS_CLASS]!!
