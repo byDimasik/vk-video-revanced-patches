@@ -8,7 +8,7 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import java.util.WeakHashMap
 
 /** A method reference found in an injected smali template. */
-private data class TemplateRef(val owner: String, val name: String, val params: List<String>, val returnType: String) {
+internal data class TemplateRef(val owner: String, val name: String, val params: List<String>, val returnType: String) {
     val descriptor: String get() = "$owner->$name(${params.joinToString("")})$returnType"
 }
 
@@ -32,25 +32,42 @@ private fun parseTypes(spec: String): List<String> {
     return types
 }
 
-private fun packageOf(descriptor: String) = descriptor.substringBeforeLast('/') + "/"
+internal fun packageOf(descriptor: String) = descriptor.substringBeforeLast('/') + "/"
 
 /**
  * Packages that never get obfuscated, so a missing type there means the template
  * name is wrong rather than moved (`Landroid/util/Log` must not be re-pointed at
  * `Lorg/chromium/base/Log` just because both end in `Log`).
  */
-private val FIXED_PACKAGES = listOf("Landroid/", "Landroidx/", "Ljava/", "Ljavax/", "Lkotlin/", "Lkotlinx/", "Ldalvik/")
+internal val FIXED_PACKAGES = listOf("Landroid/", "Landroidx/", "Ljava/", "Ljavax/", "Lkotlin/", "Lkotlinx/", "Ldalvik/")
+
+/**
+ * Type -> class index, rebuilt whenever the class set grows. A linear scan of
+ * every class def decodes one string per entry, which is far too slow to repeat
+ * per reference.
+ */
+private val classIndex = WeakHashMap<BytecodePatchContext, Pair<Int, Map<String, ClassDef>>>()
+
+internal fun classDefsByType(context: BytecodePatchContext): Map<String, ClassDef> {
+    val size = context.classDefs.count() // classDefs is a lazy, size-stable collection
+    val cached = classIndex[context]
+    if (cached != null && cached.first == size) return cached.second
+    return context.classDefs.associateBy { it.type }.also { classIndex[context] = size to it }
+}
+
+private val packageIndex = WeakHashMap<BytecodePatchContext, Pair<Int, Map<String, Set<String>>>>()
 
 /** Every package in the dex, mapped to its top-level simple names. */
-private fun packageContents(context: BytecodePatchContext): Map<String, Set<String>> {
+internal fun packageContents(context: BytecodePatchContext): Map<String, Set<String>> {
+    val size = context.classDefs.count()
+    packageIndex[context]?.let { (cachedSize, cached) -> if (cachedSize == size) return cached }
     val contents = linkedMapOf<String, MutableSet<String>>()
-    context.classDefs.forEach { def ->
-        val type = def.type
+    classDefsByType(context).keys.forEach { type ->
         if (!type.startsWith("Lapp/revanced/")) {
             contents.getOrPut(packageOf(type)) { mutableSetOf() } += type.substringAfterLast('/')
         }
     }
-    return contents
+    return contents.also { packageIndex[context] = size to it }
 }
 
 private val callSiteCounts = WeakHashMap<BytecodePatchContext, MutableMap<String, Int>>()
@@ -105,7 +122,7 @@ private fun shapeScore(method: Method, ref: TemplateRef): Int {
  * identical parameters, and an ambiguous winner is settled by call-site count —
  * that is the only signal left once R8 substitutes the name wholesale.
  */
-private fun resolveMember(context: BytecodePatchContext, owner: ClassDef, ref: TemplateRef): Method? {
+internal fun resolveMember(context: BytecodePatchContext, owner: ClassDef, ref: TemplateRef): Method? {
     val sameName = owner.methods.filter { it.name == ref.name && it.parameterTypes.size == ref.params.size }
     val pool = if (sameName.isNotEmpty()) {
         sameName
@@ -175,7 +192,7 @@ internal fun remapAppTypes(context: BytecodePatchContext, source: String): Strin
         }
     }
 
-    fun classDef(type: String) = context.classDefs.firstOrNull { it.type == type }
+    fun classDef(type: String) = classDefsByType(context)[type]
 
     fun resolveRef(ref: TemplateRef, owner: String) {
         val def = classDef(owner) ?: return

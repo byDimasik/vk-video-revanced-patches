@@ -1,8 +1,7 @@
 package app.revanced.patches.vkvideo.sponsorskip
 
 import app.revanced.patcher.patch.BytecodePatchContext
-import app.revanced.patches.vkvideo.settings.remapAppTypes
-import com.android.tools.smali.smali.SmaliTestUtils
+import app.revanced.patches.vkvideo.settings.compileExtensionClass
 
 internal const val SPONSOR_SKIP_PACKAGE = "Lapp/revanced/extension/sponsorskip/"
 
@@ -65,13 +64,7 @@ internal fun injectSponsorSkipClasses(context: BytecodePatchContext, api: AutoPl
             }
             return@forEach
         }
-        context.classDefs.add(
-            try {
-                SmaliTestUtils.compileSmali(remapAppTypes(context, source))
-            } catch (e: RuntimeException) {
-                throw IllegalStateException("$descriptor does not compile: ${e.cause?.message}", e)
-            },
-        )
+        context.classDefs.add(compileExtensionClass(context, descriptor, source))
     }
 }
 

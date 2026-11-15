@@ -89,6 +89,12 @@ class ConditionalTopShelfTest {
         .class public Lcom/vk/catalog2/common/ui/holders/video/musicvideo/b;
         .super Landroidx/fragment/app/Fragment;
 
+        .method public <init>(I)V
+            .registers 2
+            invoke-direct {p0}, Landroidx/fragment/app/Fragment;-><init>()V
+            return-void
+        .end method
+
         .method public onCreateView(Landroid/view/LayoutInflater;Landroid/view/ViewGroup;Landroid/os/Bundle;)Landroid/view/View;
             .registers 32
 
