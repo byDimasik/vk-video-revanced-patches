@@ -114,7 +114,7 @@ internal val requiredMethods = mapOf(
     SKIP_TICK_CLASS to listOf("<init>:1", "run:0"),
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
-        "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0",
+        "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
     ),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1"),
     SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
@@ -125,7 +125,9 @@ internal val requiredMethods = mapOf(
 
 /** Added fields that a stale generation of the class can miss; methods alone do not catch them. */
 internal val requiredFields = mapOf(
-    SKIP_STATE_CLASS to listOf("view", "button", "listener", "listenerView", "buttonView", "lastToastMs"),
+    SKIP_STATE_CLASS to listOf(
+        "view", "button", "listener", "listenerView", "buttonView", "lastToastMs", "lastPosMs", "stallTicks", "frozen",
+    ),
     PLAYED_SECTIONS_CLASS to listOf("strength", "track"),
 )
 
@@ -711,6 +713,9 @@ private fun skipStateSmali(): String = """
     .field public listenerView:Landroid/view/View;
     .field public buttonView:Landroid/view/View;
     .field public lastToastMs:J
+    .field public lastPosMs:J
+    .field public stallTicks:I
+    .field public frozen:Z
 
     .method public constructor <init>(Lp73/a;$SEGMENT_ARRAY[ZLandroid/os/Handler;Ljava/lang/Runnable;)V
         .registers 7
@@ -723,6 +728,10 @@ private fun skipStateSmali(): String = """
         iput-object p5, p0, $SKIP_STATE_CLASS->tick:Ljava/lang/Runnable;
         const-wide/16 p1, 0x0
         iput-wide p1, p0, $SKIP_STATE_CLASS->lastToastMs:J
+        iput-wide p1, p0, $SKIP_STATE_CLASS->lastPosMs:J
+        const/4 p1, 0x0
+        iput p1, p0, $SKIP_STATE_CLASS->stallTicks:I
+        iput-boolean p1, p0, $SKIP_STATE_CLASS->frozen:Z
         return-void
     .end method
 """.trimIndent()
@@ -1007,6 +1016,37 @@ private fun skipEngineSmali(): String = """
         return-void
     .end method
 
+    .method private static rearm($SKIP_STATE_CLASS;J)V
+        .registers 11
+        .param p0, "state"
+        .param p1, "position"
+
+        if-eqz p0, :return
+        iget-object v0, p0, $SKIP_STATE_CLASS->segments:$SEGMENT_ARRAY
+        iget-object v1, p0, $SKIP_STATE_CLASS->consumed:[Z
+        array-length v2, v0
+        const/4 v3, 0x0
+
+        :loop
+        if-ge v3, v2, :return
+        aget-object v4, v0, v3
+        iget-wide v5, v4, $SEGMENT_CLASS->startMs:J
+        cmp-long v7, p1, v5
+        if-ltz v7, :next                # position < startMs → outside
+        iget-wide v5, v4, $SEGMENT_CLASS->endMs:J
+        cmp-long v7, p1, v5
+        if-gez v7, :next                # position >= endMs → outside
+        const/4 v4, 0x0
+        aput-boolean v4, v1, v3
+
+        :next
+        add-int/lit8 v3, v3, 0x1
+        goto :loop
+
+        :return
+        return-void
+    .end method
+
     .method public static tick($SKIP_STATE_CLASS;)V
         .registers 16
         .param p0, "state"
@@ -1015,6 +1055,7 @@ private fun skipEngineSmali(): String = """
         iget-object v0, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
         if-eqz v0, :return
         check-cast v0, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
+        const/4 v9, 0x0
         iget-object v2, v0, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->K:Ljava/lang/ref/WeakReference;
         if-eqz v2, :viewed
         invoke-virtual {v2}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
@@ -1022,9 +1063,39 @@ private fun skipEngineSmali(): String = """
         check-cast v2, Landroid/view/View;
         if-eqz v2, :viewed
         iput-object v2, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        invoke-virtual {v2}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v9
 
         :viewed
         invoke-static {}, $SEEK_SECTIONS_CLASS;->invalidate()V
+        if-eqz v9, :dead
+        invoke-interface {v0}, Lp73/a;->getPosition()J
+        move-result-wide v12
+        const-wide/16 v10, -0x1
+        cmp-long v11, v12, v10
+        if-eqz v11, :dead
+        invoke-interface {v0}, Lp73/a;->isPlaying()Z
+        move-result v10
+        if-eqz v10, :changed
+        iget-wide v10, p0, $SKIP_STATE_CLASS->lastPosMs:J
+        cmp-long v11, v10, v12
+        if-eqz v11, :changed
+        iget v10, p0, $SKIP_STATE_CLASS->stallTicks:I
+        add-int/lit8 v10, v10, 0x1
+        iput v10, p0, $SKIP_STATE_CLASS->stallTicks:I
+        const/4 v11, 0x4
+        if-lt v10, v11, :repost
+        const/4 v10, 0x0
+        iput v10, p0, $SKIP_STATE_CLASS->stallTicks:I
+        const/4 v10, 0x1
+        iput-boolean v10, p0, $SKIP_STATE_CLASS->frozen:Z
+        goto :dead
+
+        :changed
+        iput-wide v12, p0, $SKIP_STATE_CLASS->lastPosMs:J
+        const/4 v10, 0x0
+        iput v10, p0, $SKIP_STATE_CLASS->stallTicks:I
+        iput-boolean v10, p0, $SKIP_STATE_CLASS->frozen:Z
         invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
         move-result v3
         if-eqz v3, :hide
@@ -1039,6 +1110,9 @@ private fun skipEngineSmali(): String = """
         goto :repost
 
         :hide
+        invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V
+
+        :dead
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V
 
         :repost
@@ -1105,6 +1179,15 @@ private fun skipEngineSmali(): String = """
         if-eqz v8, :auto
         const/4 v10, 0x2
         if-eq v8, v10, :hidden
+        iget-wide v12, v9, $SEGMENT_CLASS->endMs:J
+        cmp-long v10, v1, v12
+        if-ltz v10, :current
+        const/4 v10, 0x1
+        aput-boolean v10, v5, v7
+        invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V
+        return v14
+
+        :current
         iget-object v10, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
         if-eqz v10, :log_show
         invoke-virtual {v10}, Landroid/view/View;->getVisibility()I
@@ -1121,6 +1204,10 @@ private fun skipEngineSmali(): String = """
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
 
         :reveal
+        iget-boolean v10, p0, $SKIP_STATE_CLASS->frozen:Z
+        if-nez v10, :hidden
+        const/4 v10, 0x0
+        aput-boolean v10, v5, v7
         invoke-static {p0, v7}, $SKIP_BUTTON_CLASS;->show($SKIP_STATE_CLASS;I)V
         return v14
 
@@ -1155,6 +1242,7 @@ private fun skipEngineSmali(): String = """
         invoke-interface {v3}, Ljava/util/Iterator;->next()Ljava/lang/Object;
         move-result-object v4
         check-cast v4, $SKIP_STATE_CLASS;
+        invoke-static {v4, v7, v8}, $SKIP_ENGINE_CLASS;->rearm($SKIP_STATE_CLASS;J)V
         invoke-static {v4}, $SKIP_ENGINE_CLASS;->evaluate($SKIP_STATE_CLASS;)I
         move-result v5
         goto :loop
@@ -1177,20 +1265,34 @@ private fun skipEngineSmali(): String = """
         iget-object v1, p0, $SKIP_STATE_CLASS->consumed:[Z
         aget-boolean v2, v1, p1
         if-nez v2, :return
-        const/4 v2, 0x1
-        aput-boolean v2, v1, p1
+        const/4 v8, 0x1
+        aput-boolean v8, v1, p1
         aget-object v0, v0, p1
         iget-wide v2, v0, $SEGMENT_CLASS->endMs:J
         iget-object v0, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
+        invoke-interface {v0}, Lp73/a;->getPosition()J
+        move-result-wide v4
+        const-wide/16 v6, -0x1
+        cmp-long v8, v4, v6
+        if-eqz v8, :over
+        cmp-long v8, v4, v2
+        if-ltz v8, :seek
+
+        :over
+        invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V
+        return-void
+
+        :seek
         invoke-interface {v0}, Lp73/a;->getDuration()J
         move-result-wide v4
         const-wide/16 v6, 0x0
-        cmp-long v7, v4, v6
-        if-lez v7, :seek
-        cmp-long v7, v4, v2
-        if-gez v7, :seek
+        cmp-long v8, v4, v6
+        if-lez v8, :do_seek
+        cmp-long v8, v4, v2
+        if-gez v8, :do_seek
         move-wide v2, v4
-        :seek
+
+        :do_seek
         invoke-interface {v0, v2, v3}, Lp73/a;->s(J)V
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V
 

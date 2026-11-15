@@ -7,6 +7,7 @@ import app.revanced.patches.vkvideo.sponsorskip.autoPlayApi
 import app.revanced.patches.vkvideo.sponsorskip.resolveAutoPlayApi
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionListFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS
+import app.revanced.patches.vkvideo.sponsorskip.SKIP_STATE_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSectionDrawableFingerprint
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipReleaseFingerprint
@@ -104,6 +105,28 @@ class RealApkSponsorSkipTest {
         assertTrue(videoRefs.none { it.first == "P0" }, "stale VideoFile.P0 reference survived the remap: $videoRefs")
         val checked = context.assertInjectedReferencesResolve()
         assertTrue(checked > 25, "reference sweep must cover the injected engine, only $checked checked")
+
+        // The engine's exit shape is the branch topology the JVM tests pin; a drifted
+        // target turns into a count change here, and a remapped signature turns into a
+        // sweep miss above.
+        val skipMethod = engine.methods.first { it.name == "skip" }
+        assertEquals("V", skipMethod.returnType.toString(), "skip changed shape")
+        assertEquals(
+            listOf(SKIP_STATE_CLASS, "I", "Z"),
+            skipMethod.parameterTypes.map { it.toString() },
+            "skip parameters changed shape",
+        )
+        assertEquals(
+            2,
+            skipMethod.implementation!!.instructions.count { it.opcode == Opcode.RETURN_VOID },
+            "skip must keep exactly the two exit paths",
+        )
+        val evaluateMethod = engine.methods.first { it.name == "evaluate" }
+        assertEquals(
+            4,
+            evaluateMethod.implementation!!.instructions.count { it.opcode == Opcode.RETURN },
+            "evaluate must keep exactly the four exit paths",
+        )
 
         val seekInstructions = seek.method.getInstructions()
         val seekAt = seekInstructions.indexOfFirst { it.opcode == Opcode.RETURN_VOID } - 1
