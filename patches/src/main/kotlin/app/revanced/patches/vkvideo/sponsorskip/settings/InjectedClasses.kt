@@ -172,9 +172,17 @@ private fun narrowed(byType: Map<String, ClassDef>, api: DialogApi): DialogApi {
         types.size == 3 && types[0] == ITEMS && types[1] == "I" && types[2] != ITEM_CLICK &&
             implementsClickListener(byType, types[2])
     }
-    val listener = variants.map { it.parameterTypes[2].toString() }.distinct()
+    // Only a setter declared on a class the dialog can instantiate (a `(Context)`
+    // constructor) is usable: the receiver's static type is that class.
+    val usable = variants.filter { method ->
+        byType[method.definingClass]?.methods?.any {
+            it.name == "<init>" && it.parameterTypes.map(CharSequence::toString) == listOf("Landroid/content/Context;")
+        } == true
+    }
+    if (usable.isEmpty()) return api
+    val listener = usable.map { it.parameterTypes[2].toString() }.distinct()
     if (listener.size != 1) return api
-    val narrowedMethod = variants.firstOrNull { it.parameterTypes[2].toString() == listener.single() } ?: return api
+    val narrowedMethod = usable.firstOrNull { it.parameterTypes[2].toString() == listener.single() } ?: return api
     val superDef = classes.firstOrNull { it.type.toString() == listener.single() } ?: return api
     // A final listener class cannot be extended (ART: "Superclass ... is declared
     // final"), so it is instantiated instead and the tap is observed on the dialog.
@@ -190,12 +198,8 @@ private fun narrowed(byType: Map<String, ClassDef>, api: DialogApi): DialogApi {
     // The narrowed setter is declared on a subclass of the shared builder, so the
     // dialog must instantiate *that* class: `invoke-virtual` with a supertype
     // reference is rejected by the verifier.
-    val concrete = narrowedMethod.definingClass
-    val instantiable = byType[concrete]?.methods?.any {
-        it.name == "<init>" && it.parameterTypes.map(CharSequence::toString) == listOf("Landroid/content/Context;")
-    } == true
     return api.copy(
-        builder = if (instantiable) concrete else api.builder,
+        builder = narrowedMethod.definingClass,
         itemsMethod = narrowedMethod.name.toString(),
         itemsOwner = narrowedMethod.definingClass,
         itemsReturn = narrowedMethod.returnType.toString(),
@@ -288,7 +292,7 @@ private val requiredMethods = mapOf(
     ),
     ROWS_CLASS to listOf("newRow:2", "middle:3", "right:1"),
     DIALOG_CLASS to listOf("<init>:4", "show:0", "onClick:1"),
-    DIALOG_CLICK_CLASS to listOf("onClick:1"),
+    DIALOG_CLICK_CLASS to listOf("onDismiss:1"),
     TOGGLE_CLASS to listOf("<init>:0"),
     GROUP_CLICK_CLASS to listOf("<init>:1", "onClick:1"),
     ROOT_ROW_CLASS to listOf("add:3"),
@@ -679,19 +683,19 @@ private fun dialogClickSmali(dialog: DialogApi): String {
         return-void
     .end method
 
-    .method public onClick(Landroid/content/DialogInterface;)V
-        .registers 6
+    .method public onDismiss(Landroid/content/DialogInterface;)V
+        .registers 10
 
         iget-object v0, p0, $DIALOG_CLICK_CLASS->this${'$'}0:$DIALOG_CLASS
-        iget-object v1, v0, $DIALOG_CLASS->row:Lcom/vk/core/view/components/cell/VkCell;
-        iget v2, v0, $DIALOG_CLASS->category:I
-        iget-object v3, p0, $DIALOG_CLICK_CLASS->host:$arg
-        iget v4, v3, $field
-        if-gez v4, :done
-        invoke-static {v4}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;
-        move-result-object v3
-        invoke-static {v2, v3}, $BEHAVIOR_STORE_CLASS->setBehavior(ILjava/lang/String;)V
-        invoke-static {v1, v2, v4}, $SETTINGS_CLASS->setRowValue(Lcom/vk/core/view/components/cell/VkCell;II)V
+        iget-object v3, v0, $DIALOG_CLASS->row:Lcom/vk/core/view/components/cell/VkCell;
+        iget v4, v0, $DIALOG_CLASS->category:I
+        iget-object v5, p0, $DIALOG_CLICK_CLASS->host:$arg
+        iget v6, v5, $field
+        if-ltz v6, :done
+        invoke-static {v6}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;
+        move-result-object v7
+        invoke-static {v4, v7}, $BEHAVIOR_STORE_CLASS->setBehavior(ILjava/lang/String;)V
+        invoke-static {v3, v4, v6}, $SETTINGS_CLASS->setRowValue(Lcom/vk/core/view/components/cell/VkCell;II)V
         :done
         return-void
     .end method
@@ -716,7 +720,7 @@ private fun dialogClickFallbackSmali(dialog: DialogApi): String = """
         return-void
     .end method
 
-    .method public onClick(Landroid/content/DialogInterface;)V
+    .method public onDismiss(Landroid/content/DialogInterface;)V
         .registers 2
         return-void
     .end method

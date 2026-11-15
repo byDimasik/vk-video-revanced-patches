@@ -98,7 +98,7 @@ class SponsorSkipSettingsPatchTest {
             "behavior literals come from Behavior.literal",
         )
         assertTrue(
-            sources.any { it.contains("invoke-static {v4}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;") },
+            sources.any { it.contains("invoke-static {v6}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;") },
             "the written literal comes from Behavior.literal",
         )
     }
@@ -240,8 +240,8 @@ class SponsorSkipSettingsPatchTest {
 
         assertTrue(click.startsWith(".class public final $DIALOG_CLICK_CLASS"), click.take(80))
         assertTrue(click.contains(".super Ljava/lang/Object;"), "a final superclass cannot be joined")
-        assertTrue(click.contains("iget v4, v3, Landroidx/preference/c;->F:I"), "the tapped index is read back from the listener's field")
-        assertTrue(click.contains("if-gez v4, :done"), "a dismissal without a choice writes nothing")
+        assertTrue(click.contains("iget v6, v5, Landroidx/preference/c;->F:I"), "the tapped index is read back from the listener's field")
+        assertTrue(click.contains("if-ltz v6, :done"), "a dismissal without a choice writes nothing")
 
         // And the injected result must satisfy the gate, not just the template.
         fixture.apply()
