@@ -1,7 +1,6 @@
 package app.revanced.patches.vkvideo.settings
 
 import app.revanced.patcher.patch.BytecodePatchContext
-import com.android.tools.smali.smali.SmaliTestUtils
 
 internal const val ADS_SETTINGS_CLASS = "Lapp/revanced/extension/vkvideo/AdsSettings;"
 private const val START_SETTINGS_CLASS = "Lapp/revanced/extension/vkvideo/StartReVancedSettings;"
@@ -99,8 +98,8 @@ internal fun injectSettingsClasses(
         BACK_CLICK_CLASS to backClickSmali(),
     )
 
-    sources.mapValues { (_, source) -> remapAppTypes(context, source.replace("Lpx1/a", chrome.wrapperType.removeSuffix(";"))) }
-        .forEach { (descriptor, source) ->
+    sources.forEach { (descriptor, source) ->
+        val text = source.replace("Lpx1/a", chrome.wrapperType.removeSuffix(";"))
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
         if (existing != null) {
             // An already-patched input may carry an older generation of the helper
@@ -114,7 +113,7 @@ internal fun injectSettingsClasses(
             }
             return@forEach
         }
-        context.classDefs.add(SmaliTestUtils.compileSmali(source))
+        context.classDefs.add(compileExtensionClass(context, descriptor, text))
     }
 }
 

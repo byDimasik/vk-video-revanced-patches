@@ -2,7 +2,7 @@ package app.revanced.patches.vkvideo.sponsorskip.settings
 
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patches.vkvideo.settings.ToolbarChrome
-import app.revanced.patches.vkvideo.settings.remapAppTypes
+import app.revanced.patches.vkvideo.settings.compileExtensionClass
 import app.revanced.patches.vkvideo.settings.CONTENT_ADD_CLASS
 import app.revanced.patches.vkvideo.settings.contentAddSmali
 import app.revanced.patches.vkvideo.settings.groupClickSmali
@@ -10,7 +10,6 @@ import app.revanced.patches.vkvideo.settings.settingsFragmentSmali
 import app.revanced.patches.vkvideo.sponsorskip.BEHAVIOR_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.BEHAVIOR_STORE_CLASS
 import com.android.tools.smali.dexlib2.iface.ClassDef
-import com.android.tools.smali.smali.SmaliTestUtils
 
 internal const val SPONSOR_SKIP_SETTINGS_PACKAGE = "Lapp/revanced/extension/sponsorskip/settings/"
 
@@ -103,8 +102,8 @@ internal fun injectSponsorSkipSettingsClasses(
     dialog: DialogApi,
 ) {
     settingsSources(chrome, opener, switchListenerMethod, dialog)
-        .mapValues { (_, source) -> remapAppTypes(context, source.replace("Lpx1/a", chrome.wrapperType.removeSuffix(";"))) }
         .forEach { (descriptor, source) ->
+        val text = source.replace("Lpx1/a", chrome.wrapperType.removeSuffix(";"))
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
         if (existing != null) {
             val missing = requiredMethods[descriptor].orEmpty().filter { required ->
@@ -116,13 +115,7 @@ internal fun injectSponsorSkipSettingsClasses(
             }
             return@forEach
         }
-        context.classDefs.add(
-            try {
-                SmaliTestUtils.compileSmali(source)
-            } catch (e: RuntimeException) {
-                throw IllegalStateException("$descriptor does not compile: ${e.cause?.message}", e)
-            },
-        )
+        context.classDefs.add(compileExtensionClass(context, descriptor, text))
     }
 }
 

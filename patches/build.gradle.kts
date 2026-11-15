@@ -24,6 +24,8 @@ tasks.test {
     useJUnitPlatform()
     maxHeapSize = "4g"
     systemProperty("vkvideo.e2e", System.getProperty("vkvideo.e2e") ?: System.getenv("VKVIDEO_E2E") ?: "false")
+    // Dumps every app reference the compiled extension dexes make, for the #78 audit table.
+    System.getProperty("vkvideo.auditDump")?.let { systemProperty("vkvideo.auditDump", it) }
 }
 
 val generatePatchBundleMetadata = tasks.register("generatePatchBundleMetadata") {
