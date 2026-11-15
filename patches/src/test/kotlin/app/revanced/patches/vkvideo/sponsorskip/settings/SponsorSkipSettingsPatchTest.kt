@@ -1,6 +1,8 @@
 package app.revanced.patches.vkvideo.sponsorskip.settings
 
 import app.revanced.patches.vkvideo.settings.CONTENT_ADD_CLASS
+import app.revanced.patches.vkvideo.settings.auditAssignability
+import app.revanced.patches.vkvideo.settings.compileExtensionClass
 import app.revanced.patches.vkvideo.settings.extractToolbarChrome
 import app.revanced.patches.vkvideo.sponsorskip.settings.resolveDialogApi
 import app.revanced.patches.vkvideo.settings.navOpenerFingerprint
@@ -247,6 +249,32 @@ class SponsorSkipSettingsPatchTest {
             fixture.context.classDefs.any { it.type == DIALOG_CLICK_CLASS },
             "the compiled listener is injected",
         )
+    }
+
+    /**
+     * A wide parameter eats two argument registers: the object after a `J` is the
+     * third one, and that is the register its declared type has to check.
+     */
+    @Test
+    fun `a wide argument advances the passed register window`() {
+        val context = Fixture().context
+        val probe = """
+            .class public final Lapp/revanced/extension/probe/Wide;
+            .super Ljava/lang/Object;
+
+            .method public static hand()V
+                .registers 3
+                const-wide v0, 0x1
+                new-instance v2, Landroidx/preference/c;
+                invoke-direct {v2}, Landroidx/preference/c;-><init>()V
+                invoke-static {v0, v1, v2}, Lfixture/Widen;->w(JLandroidx/preference/c${'$'}a;)V
+                return-void
+            .end method
+        """.trimIndent()
+
+        val compiled = compileExtensionClass(context, "Lapp/revanced/extension/probe/Wide;", probe)
+        val violations = auditAssignability(context, compiled)
+        assertTrue(violations.any { it.kind.startsWith("arg1") }, "the object after the J went unchecked: $violations")
     }
 
     @Test
