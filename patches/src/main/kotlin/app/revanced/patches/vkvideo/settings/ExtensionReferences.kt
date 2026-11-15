@@ -1,9 +1,14 @@
 package app.revanced.patches.vkvideo.settings
 
 import app.revanced.patcher.patch.BytecodePatchContext
+import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.dexlib2.iface.Method
+import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
@@ -281,3 +286,217 @@ private fun compile(descriptor: String, source: String): ClassDef =
     } catch (e: RuntimeException) {
         throw IllegalStateException("$descriptor does not compile: ${e.cause?.message}", e)
     }
+
+/**
+ * The other half of the reference gate: existence is not assignability.
+ *
+ * A reference can resolve and still be the wrong *type*. #83 shipped exactly
+ * that: `SponsorSkipBehaviorDialog$Click` implemented
+ * `DialogInterface$OnClickListener`, the builder method it was handed to
+ * declared `androidx/preference/c$a`, and the app's bridge `check-cast` the
+ * argument — a `ClassCastException` on the first tap. Every reference resolved;
+ * the cast was simply impossible.
+ *
+ * So the compiled extension dex is checked against the real class graph: an
+ * `invoke` argument must be assignable to the declared parameter type, and a
+ * `check-cast` operand must be assignable to the cast target. Both accept the
+ * only safe answers — the source's transitive app supertypes, its interfaces,
+ * or a superclass cast.
+ */
+
+/** Terminal of every chain; its (empty) ancestor list is known without a class def. */
+private const val OBJECT_TYPE = "Ljava/lang/Object;"
+
+/** A type violation: [member] passes/casts a [source] where the app expects [target]. */
+internal data class CastViolation(
+    val descriptor: String,
+    val member: String,
+    val kind: String,
+    val source: String,
+    val target: String,
+) {
+    override fun toString() = "$descriptor $member: $kind $source -> $target"
+}
+
+/**
+ * Whether [source] can stand where [target] is declared: identical types, a
+ * subtype through the class's own declared supertypes/interfaces, or anything
+ * at all where `Object` is expected.
+ *
+ * `null` means the graph cannot decide — an ancestor outside the dexes, whose
+ * own ancestors are then unknown. The gate reports only decided failures, so an
+ * unresolvable ancestry can never become a false positive.
+ */
+private fun assignable(
+    context: BytecodePatchContext,
+    siblings: Map<String, ClassDef>,
+    source: String,
+    target: String,
+): Boolean? {
+    if (source == target) return true
+    if (target == OBJECT_TYPE) return true
+    if (!source.startsWith("L") || !target.startsWith("L")) return null
+    val targetKnown = siblings[target] != null || context.classDef(target) != null
+    val start = siblings[source] ?: context.classDef(source) ?: return null
+    val seen = mutableSetOf<String>()
+    val queue = ArrayDeque<String>()
+    start.superclass?.let(queue::addLast)
+    start.interfaces.forEach(queue::addLast)
+    var undecided = false
+    while (queue.isNotEmpty()) {
+        val current = queue.removeFirst()
+        if (current == target) return true
+        if (!seen.add(current)) continue
+        val def = siblings[current] ?: context.classDef(current)
+        if (def == null) {
+            // A framework ancestor is undecidable only while the target itself has
+            // no definition to be reached through; an in-dex target cannot hide
+            // behind an external class we never resolved.
+            if (current != OBJECT_TYPE && !targetKnown) undecided = true
+            continue
+        }
+        def.superclass?.let(queue::addLast)
+        def.interfaces.forEach(queue::addLast)
+    }
+    return if (undecided) null else false
+}
+
+private val MOVE_OBJECT = Regex("""move-object(-from16|-16)?$""")
+private val CONST_STRING = Regex("""const-string(-jumbo)?$""")
+private val IGET = Regex("""iget(-object|-wide|-boolean|-byte|-char|-short)?$""")
+
+private fun widthOf(type: String) = if (type == "J" || type == "D") 2 else 1
+
+/**
+ * Walks every method of [def] and reports each `invoke` argument and
+ * `check-cast` operand whose statically known type cannot satisfy the place it
+ * is passed to.
+ *
+ * Register types are tracked in a single forward pass: parameters start with
+ * their declared type, and `new-instance`, field reads, `move-object`,
+ * `move-result-object` and constant loads carry a type forward. Our templates
+ * are straight-line blocks, so one pass over the instruction list suffices;
+ * `check-cast` re-types its destination with the cast target. A register written
+ * by anything else becomes unknown, and unknown never fails.
+ */
+internal fun auditAssignability(
+    context: BytecodePatchContext,
+    def: ClassDef,
+    siblings: Map<String, ClassDef> = emptyMap(),
+): List<CastViolation> {
+    val violations = mutableListOf<CastViolation>()
+    val graph = siblings + (def.type to def)
+
+    def.methods.forEach { method ->
+        val implementation = method.implementation ?: return@forEach
+        val registers = mutableMapOf<Int, String>()
+        val registerCount = implementation.registerCount
+        val params = buildList {
+            if (method.accessFlags and AccessFlags.STATIC.value == 0) add(def.type)
+            method.parameterTypes.forEach { add(it.toString()) }
+        }
+        var slot = registerCount - params.sumOf(::widthOf)
+        params.forEach { type ->
+            registers[slot] = type
+            slot += widthOf(type)
+        }
+
+        val instructions = implementation.instructions.toList()
+        var lastReturn: String? = null
+        var index = 0
+        while (index < instructions.size) {
+            val instruction = instructions[index]
+            index += 1
+            val name = instruction.opcode.name.lowercase().replace('_', '-')
+            val reference = (instruction as? ReferenceInstruction)?.reference
+            val one = instruction as? OneRegisterInstruction
+
+            fun check(at: Int?, target: String, kind: String) {
+                if (at == null) return
+                val source = registers[at] ?: return
+                if (assignable(context, graph, source, target) == false) {
+                    violations += CastViolation(def.type, method.name + signatureOf(method), "$kind r$at", source, target)
+                }
+            }
+
+            if (reference is MethodReference) {
+                val types = reference.parameterTypes.map { it.toString() }
+                val passed = when (instruction) {
+                    is FiveRegisterInstruction -> buildList {
+                        add(instruction.registerC)
+                        if (instruction.registerCount > 1) add(instruction.registerD)
+                        if (instruction.registerCount > 2) add(instruction.registerE)
+                        if (instruction.registerCount > 3) add(instruction.registerF)
+                        if (instruction.registerCount > 4) add(instruction.registerG)
+                    }
+                    is RegisterRangeInstruction -> (instruction.startRegister until instruction.startRegister + instruction.registerCount).toList()
+                    else -> emptyList()
+                }
+                // A non-static call carries the receiver in the first register.
+                passed.drop(if (name.startsWith("invoke-static")) 0 else 1).forEachIndexed { position, at ->
+                    types.getOrNull(position)?.let { check(at, it, "arg$position") }
+                }
+                lastReturn = reference.returnType.toString()
+            }
+
+            when {
+                name == "move-result-object" -> {
+                    val target = lastReturn
+                    if (one != null && target != null) registers[one.registerA] = target
+                }
+                name == "new-instance" -> {
+                    val type = (reference as? TypeReference)?.type
+                    if (one != null && type != null) registers[one.registerA] = type
+                }
+                name == "check-cast" -> {
+
+                    val target = (reference as? TypeReference)?.type
+                    if (one != null && target != null) {
+                        check(one.registerA, target, "cast")
+                        registers[one.registerA] = target
+                    }
+                }
+                MOVE_OBJECT.matches(name) -> {
+                    val two = instruction as? TwoRegisterInstruction
+                    val source = two?.let { registers[it.registerB] }
+                    if (two != null) {
+                        if (source != null) registers[two.registerA] = source else registers.remove(two.registerA)
+                    }
+                }
+                CONST_STRING.matches(name) -> if (one != null) registers[one.registerA] = "Ljava/lang/String;"
+                name == "const-class" -> if (one != null) registers[one.registerA] = "Ljava/lang/Class;"
+                IGET.matches(name) || name == "sget-object" -> {
+                    val type = (reference as? FieldReference)?.type
+                    if (one != null) {
+                        if (type != null) registers[one.registerA] = type else registers.remove(one.registerA)
+                    }
+                }
+                else -> if (one != null) registers.remove(one.registerA)
+            }
+        }
+    }
+    return violations
+}
+
+private fun signatureOf(method: Method): String =
+    "(${method.parameterTypes.joinToString("") { it.toString() }})${method.returnType}"
+
+/**
+ * The assignability pass over a whole injection batch, so a class can be
+ * checked against its siblings regardless of the order they were compiled in.
+ *
+ * A stub context gets the same check narrowed to violations that involve our own
+ * code: in a stub most framework types are absent, and an unresolvable ancestor
+ * already reads as "unknown".
+ */
+internal fun assertAssignable(context: BytecodePatchContext, defs: List<ClassDef>) {
+    if (defs.isEmpty()) return
+    val siblings = defs.associateBy { it.type }
+    val fullApp = classDefsByType(context).size > FULL_APP_CLASSES
+    val violations = defs.flatMap { auditAssignability(context, it, siblings) }
+        .filter { fullApp || it.source.startsWith(EXTENSION_PREFIX) || it.target.startsWith(EXTENSION_PREFIX) }
+    check(violations.isEmpty()) {
+        val shown = violations.distinct().joinToString("\n") { "  $it" }
+        "Extension classes pass ${violations.size} value(s) that the APK's classes cannot accept:\n$shown"
+    }
+}

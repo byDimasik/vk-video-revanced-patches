@@ -98,6 +98,7 @@ internal fun injectSettingsClasses(
         BACK_CLICK_CLASS to backClickSmali(),
     )
 
+    val injected = mutableListOf<com.android.tools.smali.dexlib2.iface.ClassDef>()
     sources.forEach { (descriptor, source) ->
         val text = source.replace("Lpx1/a", chrome.wrapperType.removeSuffix(";"))
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
@@ -113,8 +114,12 @@ internal fun injectSettingsClasses(
             }
             return@forEach
         }
-        context.classDefs.add(compileExtensionClass(context, descriptor, text))
+        compileExtensionClass(context, descriptor, text).also {
+            context.classDefs.add(it)
+            injected += it
+        }
     }
+    assertAssignable(context, injected)
 }
 
 private val requiredMethods = mapOf(

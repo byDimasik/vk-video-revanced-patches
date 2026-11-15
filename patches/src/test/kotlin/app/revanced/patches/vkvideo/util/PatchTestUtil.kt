@@ -655,6 +655,15 @@ object PatchTestUtil {
         .method public final v([Ljava/lang/CharSequence;ILandroid/content/DialogInterface${'$'}OnClickListener;)Lhy1/c${'$'}a;
             .registers 4
 
+            check-cast p3, Landroidx/preference/c${'$'}a;
+            invoke-virtual {p0, p1, p2, p3}, Lhy1/c${'$'}a;->J([Ljava/lang/CharSequence;ILandroidx/preference/c${'$'}a;)Lhy1/c${'$'}a;
+            move-result-object p0
+            return-object p0
+        .end method
+
+        .method public final J([Ljava/lang/CharSequence;ILandroidx/preference/c${'$'}a;)Lhy1/c${'$'}a;
+            .registers 4
+
             return-object p0
         .end method
 
@@ -666,6 +675,45 @@ object PatchTestUtil {
         .end method
     """.trimIndent()
 
+    /**
+     * The preference dialog the builder's narrowed items setter expects. Both
+     * versions hand the item listener over as this final inner class and
+     * `check-cast` it (#83).
+     */
+    private val preferenceDialogFixture = """
+        .class public Landroidx/preference/c;
+        .super Ljava/lang/Object;
+
+        .method public constructor <init>()V
+            .registers 1
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .field public F:I
+    """.trimIndent()
+
+    private val preferenceDialogClickFixture = """
+        .class public final Landroidx/preference/c${'$'}a;
+        .super Ljava/lang/Object;
+        .implements Landroid/content/DialogInterface${'$'}OnClickListener;
+
+        .method public constructor <init>(Landroidx/preference/c;)V
+            .registers 2
+
+            invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            return-void
+        .end method
+
+        .method public final onClick(Landroid/content/DialogInterface;I)V
+            .registers 4
+
+            invoke-interface {p1}, Landroid/content/DialogInterface;->dismiss()V
+            return-void
+        .end method
+    """.trimIndent()
+
     private val settingsExtras: List<String> = listOf(
         switchListenerInterfaceFixture,
         toolbarChromeFragmentFixture,
@@ -674,6 +722,8 @@ object PatchTestUtil {
         navOpenerClassFixture,
         navOpenerSubclassFixture,
         dialogBuilderFixture,
+        preferenceDialogFixture,
+        preferenceDialogClickFixture,
     )
 
     val settingsScreenFixture168: List<String> = profileMenuFixture + settingsExtras

@@ -201,12 +201,43 @@ class SponsorSkipSettingsPatchTest {
         assertTrue(dialog.contains("new-instance v0, Lhy1/c${'$'}a;"))
         assertTrue(dialog.contains("->x(Ljava/lang/CharSequence;)Lhy1/c${'$'}a;"))
         assertTrue(dialog.contains("invoke-static {v2}, $BEHAVIOR_STORE_CLASS->getBehavior(I)I"), "checked index is the stored value")
-        assertTrue(dialog.contains("->v([Ljava/lang/CharSequence;ILandroid/content/DialogInterface${'$'}OnClickListener;)"))
+        assertTrue(dialog.contains("->J([Ljava/lang/CharSequence;ILandroidx/preference/c${'$'}a;)"), "the narrowed items setter takes no cast")
 
         val click = sources[DIALOG_CLICK_CLASS]!!
         assertTrue(click.contains("$BEHAVIOR_STORE_CLASS->setBehavior(ILjava/lang/String;)V"))
         assertTrue(click.contains("$SETTINGS_CLASS->setRowValue(Lcom/vk/core/view/components/cell/VkCell;II)V"))
         assertTrue(click.contains("Landroid/content/DialogInterface;->dismiss()V"))
+    }
+
+    /**
+     * The listener has to be an instance of the type the builder's narrowed setter
+     * declares: the `DialogInterface$OnClickListener` bridge `check-cast`s it
+     * (#83), and both 1.170 and 1.171 narrow to `androidx.preference/c$a`.
+     */
+    @Test
+    fun `dump sources`() {
+        java.io.File("/home/bydimasik/vk-video-patch-project/wt-issue83/dump").writeText(
+            Fixture().sources.entries.joinToString("\n===== ") { it.key + "\n" + it.value },
+        )
+    }
+
+    @Test
+    fun `the listener extends the builders narrowed listener type`() {
+        val fixture = Fixture()
+        val click = fixture.sources[DIALOG_CLICK_CLASS]!!
+
+        assertTrue(click.startsWith(".class public final $DIALOG_CLICK_CLASS"), click.take(80))
+        assertTrue(click.contains(".super Landroidx/preference/c${'$'}a;"), "the listener must extend androidx.preference/c${'$'}a, not Object")
+        assertTrue(click.contains("new-instance v0, Landroidx/preference/c;"), "the superclass ctor argument is a real fragment instance")
+        assertTrue(click.contains("invoke-direct {p0, v0}, Landroidx/preference/c${'$'}a;-><init>(Landroidx/preference/c;)V"))
+        assertFalse(click.contains("invoke-direct {p0}, Ljava/lang/Object;-><init>()V"), "a superclass is present, so Object's ctor is not")
+
+        // And the injected result must satisfy the gate, not just the template.
+        fixture.apply()
+        assertTrue(
+            fixture.context.classDefs.any { it.type == DIALOG_CLICK_CLASS && it.superclass == "Landroidx/preference/c${'$'}a;" },
+            "the compiled listener must keep the narrowed superclass",
+        )
     }
 
     @Test

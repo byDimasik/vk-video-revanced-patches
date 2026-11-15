@@ -37,10 +37,33 @@ internal const val ROOT_ROW_ICON_ID = 0x7f082020
 internal data class DialogApi(
     val builder: String,
     val titleMethod: String,
+    /** Return type of [titleMethod]; the narrowed items setter may return a supertype. */
+    val titleReturn: String,
     val itemsMethod: String,
+    /** Declaring class of [itemsMethod] — a supertype once the setter is narrowed. */
+    val itemsOwner: String,
     val itemsReturn: String,
     val showOwner: String,
     val showMethod: String,
+    /**
+     * The listener type [itemsMethod] actually declares. The builder's public
+     * `DialogInterface$OnClickListener` form is a bridge that `check-cast`s its
+     * argument to the narrowed type (`androidx/preference/c$a`), so an injected
+     * listener must be assignable to *this*, not to `OnClickListener` (#83).
+     */
+    val itemsListenerType: String = ITEM_CLICK,
+    /** The narrowed listener as a superclass, when it is a class. */
+    val clickSuper: String? = null,
+    /** The narrowed listener as an interface, when it is one. */
+    val clickInterface: String? = null,
+    /** The superclass constructor to chain to with [clickSuper]. */
+    val clickSuperCtor: String? = null,
+    /**
+     * Which superclass constructor arguments can be built with a plain no-arg
+     * constructor (true) and which stay `null` (absent entry). A live instance
+     * keeps the inherited `onClick` working if the override is ever ignored.
+     */
+    val newableSuperArgs: Map<String, Boolean> = emptyMap(),
 )
 
 private const val DIALOG_TYPE = "Landroidx/appcompat/app/d;"
@@ -76,17 +99,103 @@ internal fun resolveDialogApi(classes: List<ClassDef>): DialogApi {
             val show = showDef.methods.firstOrNull {
                 it.parameterTypes.isEmpty() && it.returnType.toString() == DIALOG_TYPE
             } ?: return@firstNotNullOfOrNull null
-            DialogApi(def.type.toString(), title.name.toString(), items.name.toString(), result, result, show.name.toString())
+            DialogApi(
+                builder = def.type.toString(),
+                titleMethod = title.name.toString(),
+                titleReturn = result,
+                itemsMethod = items.name.toString(),
+                itemsOwner = def.type.toString(),
+                itemsReturn = result,
+                showOwner = result,
+                showMethod = show.name.toString(),
+            )
         }
     }
     // The setters may return their own class (the stub fixture) or the shared builder
     // interface they delegate to; prefer the delegating pair, which is what the app ships.
     val delegating = candidates.filter { it.builder != it.showOwner }
-    return when {
+    val api = when {
         delegating.size == 1 -> delegating.single()
         delegating.isEmpty() && candidates.size == 1 -> candidates.single()
         else -> error("dialog: expected one alert builder, found $candidates")
     }
+    return narrowed(classes, api)
+}
+
+/** The class and its in-app supertypes. */
+private fun chainOf(classes: List<ClassDef>, type: String): List<ClassDef> {
+    val byType = HashMap<String, ClassDef>()
+    classes.forEach { byType.putIfAbsent(it.type.toString(), it) }
+    val chain = mutableListOf<ClassDef>()
+    val queue = ArrayDeque(listOf(type))
+    val seen = mutableSetOf<String>()
+    while (queue.isNotEmpty()) {
+        val current = queue.removeFirst()
+        if (!seen.add(current)) continue
+        val def = byType[current] ?: continue
+        chain += def
+        def.superclass?.let(queue::addLast)
+        def.interfaces.forEach(queue::addLast)
+    }
+    return chain
+}
+
+/** Whether [type] is the click interface or reaches it through its supertypes. */
+private fun implementsClickListener(classes: List<ClassDef>, type: String): Boolean =
+    chainOf(classes, type).any { def ->
+        def.superclass?.toString() == ITEM_CLICK || def.interfaces.any { it.toString() == ITEM_CLICK }
+    }
+
+/**
+ * Narrowed items setters: the same item list handed to a listener typed at a
+ * *subclass-of-`OnClickListener`* parameter, which is where the host can
+ * `check-cast` (#83). The narrowed form is preferred over the bridge because it
+ * is the contract the app's own callers use, and because it needs no cast of
+ * ours.
+ *
+ * The listener's superclass is derived from the real shape: our injected
+ * listener then extends it and chains to its single constructor, filling the
+ * reference parameter with `null` — our override is the only code that runs, so
+ * the superclass state is never read back.
+ */
+private fun narrowed(classes: List<ClassDef>, api: DialogApi): DialogApi {
+    val variants = chainOf(classes, api.builder).flatMap { it.methods }.filter { method ->
+        val types = method.parameterTypes.map(CharSequence::toString)
+        types.size == 3 && types[0] == ITEMS && types[1] == "I" && types[2] != ITEM_CLICK &&
+            implementsClickListener(classes, types[2])
+    }
+    val listener = variants.map { it.parameterTypes[2].toString() }.distinct()
+    if (listener.size != 1) return api
+    val narrowedMethod = variants.firstOrNull { it.parameterTypes[2].toString() == listener.single() } ?: return api
+    val superDef = classes.firstOrNull { it.type.toString() == listener.single() } ?: return api
+    val narrowedItems = narrowedMethod.name.toString()
+    val listenerType = listener.single()
+    if (superDef.accessFlags and com.android.tools.smali.dexlib2.AccessFlags.INTERFACE.value != 0) {
+        return api.copy(
+            itemsMethod = narrowedItems,
+            itemsOwner = narrowedMethod.definingClass,
+            itemsReturn = narrowedMethod.returnType.toString(),
+            itemsListenerType = listenerType,
+            clickInterface = listenerType,
+        )
+    }
+    val constructor = superDef.methods.filter { it.name == "<init>" }.singleOrNull() ?: return api
+    val ctorArgs = constructor.parameterTypes.map(CharSequence::toString)
+    if (ctorArgs.any { !it.startsWith("L") }) return api
+    val newable = ctorArgs.mapNotNull { type ->
+        classes.firstOrNull { it.type.toString() == type }
+            ?.takeIf { def -> def.methods.any { it.name == "<init>" && it.parameterTypes.isEmpty() } }
+            ?.let { type to true }
+    }.toMap()
+    return api.copy(
+        itemsMethod = narrowedItems,
+        itemsOwner = narrowedMethod.definingClass,
+        itemsReturn = narrowedMethod.returnType.toString(),
+        itemsListenerType = listenerType,
+        clickSuper = listenerType,
+        clickSuperCtor = "(${ctorArgs.joinToString("")})V",
+        newableSuperArgs = newable,
+    )
 }
 
 /**
@@ -101,6 +210,7 @@ internal fun injectSponsorSkipSettingsClasses(
     switchListenerMethod: String,
     dialog: DialogApi,
 ) {
+    val injected = mutableListOf<ClassDef>()
     settingsSources(chrome, opener, switchListenerMethod, dialog)
         .forEach { (descriptor, source) ->
         val text = source.replace("Lpx1/a", chrome.wrapperType.removeSuffix(";"))
@@ -128,7 +238,7 @@ internal fun settingsSources(
 ): Map<String, String> = linkedMapOf(
     SETTINGS_CLASS to settingsSmali(),
     ROWS_CLASS to rowsSmali(),
-    DIALOG_CLICK_CLASS to dialogClickSmali(),
+    DIALOG_CLICK_CLASS to dialogClickSmali(dialog),
     DIALOG_CLASS to dialogSmali(dialog),
     TOGGLE_CLASS to toggleSmali(switchListenerMethod),
     GROUP_CLICK_CLASS to groupClickSmali(opener, GROUP_CLICK_CLASS, FRAGMENT_CLASS, "sponsorskip group row clicked"),
@@ -446,7 +556,7 @@ private fun dialogSmali(dialog: DialogApi): String = """
         iget v1, p0, $DIALOG_CLASS->category:I
         invoke-static {v1}, $SETTINGS_CLASS->categoryLabel(I)Ljava/lang/String;
         move-result-object v1
-        invoke-virtual {v0, v1}, ${dialog.builder}->${dialog.titleMethod}(Ljava/lang/CharSequence;)${dialog.itemsReturn}
+        invoke-virtual {v0, v1}, ${dialog.builder}->${dialog.titleMethod}(Ljava/lang/CharSequence;)${dialog.titleReturn}
 
         const/4 v1, 0x3
         new-array v1, v1, [Ljava/lang/CharSequence;
@@ -472,7 +582,7 @@ private fun dialogSmali(dialog: DialogApi): String = """
         move-result v2
         new-instance v3, $DIALOG_CLICK_CLASS
         invoke-direct {v3, p0}, $DIALOG_CLICK_CLASS-><init>($DIALOG_CLASS)V
-        invoke-virtual {v0, v1, v2, v3}, ${dialog.builder}->${dialog.itemsMethod}([Ljava/lang/CharSequence;ILandroid/content/DialogInterface${'$'}OnClickListener;)${dialog.itemsReturn}
+        invoke-virtual {v0, v1, v2, v3}, ${dialog.itemsOwner}->${dialog.itemsMethod}([Ljava/lang/CharSequence;I${dialog.itemsListenerType})${dialog.itemsReturn}
 
         invoke-virtual {v0}, ${dialog.showOwner}->${dialog.showMethod}()Landroidx/appcompat/app/d;
         move-result-object v0
@@ -484,18 +594,65 @@ private fun dialogSmali(dialog: DialogApi): String = """
 """.trimIndent()
 
 /** Popup selection: writes the literal, refreshes the row and closes the dialog. */
-private fun dialogClickSmali(): String = """
-    .class public final $DIALOG_CLICK_CLASS
-    .super Ljava/lang/Object;
-    .implements Landroid/content/DialogInterface${'$'}OnClickListener;
+/**
+ * Superclass constructor args for the listener. The narrowed contract's
+ * constructor takes the dialog fragment that owns the click; ours is not one, and
+ * the `onClick` override never reads the superclass state back, so the slot is
+ * filled with `null`.
+ */
+private fun clickCtorArgs(dialog: DialogApi): List<String> =
+    dialog.clickSuperCtor.orEmpty().removePrefix("(").removeSuffix(")V").let { spec ->
+        if (spec.isEmpty()) emptyList() else smaliTypes(spec)
+    }
 
+/** Splits a concatenated smali descriptor list (`Lj/n;I[Lx/y;`). */
+private fun smaliTypes(spec: String): List<String> {
+    val types = mutableListOf<String>()
+    var i = 0
+    while (i < spec.length) {
+        val start = i
+        while (spec[i] == '[') i++
+        if (spec[i] == 'L') i = spec.indexOf(';', i) + 1 else i++
+        types += spec.substring(start, i)
+    }
+    return types
+}
+
+private fun clickCtorRegisters(dialog: DialogApi): Int = 2 + clickCtorArgs(dialog).size
+
+private fun clickSuperCall(dialog: DialogApi): String {
+    val args = clickCtorArgs(dialog)
+    val superType = dialog.clickSuper
+    if (superType == null || dialog.clickSuperCtor == null) {
+        return "        invoke-direct {p0}, Ljava/lang/Object;-><init>()V"
+    }
+    val scratch = args.mapIndexed { i, type ->
+        if (dialog.newableSuperArgs[type] == true) {
+            "\n        new-instance v$i, $type\n        invoke-direct {v$i}, $type-><init>()V"
+        } else {
+            "\n        const/4 v$i, 0x0"
+        }
+    }.joinToString("")
+    return scratch + "\n        invoke-direct {p0${args.indices.joinToString("") { ", v$it" }}}, $superType-><init>${dialog.clickSuperCtor}"
+}
+
+/**
+ * The behavior popup listener. Its superclass is the builder's narrowed listener
+ * type when the app declares one (#83: 1.170 and 1.171 both `check-cast` the item
+ * listener to `androidx/preference/c$a`, a final class, so implementing only
+ * `DialogInterface$OnClickListener` threw on the first tap).
+ */
+private fun dialogClickSmali(dialog: DialogApi): String = """
+    .class public final $DIALOG_CLICK_CLASS
+    .super ${dialog.clickSuper ?: "Ljava/lang/Object;"}
+    .implements Landroid/content/DialogInterface${'$'}OnClickListener;
+${dialog.clickInterface?.let { "    .implements $it;\n" } ?: ""}
     .field final this${'$'}0:$DIALOG_CLASS
 
     .method public constructor <init>($DIALOG_CLASS)V
-        .registers 2
+        .registers ${clickCtorRegisters(dialog)}
         .param p1, "dialog"
-
-        invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+${clickSuperCall(dialog)}
         iput-object p1, p0, $DIALOG_CLICK_CLASS->this${'$'}0:$DIALOG_CLASS
         return-void
     .end method
