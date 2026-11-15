@@ -84,6 +84,33 @@ class ExtensionReferenceGateTest {
         assertTrue(auditExtensionClass(context, probe).all { it.resolved }, "corrected probe must audit clean")
     }
 
+    /**
+     * An array of a drifted class must be corrected as an array, not flattened to
+     * the element type: the prefix survives and `check-cast`/`new-array` stay valid.
+     */
+    @Test
+    fun testArrayReferenceKeepsItsPrefix() {
+        val (context, _) = loadContext()
+        val source = """
+            .class public final Lapp/revanced/extension/probe/ArrayProbe;
+            .super Ljava/lang/Object;
+
+            .method public static first([Lq72/VideoFile;)Lq72/VideoFile;
+                .registers 2
+                const/4 v0, 0x0
+                aget-object v0, p0, v0
+                check-cast v0, Lq72/VideoFile;
+                return-object v0
+            .end method
+        """.trimIndent()
+
+        val probe = compileExtensionClass(context, "Lapp/revanced/extension/probe/ArrayProbe;", source)
+        val method = probe.methods.single()
+        assertEquals("[Lcom/vk/dto/common/VideoFile;", method.parameterTypes.first().toString(), "array parameter must stay an array of the corrected class")
+        assertEquals("Lcom/vk/dto/common/VideoFile;", method.returnType.toString())
+        assertTrue(auditExtensionClass(context, probe).all { it.resolved }, "corrected probe must audit clean")
+    }
+
     /** An unresolvable reference must fail the build, not ship. */
     @Test
     fun testUnresolvableReferenceFails() {

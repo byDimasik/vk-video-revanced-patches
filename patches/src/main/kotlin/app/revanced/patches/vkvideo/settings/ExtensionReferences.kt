@@ -201,8 +201,13 @@ internal fun auditExtensionClass(context: BytecodePatchContext, def: ClassDef): 
 
     fun type(descriptor: String) {
         if (!isAppOwned(descriptor) || descriptor.startsWith(EXTENSION_PREFIX)) return
-        val resolved = context.classDef(elementType(descriptor)) != null
-        rows += AuditRow(descriptor, resolved, if (resolved) null else resolveType(context, elementType(descriptor)))
+        val element = elementType(descriptor)
+        val resolved = context.classDef(element) != null
+        // The correction is a plain text replacement, so an array reference must keep its
+        // prefix: replacing "[Lp72/j;" with "Lv72/j;" would turn an array signature,
+        // new-array operand or check-cast into a scalar one.
+        val prefix = descriptor.takeWhile { it == '[' }
+        rows += AuditRow(descriptor, resolved, if (resolved) null else resolveType(context, element)?.let { prefix + it })
     }
 
     def.fields.forEach { field(it) }
