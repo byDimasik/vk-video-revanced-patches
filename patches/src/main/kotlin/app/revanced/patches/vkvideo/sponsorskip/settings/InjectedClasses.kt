@@ -87,43 +87,49 @@ internal fun resolveDialogApi(classes: List<ClassDef>): DialogApi {
         // The builder carries several `CharSequence` setters returning different
         // interfaces; the one paired with the items setter on the same return type
         // is the alert builder.
-        def.methods.firstNotNullOfOrNull { title ->
+        // Several `CharSequence` setters pair with the items setter (the title and the
+        // message look identical by shape), so every pair is collected and the one
+        // that forwards to `setTitle` wins: a message would hide the item list.
+        val pairs = def.methods.mapNotNull { title ->
             val result = title.returnType.toString()
-            if (types(title) != listOf(CHARS) || !result.startsWith("L")) return@firstNotNullOfOrNull null
+            if (types(title) != listOf(CHARS) || !result.startsWith("L")) return@mapNotNull null
             val items = def.methods.firstOrNull {
                 types(it) == listOf(ITEMS, "I", ITEM_CLICK) && it.returnType.toString() == result
-            } ?: return@firstNotNullOfOrNull null
-            val showDef = classes.firstOrNull { it.type.toString() == result } ?: return@firstNotNullOfOrNull null
+            } ?: return@mapNotNull null
+            val showDef = classes.firstOrNull { it.type.toString() == result } ?: return@mapNotNull null
             val show = showDef.methods.firstOrNull {
                 it.parameterTypes.isEmpty() && it.returnType.toString() == DIALOG_TYPE
-            } ?: return@firstNotNullOfOrNull null
-            DialogApi(
-                builder = def.type.toString(),
-                titleMethod = title.name.toString(),
-                titleReturn = result,
-                itemsMethod = items.name.toString(),
-                itemsOwner = def.type.toString(),
-                itemsReturn = result,
-                showOwner = result,
-                showMethod = show.name.toString(),
-            )
+            } ?: return@mapNotNull null
+            val api = DialogApi(
+                    builder = def.type.toString(),
+                    titleMethod = title.name.toString(),
+                    titleReturn = result,
+                    itemsMethod = items.name.toString(),
+                    itemsOwner = def.type.toString(),
+                    itemsReturn = result,
+                    showOwner = result,
+                    showMethod = show.name.toString(),
+                )
+            val score = (if (forwardsToSetTitle(title)) 2 else 0) + if (api.builder == api.showOwner) 0 else 1
+            api to score
         }
+        // Prefer a real title setter, then a pair whose terminal factory is the shared
+        // builder (the delegating one the app itself calls).
+        pairs.maxByOrNull { it.second }
     }
-    // The setters may return their own class (the stub fixture) or the shared builder
-    // interface they delegate to; prefer the delegating pair, which is what the app ships.
-    val delegating = candidates.filter { it.builder != it.showOwner }
-    val api = when {
-        delegating.size == 1 -> delegating.single()
-        delegating.isEmpty() && candidates.size == 1 -> candidates.single()
-        else -> error("dialog: expected one alert builder, found $candidates")
-    }
-    return narrowed(classes, api)
+    val api = candidates.maxByOrNull { it.second }?.first
+    return narrowed(classes.associateBy { it.type.toString() }, api ?: error("dialog: no alert builder found"))
 }
 
+/** Whether the setter forwards to the framework `setTitle` rather than filling a field. */
+private fun forwardsToSetTitle(method: com.android.tools.smali.dexlib2.iface.Method): Boolean =
+    method.implementation?.instructions?.any {
+        val reference = (it as? com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction)?.reference
+        reference is com.android.tools.smali.dexlib2.iface.reference.MethodReference && reference.name == "setTitle"
+    } == true
+
 /** The class and its in-app supertypes. */
-private fun chainOf(classes: List<ClassDef>, type: String): List<ClassDef> {
-    val byType = HashMap<String, ClassDef>()
-    classes.forEach { byType.putIfAbsent(it.type.toString(), it) }
+private fun chainOf(byType: Map<String, ClassDef>, type: String): List<ClassDef> {
     val chain = mutableListOf<ClassDef>()
     val queue = ArrayDeque(listOf(type))
     val seen = mutableSetOf<String>()
@@ -139,8 +145,8 @@ private fun chainOf(classes: List<ClassDef>, type: String): List<ClassDef> {
 }
 
 /** Whether [type] is the click interface or reaches it through its supertypes. */
-private fun implementsClickListener(classes: List<ClassDef>, type: String): Boolean =
-    chainOf(classes, type).any { def ->
+private fun implementsClickListener(byType: Map<String, ClassDef>, type: String): Boolean =
+    chainOf(byType, type).any { def ->
         def.superclass?.toString() == ITEM_CLICK || def.interfaces.any { it.toString() == ITEM_CLICK }
     }
 
@@ -156,11 +162,15 @@ private fun implementsClickListener(classes: List<ClassDef>, type: String): Bool
  * reference parameter with `null` — our override is the only code that runs, so
  * the superclass state is never read back.
  */
-private fun narrowed(classes: List<ClassDef>, api: DialogApi): DialogApi {
-    val variants = chainOf(classes, api.builder).flatMap { it.methods }.filter { method ->
+private fun narrowed(byType: Map<String, ClassDef>, api: DialogApi): DialogApi {
+    val classes = byType.values.toList()
+    // The narrowed setter lives on the subclass the app instantiates, not on the
+    // shared builder the item list is declared with.
+    val subtypes = classes.filter { def -> chainOf(byType, def.type.toString()).any { it.type.toString() == api.builder } }
+    val variants = subtypes.flatMap { it.methods }.filter { method ->
         val types = method.parameterTypes.map(CharSequence::toString)
         types.size == 3 && types[0] == ITEMS && types[1] == "I" && types[2] != ITEM_CLICK &&
-            implementsClickListener(classes, types[2])
+            implementsClickListener(byType, types[2])
     }
     val listener = variants.map { it.parameterTypes[2].toString() }.distinct()
     if (listener.size != 1) return api
@@ -699,7 +709,7 @@ private fun dialogClickFallbackSmali(dialog: DialogApi): String = """
     .end method
 
     .method public onClick(Landroid/content/DialogInterface;)V
-        .registers 1
+        .registers 2
         return-void
     .end method
 
