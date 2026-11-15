@@ -19,6 +19,7 @@ import app.revanced.patches.vkvideo.util.PatchTestUtil.getInstructions
 import app.revanced.patches.vkvideo.util.PatchTestUtil.getMethod
 import app.revanced.patches.vkvideo.util.PatchTestUtil.matchOrNull
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
@@ -252,6 +253,23 @@ class SponsorSkipSettingsPatchTest {
         instruction.opcode.toString() !in nonWriting &&
             (instruction as? com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction)?.registerA == register
 
+    private fun Method.key(): String = "$definingClass->$name(${parameterTypes.joinToString("")})$returnType"
+
+    /** A range-form `ViewGroup.addView` call, the form the settings builder never emits today. */
+    private val RANGE_ADD_FIXTURE = """
+        .class public final Lfixture/RangeAdd;
+        .super Ljava/lang/Object;
+
+        .method public static x(Landroid/view/ViewGroup;)V
+            .registers 2
+
+            new-instance v1, Landroid/widget/TextView;
+            invoke-direct {v1}, Landroid/widget/TextView;-><init>()V
+            invoke-virtual/range {v0 .. v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
+            return-void
+        .end method
+    """
+
     private fun assertAddArgumentsComeFromConstructors(
         method: com.android.tools.smali.dexlib2.iface.Method,
         expectedSites: Int,
@@ -260,8 +278,15 @@ class SponsorSkipSettingsPatchTest {
         var sites = 0
         instructions.forEachIndexed { index, instruction ->
             val reference = (instruction as? ReferenceInstruction)?.reference
-            if (instruction.opcode != Opcode.INVOKE_VIRTUAL || (reference as? MethodReference)?.name != "addView") return@forEachIndexed
-            val argument = (instruction as FiveRegisterInstruction).registerD
+            if (instruction.opcode !in setOf(Opcode.INVOKE_VIRTUAL, Opcode.INVOKE_VIRTUAL_RANGE) ||
+                (reference as? MethodReference)?.name != "addView"
+            ) return@forEachIndexed
+            val argument = when (instruction) {
+                is com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction ->
+                    instruction.startRegister + 1
+                is FiveRegisterInstruction -> instruction.registerD
+                else -> error("unexpected addView form")
+            }
             val definition = instructions.take(index).asReversed().firstOrNull { writes(it, argument) }
             assertNotNull(definition, "addView argument v$argument at $index has no writer")
             assertTrue(
@@ -283,6 +308,49 @@ class SponsorSkipSettingsPatchTest {
 
         assertAddArgumentsComeFromConstructors(onCreateView, 1)
         assertAddArgumentsComeFromConstructors(onViewCreated, 1)
+    }
+
+    @Test
+    fun `a range-form addView is counted like the register-list form`() {
+        val context = createBytecodeContext(RANGE_ADD_FIXTURE)
+        val add = context.classDefs.first { it.type == "Lfixture/RangeAdd;" }.methods.first { it.name == "x" }
+        assertAddArgumentsComeFromConstructors(add, 1)
+    }
+
+    @Test
+    fun `the builder adds stay on the view-creation lifecycle`() {
+        val fixture = Fixture()
+        fixture.apply()
+
+        val fragment = fixture.context.classDefs.first { it.type == FRAGMENT_CLASS }
+        val onCreateView = fragment.methods.first { it.name == "onCreateView" }
+        val builderCalls = onCreateView.implementation!!.instructions
+            .filterIsInstance<ReferenceInstruction>()
+            .mapNotNull { it.reference as? MethodReference }
+            .filter { it.definingClass == SETTINGS_CLASS && it.name == "buildSponsorSkipContent" }
+        assertEquals(1, builderCalls.size, "onCreateView does not build the content once")
+
+        val builders = listOf(
+            fixture.context.classDefs.first { it.type == SETTINGS_CLASS }.methods.first { it.name == "buildSponsorSkipContent" },
+            fixture.context.classDefs.first { it.type == ROOT_ROW_CLASS }.methods.first { it.name == "add" },
+        )
+        assertAddArgumentsComeFromConstructors(builders[0], 5)
+        assertAddArgumentsComeFromConstructors(builders[1], 1)
+
+        // Only the view-creation hook reaches the builder: no engine or click path.
+        val callers = fixture.context.classDefs.flatMap { it.methods }.flatMap { method ->
+            val instructions = method.implementation?.instructions?.toList().orEmpty()
+            instructions.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+                .filter { it.definingClass == SETTINGS_CLASS && it.name == "buildSponsorSkipContent" }
+                .map { method.key() }
+        }
+        assertEquals(setOf(onCreateView.key()), callers.toSet(), "the content builder gained a non-lifecycle caller")
+
+        // Nothing in the runtime engine references the screen classes.
+        val engine = app.revanced.patches.vkvideo.sponsorskip.sponsorSkipSources()[app.revanced.patches.vkvideo.sponsorskip.SKIP_ENGINE_CLASS]!!
+        listOf(SETTINGS_CLASS, ROOT_ROW_CLASS, ROWS_CLASS, DIALOG_CLASS).forEach { descriptor ->
+            assertFalse(engine.contains(descriptor), "the tick path can reach $descriptor")
+        }
     }
 
     @Test
