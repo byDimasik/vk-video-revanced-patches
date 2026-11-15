@@ -284,7 +284,7 @@ private fun compile(descriptor: String, source: String): ClassDef =
     try {
         SmaliTestUtils.compileSmali(source)
     } catch (e: RuntimeException) {
-        throw IllegalStateException("$descriptor does not compile: ${e.cause?.message}", e)
+        throw IllegalStateException("$descriptor does not compile: ${generateSequence(e as Throwable) { it.cause }.joinToString(" <- ") { it.message ?: it.toString() }}\n$source", e)
     }
 
 /**
@@ -365,6 +365,9 @@ private val MOVE_OBJECT = Regex("""move-object(-from16|-16)?$""")
 private val CONST_STRING = Regex("""const-string(-jumbo)?$""")
 private val IGET = Regex("""iget(-object|-wide|-boolean|-byte|-char|-short)?$""")
 
+/** Opcodes that only read their operands: branches, returns, monitors and stores. */
+private val READS_ONLY = Regex("""(if-.*|goto.*(-.*)?|packed-switch|sparse-switch|return.*|throw|monitor-enter|monitor-exit|iput.*|sput.*|aput.*|invoke-.*|fill-array-data)""")
+
 private fun widthOf(type: String) = if (type == "J" || type == "D") 2 else 1
 
 /**
@@ -411,10 +414,17 @@ internal fun auditAssignability(
             val reference = (instruction as? ReferenceInstruction)?.reference
             val one = instruction as? OneRegisterInstruction
 
-            fun check(at: Int?, target: String, kind: String) {
+            /**
+             * A declared type is not the runtime type, so a `check-cast` may also go
+             * *down*: a parameter typed at an in-dex `Base` can hold a `Derived`. Only
+             * a cast that is impossible in both directions is reported.
+             */
+            fun check(at: Int?, target: String, kind: String, downcast: Boolean = false) {
                 if (at == null) return
                 val source = registers[at] ?: return
-                if (assignable(context, graph, source, target) == false) {
+                val impossible = assignable(context, graph, source, target) == false &&
+                    (!downcast || assignable(context, graph, target, source) == false)
+                if (impossible) {
                     violations += CastViolation(def.type, method.name + signatureOf(method), "$kind r$at", source, target)
                 }
             }
@@ -432,9 +442,12 @@ internal fun auditAssignability(
                     is RegisterRangeInstruction -> (instruction.startRegister until instruction.startRegister + instruction.registerCount).toList()
                     else -> emptyList()
                 }
-                // A non-static call carries the receiver in the first register.
-                passed.drop(if (name.startsWith("invoke-static")) 0 else 1).forEachIndexed { position, at ->
-                    types.getOrNull(position)?.let { check(at, it, "arg$position") }
+                // A non-static call carries the receiver in the first register, and a
+                // wide parameter occupies two of the passed registers.
+                var slot = if (name.startsWith("invoke-static")) 0 else 1
+                types.forEachIndexed { position, type ->
+                    passed.getOrNull(slot)?.let { check(it, type, "arg$position") }
+                    slot += widthOf(type)
                 }
                 lastReturn = reference.returnType.toString()
             }
@@ -452,7 +465,7 @@ internal fun auditAssignability(
 
                     val target = (reference as? TypeReference)?.type
                     if (one != null && target != null) {
-                        check(one.registerA, target, "cast")
+                        check(one.registerA, target, "cast", downcast = true)
                         registers[one.registerA] = target
                     }
                 }
@@ -471,6 +484,7 @@ internal fun auditAssignability(
                         if (type != null) registers[one.registerA] = type else registers.remove(one.registerA)
                     }
                 }
+                READS_ONLY.matches(name) -> Unit
                 else -> if (one != null) registers.remove(one.registerA)
             }
         }

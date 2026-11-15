@@ -699,22 +699,38 @@ object PatchTestUtil {
         .super Ljava/lang/Object;
         .implements Landroid/content/DialogInterface${'$'}OnClickListener;
 
+        .field public final a:Landroidx/preference/c;
+
         .method public constructor <init>(Landroidx/preference/c;)V
             .registers 2
 
             invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+            iput-object p1, p0, Landroidx/preference/c${'$'}a;->a:Landroidx/preference/c;
             return-void
         .end method
 
         .method public final onClick(Landroid/content/DialogInterface;I)V
             .registers 4
 
+            iget-object v0, p0, Landroidx/preference/c${'$'}a;->a:Landroidx/preference/c;
+            iput p2, v0, Landroidx/preference/c;->F:I
             invoke-interface {p1}, Landroid/content/DialogInterface;->dismiss()V
             return-void
         .end method
     """.trimIndent()
 
+    private val widenFixture = """
+        .class public final Lfixture/Widen;
+        .super Ljava/lang/Object;
+
+        .method public static w(JLandroidx/preference/c${'$'}a;)V
+            .registers 3
+            return-void
+        .end method
+    """.trimIndent()
+
     private val settingsExtras: List<String> = listOf(
+        widenFixture,
         switchListenerInterfaceFixture,
         toolbarChromeFragmentFixture,
         chromeHelperFixture,

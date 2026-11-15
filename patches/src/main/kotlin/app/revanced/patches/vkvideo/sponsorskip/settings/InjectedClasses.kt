@@ -2,6 +2,7 @@ package app.revanced.patches.vkvideo.sponsorskip.settings
 
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patches.vkvideo.settings.ToolbarChrome
+import app.revanced.patches.vkvideo.settings.assertAssignable
 import app.revanced.patches.vkvideo.settings.compileExtensionClass
 import app.revanced.patches.vkvideo.settings.CONTENT_ADD_CLASS
 import app.revanced.patches.vkvideo.settings.contentAddSmali
@@ -52,18 +53,15 @@ internal data class DialogApi(
      * listener must be assignable to *this*, not to `OnClickListener` (#83).
      */
     val itemsListenerType: String = ITEM_CLICK,
-    /** The narrowed listener as a superclass, when it is a class. */
-    val clickSuper: String? = null,
-    /** The narrowed listener as an interface, when it is one. */
-    val clickInterface: String? = null,
-    /** The superclass constructor to chain to with [clickSuper]. */
-    val clickSuperCtor: String? = null,
     /**
-     * Which superclass constructor arguments can be built with a plain no-arg
-     * constructor (true) and which stay `null` (absent entry). A live instance
-     * keeps the inherited `onClick` working if the override is ever ignored.
+     * The narrowed listener's constructor and single argument: the listener class
+     * is `final`, so it is *instantiated* rather than extended, and the item tap is
+     * observed on the dialog instead (see [dialogClickSmali]).
      */
-    val newableSuperArgs: Map<String, Boolean> = emptyMap(),
+    val listenerCtor: String? = null,
+    val listenerArg: String? = null,
+    /** The field the listener writes the tapped index into, as `owner->name:type`. */
+    val listenerIndexField: String? = null,
 )
 
 private const val DIALOG_TYPE = "Landroidx/appcompat/app/d;"
@@ -168,34 +166,51 @@ private fun narrowed(classes: List<ClassDef>, api: DialogApi): DialogApi {
     if (listener.size != 1) return api
     val narrowedMethod = variants.firstOrNull { it.parameterTypes[2].toString() == listener.single() } ?: return api
     val superDef = classes.firstOrNull { it.type.toString() == listener.single() } ?: return api
-    val narrowedItems = narrowedMethod.name.toString()
-    val listenerType = listener.single()
-    if (superDef.accessFlags and com.android.tools.smali.dexlib2.AccessFlags.INTERFACE.value != 0) {
-        return api.copy(
-            itemsMethod = narrowedItems,
-            itemsOwner = narrowedMethod.definingClass,
-            itemsReturn = narrowedMethod.returnType.toString(),
-            itemsListenerType = listenerType,
-            clickInterface = listenerType,
-        )
-    }
+    // A final listener class cannot be extended (ART: "Superclass ... is declared
+    // final"), so it is instantiated instead and the tap is observed on the dialog.
+    if (superDef.accessFlags and com.android.tools.smali.dexlib2.AccessFlags.FINAL.value == 0) return api
     val constructor = superDef.methods.filter { it.name == "<init>" }.singleOrNull() ?: return api
     val ctorArgs = constructor.parameterTypes.map(CharSequence::toString)
-    if (ctorArgs.any { !it.startsWith("L") }) return api
-    val newable = ctorArgs.mapNotNull { type ->
-        classes.firstOrNull { it.type.toString() == type }
-            ?.takeIf { def -> def.methods.any { it.name == "<init>" && it.parameterTypes.isEmpty() } }
-            ?.let { type to true }
-    }.toMap()
+    if (ctorArgs.size != 1 || !ctorArgs[0].startsWith("L")) return api
+    val host = classes.firstOrNull { it.type.toString() == ctorArgs[0] } ?: return api
+    if (host.methods.none { it.name == "<init>" && it.parameterTypes.isEmpty() }) return api
+    val indexField = tappedIndexField(superDef)
+
+    if (indexField == null) return api
     return api.copy(
-        itemsMethod = narrowedItems,
+        itemsMethod = narrowedMethod.name.toString(),
         itemsOwner = narrowedMethod.definingClass,
         itemsReturn = narrowedMethod.returnType.toString(),
-        itemsListenerType = listenerType,
-        clickSuper = listenerType,
-        clickSuperCtor = "(${ctorArgs.joinToString("")})V",
-        newableSuperArgs = newable,
+        itemsListenerType = listener.single(),
+        listenerCtor = "(${ctorArgs.joinToString("")})V",
+        listenerArg = ctorArgs[0],
+        listenerIndexField = indexField,
     )
+}
+
+/**
+ * The field the narrowed listener stores the tapped index in: the `iput` in its
+ * `onClick(DialogInterface, int)` that writes the index parameter. That is the
+ * only stable signal of a choice once the class is instantiated instead of
+ * extended (the writes are final methods we do not own).
+ */
+private fun tappedIndexField(listener: ClassDef): String? {
+    val onClick = listener.methods.firstOrNull { method ->
+        method.name == "onClick" && method.parameterTypes.map(CharSequence::toString) ==
+            listOf("Landroid/content/DialogInterface;", "I")
+    } ?: return null
+
+    val implementation = onClick.implementation ?: return null
+    val which = implementation.registerCount - 1
+    return implementation.instructions.mapNotNull { instruction ->
+        if (!instruction.opcode.name.uppercase().startsWith("IPUT")) return@mapNotNull null
+        val target = instruction as? com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction ?: return@mapNotNull null
+        val field = (instruction as? com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction)
+            ?.reference as? com.android.tools.smali.dexlib2.iface.reference.FieldReference ?: return@mapNotNull null
+        // `iput vA, vB, field` keeps the stored value in A and the object in B.
+
+        if (target.registerA == which && field.type.toString() == "I") "${field.definingClass}->${field.name}:I" else null
+    }.firstOrNull()
 }
 
 /**
@@ -225,8 +240,10 @@ internal fun injectSponsorSkipSettingsClasses(
             }
             return@forEach
         }
-        context.classDefs.add(compileExtensionClass(context, descriptor, text))
+        injected += compileExtensionClass(context, descriptor, text)
+        context.classDefs.add(injected.last())
     }
+    assertAssignable(context, injected)
 }
 
 /** The injected class sources, keyed by descriptor; exposed for structural tests. */
@@ -253,7 +270,7 @@ private val requiredMethods = mapOf(
     ),
     ROWS_CLASS to listOf("newRow:2", "middle:3", "right:1"),
     DIALOG_CLASS to listOf("<init>:4", "show:0", "onClick:1"),
-    DIALOG_CLICK_CLASS to listOf("<init>:1", "onClick:2"),
+    DIALOG_CLICK_CLASS to listOf("onClick:1"),
     TOGGLE_CLASS to listOf("<init>:0"),
     GROUP_CLICK_CLASS to listOf("<init>:1", "onClick:1"),
     ROOT_ROW_CLASS to listOf("add:3"),
@@ -547,7 +564,7 @@ private fun dialogSmali(dialog: DialogApi): String = """
     .end method
 
     .method public show()V
-        .registers 6
+        .registers 7
 
         new-instance v0, ${dialog.builder}
         iget-object v1, p0, $DIALOG_CLASS->context:Landroid/content/Context;
@@ -580,80 +597,109 @@ private fun dialogSmali(dialog: DialogApi): String = """
         iget v2, p0, $DIALOG_CLASS->category:I
         invoke-static {v2}, $BEHAVIOR_STORE_CLASS->getBehavior(I)I
         move-result v2
-        new-instance v3, $DIALOG_CLICK_CLASS
-        invoke-direct {v3, p0}, $DIALOG_CLICK_CLASS-><init>($DIALOG_CLASS)V
-        invoke-virtual {v0, v1, v2, v3}, ${dialog.itemsOwner}->${dialog.itemsMethod}([Ljava/lang/CharSequence;I${dialog.itemsListenerType})${dialog.itemsReturn}
+${listenerConstruction(dialog)}        invoke-virtual {v0, v1, v2, v3}, ${dialog.itemsOwner}->${dialog.itemsMethod}([Ljava/lang/CharSequence;I${dialog.itemsListenerType})${dialog.itemsReturn}
+
+        new-instance v4, $DIALOG_CLICK_CLASS
+        invoke-direct {${if (dialog.listenerArg != null) "v4, p0, v5" else "v4, p0"}}, $DIALOG_CLICK_CLASS-><init>($DIALOG_CLASS${dialog.listenerArg ?: ""})V
 
         invoke-virtual {v0}, ${dialog.showOwner}->${dialog.showMethod}()Landroidx/appcompat/app/d;
         move-result-object v0
         if-eqz v0, :done
+        invoke-virtual {v0, v4}, Landroid/app/Dialog;->setOnDismissListener(Landroid/content/DialogInterface${'$'}OnDismissListener;)V
         invoke-virtual {v0}, Landroid/app/Dialog;->show()V
         :done
         return-void
     .end method
 """.trimIndent()
 
-/** Popup selection: writes the literal, refreshes the row and closes the dialog. */
-/**
- * Superclass constructor args for the listener. The narrowed contract's
- * constructor takes the dialog fragment that owns the click; ours is not one, and
- * the `onClick` override never reads the superclass state back, so the slot is
- * filled with `null`.
- */
-private fun clickCtorArgs(dialog: DialogApi): List<String> =
-    dialog.clickSuperCtor.orEmpty().removePrefix("(").removeSuffix(")V").let { spec ->
-        if (spec.isEmpty()) emptyList() else smaliTypes(spec)
-    }
-
-/** Splits a concatenated smali descriptor list (`Lj/n;I[Lx/y;`). */
-private fun smaliTypes(spec: String): List<String> {
-    val types = mutableListOf<String>()
-    var i = 0
-    while (i < spec.length) {
-        val start = i
-        while (spec[i] == '[') i++
-        if (spec[i] == 'L') i = spec.indexOf(';', i) + 1 else i++
-        types += spec.substring(start, i)
-    }
-    return types
-}
-
-private fun clickCtorRegisters(dialog: DialogApi): Int = 2 + clickCtorArgs(dialog).size
-
-private fun clickSuperCall(dialog: DialogApi): String {
-    val args = clickCtorArgs(dialog)
-    val superType = dialog.clickSuper
-    if (superType == null || dialog.clickSuperCtor == null) {
-        return "        invoke-direct {p0}, Ljava/lang/Object;-><init>()V"
-    }
-    val scratch = args.mapIndexed { i, type ->
-        if (dialog.newableSuperArgs[type] == true) {
-            "\n        new-instance v$i, $type\n        invoke-direct {v$i}, $type-><init>()V"
-        } else {
-            "\n        const/4 v$i, 0x0"
-        }
-    }.joinToString("")
-    return scratch + "\n        invoke-direct {p0${args.indices.joinToString("") { ", v$it" }}}, $superType-><init>${dialog.clickSuperCtor}"
+/** Builds the app's own (final) listener over a throwaway host object. */
+private fun listenerConstruction(dialog: DialogApi): String {
+    val arg = dialog.listenerArg ?: return ""
+    val field = dialog.listenerIndexField ?: return ""
+    return """
+        new-instance v5, $arg
+        invoke-direct {v5}, $arg-><init>()V
+        const/4 v3, -0x1
+        iput v3, v5, $field
+        new-instance v3, ${dialog.itemsListenerType}
+        invoke-direct {v3, v5}, ${dialog.itemsListenerType}-><init>($arg)V
+""".trimStart()
 }
 
 /**
- * The behavior popup listener. Its superclass is the builder's narrowed listener
- * type when the app declares one (#83: 1.170 and 1.171 both `check-cast` the item
- * listener to `androidx/preference/c$a`, a final class, so implementing only
- * `DialogInterface$OnClickListener` threw on the first tap).
+ * The behavior popup's result handler.
+ *
+ * The app's item listener is a `final` class, so it cannot be extended (#83).
+ * It is instantiated instead, over a throwaway host object whose index field is
+ * seeded with `-1`: the app's own `onClick` fills it in and dismisses, and this
+ * handler reads it from the dismiss callback. A dismissal with no choice leaves
+ * `-1` and writes nothing.
+ *
+ * The plain fallback — no narrowed listener in the input — keeps the old
+ * `OnClickListener` shape with an empty dismiss callback.
  */
-private fun dialogClickSmali(dialog: DialogApi): String = """
+private fun dialogClickSmali(dialog: DialogApi): String {
+    val arg = dialog.listenerArg
+    val field = dialog.listenerIndexField
+    if (arg == null || field == null) return dialogClickFallbackSmali(dialog)
+    return """
     .class public final $DIALOG_CLICK_CLASS
-    .super ${dialog.clickSuper ?: "Ljava/lang/Object;"}
+    .super Ljava/lang/Object;
+    .implements Landroid/content/DialogInterface${'$'}OnDismissListener;
+
+    .field final this${'$'}0:$DIALOG_CLASS
+    .field final host:$arg
+
+    .method public constructor <init>($DIALOG_CLASS$arg)V
+        .registers 3
+        .param p1, "dialog"
+        .param p2, "host"
+
+        invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+        iput-object p1, p0, $DIALOG_CLICK_CLASS->this${'$'}0:$DIALOG_CLASS
+        iput-object p2, p0, $DIALOG_CLICK_CLASS->host:$arg
+        return-void
+    .end method
+
+    .method public onClick(Landroid/content/DialogInterface;)V
+        .registers 6
+
+        iget-object v0, p0, $DIALOG_CLICK_CLASS->this${'$'}0:$DIALOG_CLASS
+        iget-object v1, v0, $DIALOG_CLASS->row:Lcom/vk/core/view/components/cell/VkCell;
+        iget v2, v0, $DIALOG_CLASS->category:I
+        iget-object v3, p0, $DIALOG_CLICK_CLASS->host:$arg
+        iget v4, v3, $field
+        if-gez v4, :done
+        invoke-static {v4}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;
+        move-result-object v3
+        invoke-static {v2, v3}, $BEHAVIOR_STORE_CLASS->setBehavior(ILjava/lang/String;)V
+        invoke-static {v1, v2, v4}, $SETTINGS_CLASS->setRowValue(Lcom/vk/core/view/components/cell/VkCell;II)V
+        :done
+        return-void
+    .end method
+""".trimIndent()
+}
+
+/** The pre-narrowing shape: our own `OnClickListener`, no host to read back. */
+private fun dialogClickFallbackSmali(dialog: DialogApi): String = """
+    .class public final $DIALOG_CLICK_CLASS
+    .super Ljava/lang/Object;
     .implements Landroid/content/DialogInterface${'$'}OnClickListener;
-${dialog.clickInterface?.let { "    .implements $it;\n" } ?: ""}
+    .implements Landroid/content/DialogInterface${'$'}OnDismissListener;
+
     .field final this${'$'}0:$DIALOG_CLASS
 
     .method public constructor <init>($DIALOG_CLASS)V
-        .registers ${clickCtorRegisters(dialog)}
+        .registers 2
         .param p1, "dialog"
-${clickSuperCall(dialog)}
+
+        invoke-direct {p0}, Ljava/lang/Object;-><init>()V
         iput-object p1, p0, $DIALOG_CLICK_CLASS->this${'$'}0:$DIALOG_CLASS
+        return-void
+    .end method
+
+    .method public onClick(Landroid/content/DialogInterface;)V
+        .registers 1
         return-void
     .end method
 

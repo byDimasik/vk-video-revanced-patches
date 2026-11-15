@@ -96,7 +96,7 @@ class SponsorSkipSettingsPatchTest {
             "behavior literals come from Behavior.literal",
         )
         assertTrue(
-            sources.any { it.contains("invoke-static {p2}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;") },
+            sources.any { it.contains("invoke-static {v4}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;") },
             "the written literal comes from Behavior.literal",
         )
     }
@@ -206,7 +206,6 @@ class SponsorSkipSettingsPatchTest {
         val click = sources[DIALOG_CLICK_CLASS]!!
         assertTrue(click.contains("$BEHAVIOR_STORE_CLASS->setBehavior(ILjava/lang/String;)V"))
         assertTrue(click.contains("$SETTINGS_CLASS->setRowValue(Lcom/vk/core/view/components/cell/VkCell;II)V"))
-        assertTrue(click.contains("Landroid/content/DialogInterface;->dismiss()V"))
     }
 
     /**
@@ -222,22 +221,31 @@ class SponsorSkipSettingsPatchTest {
         )
     }
 
+    /**
+     * The narrowed listener type ships `final`, so it cannot be extended: the patch
+     * hands the builder an instance of the app's own listener over a throwaway host
+     * and reads the tap back from the field it writes (#83).
+     */
     @Test
-    fun `the listener extends the builders narrowed listener type`() {
+    fun `the listener instantiates the builders narrowed listener type`() {
         val fixture = Fixture()
+        val dialog = fixture.sources[DIALOG_CLASS]!!
         val click = fixture.sources[DIALOG_CLICK_CLASS]!!
 
+        assertTrue(dialog.contains("new-instance v5, Landroidx/preference/c;"), "the host is a real instance")
+        assertTrue(dialog.contains("new-instance v3, Landroidx/preference/c${'$'}a;"), "the app's own listener is what the builder gets")
+        assertTrue(dialog.contains("invoke-direct {v3, v5}, Landroidx/preference/c${'$'}a;-><init>(Landroidx/preference/c;)V"))
+
         assertTrue(click.startsWith(".class public final $DIALOG_CLICK_CLASS"), click.take(80))
-        assertTrue(click.contains(".super Landroidx/preference/c${'$'}a;"), "the listener must extend androidx.preference/c${'$'}a, not Object")
-        assertTrue(click.contains("new-instance v0, Landroidx/preference/c;"), "the superclass ctor argument is a real fragment instance")
-        assertTrue(click.contains("invoke-direct {p0, v0}, Landroidx/preference/c${'$'}a;-><init>(Landroidx/preference/c;)V"))
-        assertFalse(click.contains("invoke-direct {p0}, Ljava/lang/Object;-><init>()V"), "a superclass is present, so Object's ctor is not")
+        assertTrue(click.contains(".super Ljava/lang/Object;"), "a final superclass cannot be joined")
+        assertTrue(click.contains("iget v4, v3, Landroidx/preference/c;->F:I"), "the tapped index is read back from the listener's field")
+        assertTrue(click.contains("if-gez v4, :done"), "a dismissal without a choice writes nothing")
 
         // And the injected result must satisfy the gate, not just the template.
         fixture.apply()
         assertTrue(
-            fixture.context.classDefs.any { it.type == DIALOG_CLICK_CLASS && it.superclass == "Landroidx/preference/c${'$'}a;" },
-            "the compiled listener must keep the narrowed superclass",
+            fixture.context.classDefs.any { it.type == DIALOG_CLICK_CLASS },
+            "the compiled listener is injected",
         )
     }
 

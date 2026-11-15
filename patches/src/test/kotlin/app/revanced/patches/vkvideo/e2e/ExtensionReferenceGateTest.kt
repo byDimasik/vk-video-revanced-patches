@@ -9,6 +9,7 @@ import app.revanced.patches.vkvideo.settings.revancedSettingsPatch
 import app.revanced.patches.vkvideo.sponsorskip.autoPlayApi
 import app.revanced.patches.vkvideo.sponsorskip.resolveAutoPlayApi
 import app.revanced.patches.vkvideo.sponsorskip.sponsorSkipPatch
+import app.revanced.patches.vkvideo.sponsorskip.settings.DIALOG_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.settings.DIALOG_CLICK_CLASS
 import app.revanced.patches.vkvideo.sponsorskip.settings.resolveDialogApi
 import app.revanced.patches.vkvideo.sponsorskip.settings.settingsSources
@@ -177,7 +178,9 @@ class ExtensionReferenceGateTest {
                 .registers 2
                 new-instance v0, Lapp/revanced/extension/probe/Loose;
                 invoke-direct {v0}, Lapp/revanced/extension/probe/Loose;-><init>()V
+                if-eqz v0, :done
                 check-cast v0, Landroidx/preference/c${'$'}a;
+                :done
                 return-void
             .end method
         """.trimIndent()
@@ -188,6 +191,56 @@ class ExtensionReferenceGateTest {
         val failure = assertThrows(IllegalStateException::class.java) { assertAssignable(context, listOf(probe)) }
         assertTrue(failure.message!!.contains("cannot accept"), failure.message)
     }
+
+    /**
+     * A register read by a branch keeps its type: `if-eqz` does not write it, so the
+     * cast after the merge must still be judged against the `new-instance` type.
+     */
+    @Test
+    fun testBranchKeepsTheRegisterType() {
+        val (context, _) = loadContext()
+        val probe = """
+            .class public final Lapp/revanced/extension/probe/Branchy;
+            .super Ljava/lang/Object;
+
+            .method public static hand(Z)V
+                .registers 2
+                new-instance v0, Landroidx/preference/c;
+                invoke-direct {v0}, Landroidx/preference/c;-><init>()V
+                if-eqz p0, :done
+                if-nez p0, :done
+                check-cast v0, Landroidx/preference/c${'$'}a;
+                :done
+                return-void
+            .end method
+        """.trimIndent()
+
+        val violations = auditAssignability(context, compileExtensionClass(context, "Lapp/revanced/extension/probe/Branchy;", probe))
+        assertTrue(violations.any { it.target == "Landroidx/preference/c${'$'}a;" }, "the branch dropped the tracked type: $violations")
+    }
+
+    /**
+     * A declared `Object` may hold the cast target: that is a downcast, not an
+     * incompatible cast, so it must not fail the gate.
+     */
+    @Test
+    fun testDowncastFromDeclaredSupertypePasses() {
+        val (context, _) = loadContext()
+        val probe = """
+            .class public final Lapp/revanced/extension/probe/Down;
+            .super Ljava/lang/Object;
+
+            .method public static hand(Ljava/lang/Object;)V
+                .registers 2
+                check-cast p1, Landroidx/preference/c${'$'}a;
+                return-void
+            .end method
+        """.trimIndent()
+
+        val compiled = compileExtensionClass(context, "Lapp/revanced/extension/probe/Down;", probe)
+        assertEquals(emptyList<String>(), auditAssignability(context, compiled).map { it.toString() })
+    }
+
 
     /** The same listener with the narrowed superclass is accepted. */
     @Test
@@ -244,8 +297,18 @@ class ExtensionReferenceGateTest {
             switchListenerMethodFingerprint.getMethod(context).name,
             dialog,
         )
+        // The listener is `final`, so it is the app's own instance and the tap is read
+        // back on dismissal; the gate must accept the whole pair.
+        val dialogClass = compileExtensionClass(context, DIALOG_CLASS, sources.getValue(DIALOG_CLASS))
         val click = compileExtensionClass(context, DIALOG_CLICK_CLASS, sources.getValue(DIALOG_CLICK_CLASS))
-        assertEquals("Landroidx/preference/c\$a;", click.superclass, "the popup listener must extend the narrowed listener type")
+        val dialogText = dialogClass.methods.flatMap { it.implementation?.instructions?.toList().orEmpty() }
+            .mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+            .map { "${it.definingClass}->${it.name}" }
+        assertTrue(
+            dialogText.contains("Landroidx/preference/c\$a;-><init>"),
+            "the dialog must build the app's own listener: $dialogText",
+        )
+        assertTrue(click.interfaces.any { it.toString() == "Landroid/content/DialogInterface\$OnDismissListener;" })
         assertEquals(emptyList<String>(), auditAssignability(context, click).map { it.toString() })
     }
 }
