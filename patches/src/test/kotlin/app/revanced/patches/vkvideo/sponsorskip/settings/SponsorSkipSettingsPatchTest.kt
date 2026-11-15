@@ -216,7 +216,8 @@ class SponsorSkipSettingsPatchTest {
      */
     @Test
     fun `dump sources`() {
-        java.io.File("/home/bydimasik/vk-video-patch-project/wt-issue83/dump").writeText(
+        // For post-mortem inspection; the tmpdir keeps it off the checkout and out of CI.
+        java.io.File(System.getProperty("java.io.tmpdir"), "sponsorskip-settings-sources.txt").writeText(
             Fixture().sources.entries.joinToString("\n===== ") { it.key + "\n" + it.value },
         )
     }
