@@ -232,7 +232,7 @@ class ExtensionReferenceGateTest {
 
             .method public static hand(Ljava/lang/Object;)V
                 .registers 2
-                check-cast p1, Landroidx/preference/c${'$'}a;
+                check-cast p0, Landroidx/preference/c${'$'}a;
                 return-void
             .end method
         """.trimIndent()
