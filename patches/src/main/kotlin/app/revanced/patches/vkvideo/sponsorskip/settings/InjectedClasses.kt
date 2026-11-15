@@ -187,7 +187,15 @@ private fun narrowed(byType: Map<String, ClassDef>, api: DialogApi): DialogApi {
     val indexField = tappedIndexField(superDef)
 
     if (indexField == null) return api
+    // The narrowed setter is declared on a subclass of the shared builder, so the
+    // dialog must instantiate *that* class: `invoke-virtual` with a supertype
+    // reference is rejected by the verifier.
+    val concrete = narrowedMethod.definingClass
+    val instantiable = byType[concrete]?.methods?.any {
+        it.name == "<init>" && it.parameterTypes.map(CharSequence::toString) == listOf("Landroid/content/Context;")
+    } == true
     return api.copy(
+        builder = if (instantiable) concrete else api.builder,
         itemsMethod = narrowedMethod.name.toString(),
         itemsOwner = narrowedMethod.definingClass,
         itemsReturn = narrowedMethod.returnType.toString(),
