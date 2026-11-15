@@ -1,6 +1,7 @@
 package app.revanced.patches.vkvideo.sponsorskip
 
 import app.revanced.patcher.patch.BytecodePatchContext
+import app.revanced.patches.vkvideo.settings.assertAssignable
 import app.revanced.patches.vkvideo.settings.compileExtensionClass
 
 internal const val SPONSOR_SKIP_PACKAGE = "Lapp/revanced/extension/sponsorskip/"
@@ -49,6 +50,7 @@ private const val BUTTON_PAD_DP = 8
  * a stale generation missing methods is rejected instead of silently kept.
  */
 internal fun injectSponsorSkipClasses(context: BytecodePatchContext, api: AutoPlayApi) {
+    val injected = mutableListOf<com.android.tools.smali.dexlib2.iface.ClassDef>()
     sponsorSkipSources(api).forEach { (descriptor, source) ->
         val existing = context.classDefs.firstOrNull { it.type == descriptor }
         if (existing != null) {
@@ -65,8 +67,12 @@ internal fun injectSponsorSkipClasses(context: BytecodePatchContext, api: AutoPl
             }
             return@forEach
         }
-        context.classDefs.add(compileExtensionClass(context, descriptor, source))
+        compileExtensionClass(context, descriptor, source).also {
+            context.classDefs.add(it)
+            injected += it
+        }
     }
+    assertAssignable(context, injected)
 }
 
 /** The controller the 1.171 bundle was built against; the default keeps pure-string tests stable. */

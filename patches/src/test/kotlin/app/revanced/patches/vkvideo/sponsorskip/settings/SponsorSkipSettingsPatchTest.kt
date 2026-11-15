@@ -1,6 +1,8 @@
 package app.revanced.patches.vkvideo.sponsorskip.settings
 
 import app.revanced.patches.vkvideo.settings.CONTENT_ADD_CLASS
+import app.revanced.patches.vkvideo.settings.auditAssignability
+import app.revanced.patches.vkvideo.settings.compileExtensionClass
 import app.revanced.patches.vkvideo.settings.extractToolbarChrome
 import app.revanced.patches.vkvideo.sponsorskip.settings.resolveDialogApi
 import app.revanced.patches.vkvideo.settings.navOpenerFingerprint
@@ -96,7 +98,7 @@ class SponsorSkipSettingsPatchTest {
             "behavior literals come from Behavior.literal",
         )
         assertTrue(
-            sources.any { it.contains("invoke-static {p2}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;") },
+            sources.any { it.contains("invoke-static {v6}, $BEHAVIOR_CLASS->literal(I)Ljava/lang/String;") },
             "the written literal comes from Behavior.literal",
         )
     }
@@ -201,12 +203,100 @@ class SponsorSkipSettingsPatchTest {
         assertTrue(dialog.contains("new-instance v0, Lhy1/c${'$'}a;"))
         assertTrue(dialog.contains("->x(Ljava/lang/CharSequence;)Lhy1/c${'$'}a;"))
         assertTrue(dialog.contains("invoke-static {v2}, $BEHAVIOR_STORE_CLASS->getBehavior(I)I"), "checked index is the stored value")
-        assertTrue(dialog.contains("->v([Ljava/lang/CharSequence;ILandroid/content/DialogInterface${'$'}OnClickListener;)"))
+        assertTrue(dialog.contains("->J([Ljava/lang/CharSequence;ILandroidx/preference/c${'$'}a;)"), "the narrowed items setter takes no cast")
 
         val click = sources[DIALOG_CLICK_CLASS]!!
         assertTrue(click.contains("$BEHAVIOR_STORE_CLASS->setBehavior(ILjava/lang/String;)V"))
         assertTrue(click.contains("$SETTINGS_CLASS->setRowValue(Lcom/vk/core/view/components/cell/VkCell;II)V"))
-        assertTrue(click.contains("Landroid/content/DialogInterface;->dismiss()V"))
+    }
+
+    /**
+     * The listener has to be an instance of the type the builder's narrowed setter
+     * declares: the `DialogInterface$OnClickListener` bridge `check-cast`s it
+     * (#83), and both 1.170 and 1.171 narrow to `androidx.preference/c$a`.
+     */
+    @Test
+    fun `dump sources`() {
+        // For post-mortem inspection; the tmpdir keeps it off the checkout and out of CI.
+        java.io.File(System.getProperty("java.io.tmpdir"), "sponsorskip-settings-sources.txt").writeText(
+            Fixture().sources.entries.joinToString("\n===== ") { it.key + "\n" + it.value },
+        )
+    }
+
+    /**
+     * The narrowed listener type ships `final`, so it cannot be extended: the patch
+     * hands the builder an instance of the app's own listener over a throwaway host
+     * and reads the tap back from the field it writes (#83).
+     */
+    @Test
+    fun `the listener instantiates the builders narrowed listener type`() {
+        val fixture = Fixture()
+        val dialog = fixture.sources[DIALOG_CLASS]!!
+        val click = fixture.sources[DIALOG_CLICK_CLASS]!!
+
+        assertTrue(dialog.contains("new-instance v5, Landroidx/preference/c;"), "the host is a real instance")
+        assertTrue(dialog.contains("new-instance v3, Landroidx/preference/c${'$'}a;"), "the app's own listener is what the builder gets")
+        assertTrue(dialog.contains("invoke-direct {v3, v5}, Landroidx/preference/c${'$'}a;-><init>(Landroidx/preference/c;)V"))
+
+        assertTrue(click.startsWith(".class public final $DIALOG_CLICK_CLASS"), click.take(80))
+        assertTrue(click.contains(".super Ljava/lang/Object;"), "a final superclass cannot be joined")
+        assertTrue(click.contains("iget v6, v5, Landroidx/preference/c;->F:I"), "the tapped index is read back from the listener's field")
+        assertTrue(click.contains("if-ltz v6, :done"), "a dismissal without a choice writes nothing")
+
+        // And the injected result must satisfy the gate, not just the template.
+        fixture.apply()
+        assertTrue(
+            fixture.context.classDefs.any { it.type == DIALOG_CLICK_CLASS },
+            "the compiled listener is injected",
+        )
+    }
+
+    /**
+     * A wide parameter eats two argument registers: the object after a `J` is the
+     * third one, and that is the register its declared type has to check.
+     */
+    @Test
+    fun `a wide argument advances the passed register window`() {
+        val context = Fixture().context
+        val probe = """
+            .class public final Lapp/revanced/extension/probe/Wide;
+            .super Ljava/lang/Object;
+
+            .method public static hand()V
+                .registers 3
+                const-wide v0, 0x1
+                new-instance v2, Landroidx/preference/c;
+                invoke-direct {v2}, Landroidx/preference/c;-><init>()V
+                invoke-static {v0, v1, v2}, Lfixture/Widen;->w(JLandroidx/preference/c${'$'}a;)V
+                return-void
+            .end method
+        """.trimIndent()
+
+        val compiled = compileExtensionClass(context, "Lapp/revanced/extension/probe/Wide;", probe)
+        val violations = auditAssignability(context, compiled)
+        assertTrue(violations.any { it.kind.startsWith("arg1") }, "the object after the J went unchecked: $violations")
+    }
+
+    /** Without a narrowed listener in the input, the dialog still builds its own. */
+    @Test
+    fun `an input without a narrowed listener falls back to our own`() {
+        val fixture = Fixture()
+        val chromeMethod = toolbarChromeFingerprint.getMethod(fixture.context)
+        val chrome = extractToolbarChrome(fixture.context.classDefs.first { it.type == chromeMethod.definingClass })
+        val opener = resolveNavOpener(navOpenerFingerprint.getMethod(fixture.context), fixture.context.classDefs.toList())
+        val plain = resolveDialogApi(fixture.context.classDefs.toList())
+            .copy(listenerArg = null, listenerIndexField = null)
+        val sources = settingsSources(
+            chrome,
+            opener,
+            switchListenerMethodFingerprint.getMethod(fixture.context).name,
+            plain,
+        )
+
+        assertTrue(sources[DIALOG_CLASS]!!.contains("new-instance v3, $DIALOG_CLICK_CLASS"), "the items listener must be constructed")
+        assertTrue(sources[DIALOG_CLASS]!!.contains("invoke-direct {v4, p0}, $DIALOG_CLICK_CLASS-><init>($DIALOG_CLASS)V"))
+        assertTrue(sources[DIALOG_CLICK_CLASS]!!.contains(".implements Landroid/content/DialogInterface${'$'}OnClickListener;"))
+        assertTrue(sources[DIALOG_CLICK_CLASS]!!.contains("invoke-interface {p1}, Landroid/content/DialogInterface;->dismiss()V"))
     }
 
     @Test

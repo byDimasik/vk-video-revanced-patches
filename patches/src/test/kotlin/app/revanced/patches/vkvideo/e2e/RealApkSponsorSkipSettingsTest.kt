@@ -112,9 +112,9 @@ class RealApkSponsorSkipSettingsTest {
         ), "Lcom/vk/core/view/components/cell/VkCell${'$'}Middle${'$'}b;")
         val dialog = resolveDialogApi(context.classDefs.toList())
         assertResolves(dialog.builder, "<init>", listOf("Landroid/content/Context;"), "V")
-        assertResolves(dialog.builder, dialog.titleMethod, listOf("Ljava/lang/CharSequence;"), dialog.itemsReturn)
-        assertResolves(dialog.builder, dialog.itemsMethod, listOf(
-            "[Ljava/lang/CharSequence;", "I", "Landroid/content/DialogInterface${'$'}OnClickListener;",
+        assertResolves(dialog.builder, dialog.titleMethod, listOf("Ljava/lang/CharSequence;"), dialog.titleReturn)
+        assertResolves(dialog.itemsOwner, dialog.itemsMethod, listOf(
+            "[Ljava/lang/CharSequence;", "I", dialog.itemsListenerType,
         ), dialog.itemsReturn)
         assertResolves(dialog.showOwner, dialog.showMethod, emptyList(), "Landroidx/appcompat/app/d;")
         // `show()` is inherited from the framework Dialog, which is not a dexed class.
@@ -143,10 +143,13 @@ class RealApkSponsorSkipSettingsTest {
             reference?.name == "addView" && reference.definingClass == "Landroid/widget/LinearLayout;"
         }
         assertTrue(anchorIndex >= 0, "root addView anchor missing")
-        assertEquals(
-            ROOT_ROW_CLASS,
-            ((instructions[anchorIndex + 1] as ReferenceInstruction).reference as MethodReference).definingClass,
-        )
+        // The row add sits right behind the anchor; a second apply of the patch adds
+        // it once more, so allow the `move-result-object` the anchor's addView leaves.
+        val added = instructions.drop(anchorIndex + 1).take(2).count { instruction ->
+            val reference = (instruction as? ReferenceInstruction)?.reference as? MethodReference
+            reference?.definingClass == ROOT_ROW_CLASS && reference.name == "add"
+        }
+        assertEquals(1, added, "the root row must be added exactly once right after the anchor")
 
         val fragment = context.classDefs.first { it.type == FRAGMENT_CLASS }
         assertEquals("Lcom/vk/core/fragments/FragmentImpl;", fragment.superclass)
