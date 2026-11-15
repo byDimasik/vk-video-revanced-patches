@@ -91,27 +91,30 @@ class ExtensionReferenceGateTest {
     @Test
     fun testArrayReferenceKeepsItsPrefix() {
         val (context, _) = loadContext()
+        // Array-only fixture: no scalar occurrence of the stale type may exist, or the
+        // scalar return-type row would fix the array text too and the test would pass
+        // even without the prefix being preserved.
         val source = """
             .class public final Lapp/revanced/extension/probe/ArrayProbe;
             .super Ljava/lang/Object;
 
-            .method public static first([Lq72/VideoFile;)Lq72/VideoFile;
+            .method public static count([Lq72/VideoFile;)I
                 .registers 2
-                const/4 v0, 0x0
-                aget-object v0, p0, v0
-                check-cast v0, Lq72/VideoFile;
-                return-object v0
+                array-length v0, p0
+                return v0
             .end method
         """.trimIndent()
 
         val probe = compileExtensionClass(context, "Lapp/revanced/extension/probe/ArrayProbe;", source)
-        val method = probe.methods.single()
-        assertEquals("[Lcom/vk/dto/common/VideoFile;", method.parameterTypes.first().toString(), "array parameter must stay an array of the corrected class")
-        assertEquals("Lcom/vk/dto/common/VideoFile;", method.returnType.toString())
-        assertTrue(auditExtensionClass(context, probe).all { it.resolved }, "corrected probe must audit clean")
+        val parameter = probe.methods.single().parameterTypes.first().toString()
+        assertEquals("[Lcom/vk/dto/common/VideoFile;", parameter, "array parameter must stay an array of the corrected class")
+        val rows = auditExtensionClass(context, probe)
+        assertTrue(rows.all { it.resolved }, "corrected probe must audit clean")
+        val typeRow = rows.single { it.reference.endsWith("VideoFile;") }
+        assertEquals("[Lcom/vk/dto/common/VideoFile;", typeRow.reference, "the corrected descriptor must itself still be an array")
     }
 
-    /** An unresolvable reference must fail the build, not ship. */
+/** An unresolvable reference must fail the build, not ship. */
     @Test
     fun testUnresolvableReferenceFails() {
         val (context, _) = loadContext()
