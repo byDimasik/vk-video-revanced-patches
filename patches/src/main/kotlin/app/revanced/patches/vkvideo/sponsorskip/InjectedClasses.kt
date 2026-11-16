@@ -116,7 +116,7 @@ internal val requiredMethods = mapOf(
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
         "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
-        "reload:1", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
+        "reload:1", "rememberVideo:2", "videoOf:1", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
     ),
     SKIP_MAIN_CLASS to listOf("<init>:5", "run:0"),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1"),
@@ -128,7 +128,7 @@ internal val requiredMethods = mapOf(
 
 /** Added fields that a stale generation of the class can miss; methods alone do not catch them. */
 internal val requiredFields = mapOf(
-    SKIP_ENGINE_CLASS to listOf("MAIN"),
+    SKIP_ENGINE_CLASS to listOf("MAIN", "VIDEOS"),
     SKIP_MAIN_CLASS to listOf("op", "state", "controller", "video", "target"),
     SKIP_STATE_CLASS to listOf(
         "view", "button", "listener", "listenerView", "buttonView", "lastToastMs", "lastPosMs", "stallTicks", "frozen",
@@ -866,6 +866,7 @@ private fun skipEngineSmali(): String = """
 
     .field private static final MAP:Ljava/util/WeakHashMap;
     .field private static final VIEWS:Ljava/util/WeakHashMap;
+    .field private static final VIDEOS:Ljava/util/WeakHashMap;
     .field private static final MAIN:Landroid/os/Handler;
     .field private static volatile LAST_VIEW:Landroid/view/View;
     .field private static ACTIVE:$SKIP_STATE_CLASS;
@@ -884,6 +885,9 @@ private fun skipEngineSmali(): String = """
         new-instance v0, Ljava/util/WeakHashMap;
         invoke-direct {v0}, Ljava/util/WeakHashMap;-><init>()V
         sput-object v0, $SKIP_ENGINE_CLASS->VIEWS:Ljava/util/WeakHashMap;
+        new-instance v0, Ljava/util/WeakHashMap;
+        invoke-direct {v0}, Ljava/util/WeakHashMap;-><init>()V
+        sput-object v0, $SKIP_ENGINE_CLASS->VIDEOS:Ljava/util/WeakHashMap;
         return-void
     .end method
 
@@ -1097,6 +1101,7 @@ private fun skipEngineSmali(): String = """
         invoke-direct/range {v10 .. v15}, $SKIP_STATE_CLASS;-><init>(Lp73/a;$SEGMENT_ARRAY[ZLandroid/os/Handler;Ljava/lang/Runnable;)V
         move-object/from16 v4, p1
         iput-object v4, v10, $SKIP_STATE_CLASS->video:Lcom/vk/dto/common/VideoFile;
+        invoke-static {v0, v1}, $SKIP_ENGINE_CLASS;->rememberVideo(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
         invoke-static {}, Landroid/os/SystemClock;->elapsedRealtime()J
         move-result-wide v6
         const-wide/16 v8, 0xfa0
@@ -1153,9 +1158,46 @@ private fun skipEngineSmali(): String = """
         invoke-static {p0, p1}, $SKIP_ENGINE_CLASS;->rememberView(Lp73/a;Landroid/view/View;)V
         if-eqz v0, :return
         iput-object p1, v0, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        # A resume re-attaches the view without announcing the video again; rebuild
+        # the state so a released-and-resumed player keeps its engine.
+        invoke-static {p0}, $SKIP_ENGINE_CLASS;->videoOf(Lp73/a;)Lcom/vk/dto/common/VideoFile;
+        move-result-object v0
+        if-eqz v0, :return
+        invoke-static {p0, v0}, $SKIP_ENGINE_CLASS;->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
 
         :return
         return-void
+    .end method
+
+    .method private static rememberVideo(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
+        .registers 4
+
+        if-eqz p0, :return
+        if-eqz p1, :return
+        sget-object v0, $SKIP_ENGINE_CLASS->VIDEOS:Ljava/util/WeakHashMap;
+        monitor-enter v0
+        invoke-virtual {v0, p0, p1}, Ljava/util/WeakHashMap;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+        monitor-exit v0
+
+        :return
+        return-void
+    .end method
+
+    .method private static videoOf(Lp73/a;)Lcom/vk/dto/common/VideoFile;
+        .registers 4
+
+        if-eqz p0, :null
+        sget-object v0, $SKIP_ENGINE_CLASS->VIDEOS:Ljava/util/WeakHashMap;
+        monitor-enter v0
+        invoke-virtual {v0, p0}, Ljava/util/WeakHashMap;->get(Ljava/lang/Object;)Ljava/lang/Object;
+        move-result-object v1
+        check-cast v1, Lcom/vk/dto/common/VideoFile;
+        monitor-exit v0
+        return-object v1
+
+        :null
+        const/4 v1, 0x0
+        return-object v1
     .end method
 
     .method private static rememberView(Lp73/a;Landroid/view/View;)V
