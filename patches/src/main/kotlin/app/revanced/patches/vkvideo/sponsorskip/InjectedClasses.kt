@@ -116,7 +116,7 @@ internal val requiredMethods = mapOf(
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
         "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
-        "reload:1", "rememberVideo:2", "videoOf:1", "rememberBar:1", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
+        "reload:1", "rememberVideo:2", "videoOf:1", "rememberBar:1", "findBar:2", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
     ),
     SKIP_MAIN_CLASS to listOf("<init>:5", "run:0"),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1"),
@@ -1185,15 +1185,57 @@ private fun skipEngineSmali(): String = """
     .end method
 
     .method public static rememberBar(Landroid/view/View;)V
-        .registers 2
+        .registers 4
 
         if-eqz p0, :return
-        new-instance v0, Ljava/lang/ref/WeakReference;
-        invoke-direct {v0, p0}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
-        sput-object v0, $SKIP_ENGINE_CLASS->BAR:Ljava/lang/ref/WeakReference;
+        const/4 v0, 0x3
+        invoke-static {p0, v0}, $SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
+        move-result-object v0
+        if-eqz v0, :return
+        new-instance v1, Ljava/lang/ref/WeakReference;
+        invoke-direct {v1, v0}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
+        sput-object v1, $SKIP_ENGINE_CLASS->BAR:Ljava/lang/ref/WeakReference;
 
         :return
         return-void
+    .end method
+
+    # The composite seek view wraps the real bar; walk down to the ProgressBar.
+    .method private static findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
+        .registers 6
+
+        if-eqz p0, :null
+        instance-of v0, p0, Landroid/widget/ProgressBar;
+        if-eqz v0, :hit
+        if-gtz p1, :null
+        instance-of v0, p0, Landroid/view/ViewGroup;
+        if-eqz v0, :null
+        check-cast p0, Landroid/view/ViewGroup;
+        const/4 v0, 0x0
+        add-int/lit8 v1, p1, -0x1
+
+        :loop
+        invoke-virtual {p0}, Landroid/view/ViewGroup;->getChildCount()I
+        move-result v2
+        if-lt v0, v2, :null
+        invoke-virtual {p0, v0}, Landroid/view/ViewGroup;->getChildAt(I)Landroid/view/View;
+        move-result-object v2
+        invoke-static {v2, v1}, $SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
+        move-result-object v3
+        if-eqz v3, :next
+        return-object v3
+
+        :next
+        add-int/lit8 v0, v0, 0x1
+        goto :loop
+
+        :hit
+        check-cast p0, Landroid/widget/ProgressBar;
+        return-object p0
+
+        :null
+        const/4 v0, 0x0
+        return-object v0
     .end method
 
     .method private static videoOf(Lp73/a;)Lcom/vk/dto/common/VideoFile;
