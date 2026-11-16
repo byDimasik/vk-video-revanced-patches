@@ -116,7 +116,7 @@ internal val requiredMethods = mapOf(
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
         "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
-        "reload:1", "rememberVideo:2", "videoOf:1", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
+        "reload:1", "rememberVideo:2", "videoOf:1", "rememberBar:1", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
     ),
     SKIP_MAIN_CLASS to listOf("<init>:5", "run:0"),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1"),
@@ -128,7 +128,7 @@ internal val requiredMethods = mapOf(
 
 /** Added fields that a stale generation of the class can miss; methods alone do not catch them. */
 internal val requiredFields = mapOf(
-    SKIP_ENGINE_CLASS to listOf("MAIN", "VIDEOS"),
+    SKIP_ENGINE_CLASS to listOf("MAIN", "VIDEOS", "BAR"),
     SKIP_MAIN_CLASS to listOf("op", "state", "controller", "video", "target"),
     SKIP_STATE_CLASS to listOf(
         "view", "button", "listener", "listenerView", "buttonView", "lastToastMs", "lastPosMs", "stallTicks", "frozen",
@@ -867,6 +867,7 @@ private fun skipEngineSmali(): String = """
     .field private static final MAP:Ljava/util/WeakHashMap;
     .field private static final VIEWS:Ljava/util/WeakHashMap;
     .field private static final VIDEOS:Ljava/util/WeakHashMap;
+    .field private static volatile BAR:Ljava/lang/ref/WeakReference;
     .field private static final MAIN:Landroid/os/Handler;
     .field private static volatile LAST_VIEW:Landroid/view/View;
     .field private static ACTIVE:$SKIP_STATE_CLASS;
@@ -1183,6 +1184,18 @@ private fun skipEngineSmali(): String = """
         return-void
     .end method
 
+    .method public static rememberBar(Landroid/view/View;)V
+        .registers 2
+
+        if-eqz p0, :return
+        new-instance v0, Ljava/lang/ref/WeakReference;
+        invoke-direct {v0, p0}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
+        sput-object v0, $SKIP_ENGINE_CLASS->BAR:Ljava/lang/ref/WeakReference;
+
+        :return
+        return-void
+    .end method
+
     .method private static videoOf(Lp73/a;)Lcom/vk/dto/common/VideoFile;
         .registers 4
 
@@ -1435,6 +1448,35 @@ private fun skipEngineSmali(): String = """
         const-wide/16 v6, -0x1
         cmp-long v2, v3, v6
         if-nez v2, :pos_ok
+        # The player instance can outlive its binding and report -1 forever; the seek
+        # bar the app itself drives still carries the position as a fraction.
+        sget-object v1, $SKIP_ENGINE_CLASS->BAR:Ljava/lang/ref/WeakReference;
+        if-eqz v1, :fallback
+        invoke-virtual {v1}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
+        move-result-object v1
+        check-cast v1, Landroid/widget/ProgressBar;
+        if-eqz v1, :fallback
+        invoke-virtual {v1}, Landroid/widget/ProgressBar;->getMax()I
+        move-result v2
+        if-lez v2, :fallback
+        iget-object v6, v14, $SKIP_STATE_CLASS->video:Lcom/vk/dto/common/VideoFile;
+        if-eqz v6, :fallback
+        invoke-interface {v6}, Lcom/vk/dto/common/VideoFile;->getDuration()I
+        move-result v6
+        if-lez v6, :fallback
+        int-to-long v6, v6
+        const-wide/16 v10, 0x3e8
+        mul-long/2addr v6, v10
+        invoke-virtual {v1}, Landroid/widget/ProgressBar;->getProgress()I
+        move-result v10
+        int-to-long v10, v10
+        mul-long v12, v10, v6
+        int-to-long v6, v2
+        div-long v12, v12, v6
+        move-wide v3, v12
+        goto :pos_ok
+
+        :fallback
         iget-boolean v2, v14, $SKIP_STATE_CLASS->seenPos:Z
         if-eqz v2, :use_last
         const-wide/16 v3, 0x0
@@ -2348,6 +2390,8 @@ private fun seekbarSectionsSmali(): String = """
 
     .method public static apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V
         .registers 12
+
+        invoke-static {p0}, $SKIP_ENGINE_CLASS;->rememberBar(Landroid/view/View;)V
         .param p0, "view"
         .param p1, "drawable"
 
