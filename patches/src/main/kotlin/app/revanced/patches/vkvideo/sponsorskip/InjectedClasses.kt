@@ -1393,10 +1393,20 @@ private fun skipEngineSmali(): String = """
         :no_k
         if-eqz v1, :alive
         iget-object v2, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
-        if-eqz v2, :probe_button
+        if-eqz v2, :probe_last
         invoke-virtual {v2}, Landroid/view/View;->isAttachedToWindow()Z
         move-result v1
         if-eqz v1, :alive
+
+        :probe_last
+        if-nez v1, :probe_button
+        sget-object v2, $SKIP_ENGINE_CLASS->LAST_VIEW:Landroid/view/View;
+        if-eqz v2, :probe_button
+        invoke-virtual {v2}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v1
+        if-nez v1, :probe_button
+        iput-object v2, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        goto :alive
 
         :probe_button
         iget-object v2, v14, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
@@ -1478,7 +1488,12 @@ private fun skipEngineSmali(): String = """
         iget v2, v14, $SKIP_STATE_CLASS->deadTicks:I
         const/4 v6, 0x4
         if-ge v2, v6, :live
-        const-string v6, "dead"
+        new-instance v6, Ljava/lang/StringBuilder;
+        const-string v7, "dead pos="
+        invoke-direct {v6, v7}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
+        invoke-virtual {v6, v3, v4}, Ljava/lang/StringBuilder;->append(J)Ljava/lang/StringBuilder;
+        invoke-virtual {v6}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+        move-result-object v6
         iget-object v7, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
         invoke-static {v6, v7}, $SKIP_ENGINE_CLASS;->trace(Ljava/lang/String;Landroid/view/View;)V
         invoke-static {v14}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V
