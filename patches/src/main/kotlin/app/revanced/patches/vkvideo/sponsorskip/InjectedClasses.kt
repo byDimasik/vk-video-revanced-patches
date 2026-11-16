@@ -1387,16 +1387,19 @@ private fun skipEngineSmali(): String = """
         if-eqz v2, :use_last
         const-wide/16 v3, 0x0
         const/4 v2, 0x0
+        const/4 v5, 0x0
         iput-boolean v2, v14, $SKIP_STATE_CLASS->frozen:Z
         goto :pos_done
 
         :use_last
         iget-wide v3, v14, $SKIP_STATE_CLASS->lastPosMs:J
+        const/4 v5, 0x1
         goto :pos_done
 
         :pos_ok
         const/4 v2, 0x1
         iput-boolean v2, v14, $SKIP_STATE_CLASS->seenPos:Z
+        const/4 v5, 0x1
         iget-wide v6, v14, $SKIP_STATE_CLASS->lastPosMs:J
         cmp-long v2, v3, v6
         if-nez v2, :stalled
@@ -1421,6 +1424,15 @@ private fun skipEngineSmali(): String = """
         iput-boolean v2, v14, $SKIP_STATE_CLASS->frozen:Z
 
         :pos_done
+        # A usable position outranks the surface probe: the player can hand the
+        # weakref out later than it starts ticking, and a null weakref with a live
+        # timeline is a live player, not a dead one.
+        if-nez v5, :no_pos
+        const/4 v2, 0x0
+        iput v2, v14, $SKIP_STATE_CLASS->deadTicks:I
+        goto :live
+
+        :no_pos
         iget v2, v14, $SKIP_STATE_CLASS->deadTicks:I
         const/4 v6, 0x4
         if-ge v2, v6, :live

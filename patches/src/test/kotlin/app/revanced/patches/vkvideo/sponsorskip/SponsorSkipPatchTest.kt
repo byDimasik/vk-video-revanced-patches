@@ -824,17 +824,19 @@ class SponsorSkipPatchTest {
         // the remembered-position write instead.
         assertEquals(Opcode.IF_NEZ, tick[position + 4].opcode, "-1 still routes to the dead block")
 
-        val lastPos = tick.indexOfFirst {
+        val liveArm = branchTarget(tick, position + 4)
+        assertTrue(liveArm > position + 4, "the -1 arm does not jump forward")
+        val readsLast = tick.subList(liveArm, minOf(liveArm + 12, tick.size)).any {
             it.opcode == Opcode.IGET_WIDE &&
                 (it as ReferenceInstruction).reference.toString().contains("lastPosMs:J")
         }
-        assertEquals(branchTarget(tick, position + 4), lastPos + 2, "the -1 arm does not fall into the last position")
+        assertTrue(readsLast, "the live arm does not read the remembered position")
 
         val deadRead = tick.indexOfLast {
             it.opcode == Opcode.IGET &&
                 (it as ReferenceInstruction).reference.toString().contains("deadTicks:I")
         }
-        assertTrue(deadRead > lastPos, "the dead counter is not read after the position")
+        assertTrue(deadRead > position, "the dead counter is not read after the position")
         val deadGuard = deadRead + 1
         assertEquals(Opcode.CONST_4, tick[deadGuard].opcode, "the dead threshold is not loaded")
         assertEquals(4, (tick[deadGuard] as NarrowLiteralInstruction).narrowLiteral, "the dead grace is not four ticks")
