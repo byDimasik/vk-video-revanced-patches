@@ -66,6 +66,13 @@ class SponsorSkipPatchTest {
             },
             "the video field is not written from the parameter",
         )
+        // The remembered-video call has to take the same copy, not the enabled flag.
+        val remember = hook.indexOfFirst {
+            it.opcode == Opcode.INVOKE_STATIC &&
+                (it as ReferenceInstruction).reference.toString().contains("->rememberVideo(")
+        }
+        assertTrue(remember >= 0, "the video is not remembered")
+        assertEquals(source, (hook[remember] as FiveRegisterInstruction).registerD, "the remembered video is not the parameter copy")
     }
 
     @Test
