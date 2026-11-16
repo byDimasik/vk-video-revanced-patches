@@ -1188,13 +1188,11 @@ private fun skipEngineSmali(): String = """
         .registers 4
 
         if-eqz p0, :return
-        const/4 v0, 0x3
-        invoke-static {p0, v0}, $SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
-        move-result-object v0
-        if-eqz v0, :return
         new-instance v1, Ljava/lang/ref/WeakReference;
-        invoke-direct {v1, v0}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
+        invoke-direct {v1, p0}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
         sput-object v1, $SKIP_ENGINE_CLASS->BAR:Ljava/lang/ref/WeakReference;
+        const-string v0, "bar set"
+        invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
 
         :return
         return-void
@@ -1492,20 +1490,40 @@ private fun skipEngineSmali(): String = """
         if-nez v2, :pos_ok
         # The player instance can outlive its binding and report -1 forever; the seek
         # bar the app itself drives still carries the position as a fraction.
-        sget-object v1, $SKIP_ENGINE_CLASS->BAR:Ljava/lang/ref/WeakReference;
-        if-eqz v1, :fallback
-        invoke-virtual {v1}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
+        iget-object v1, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        if-eqz v1, :fb_root
+        sget-object v1, $SKIP_ENGINE_CLASS->LAST_VIEW:Landroid/view/View;
+        if-eqz v1, :fb_nobar
+
+        :fb_root
+        iput-object v1, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        invoke-virtual {v1}, Landroid/view/View;->getRootView()Landroid/view/View;
         move-result-object v1
+        if-eqz v1, :fb_nobar
+        const v6, 0x${SEEK_BAR_VIEW_ID.toString(16)}
+        invoke-virtual {v1, v6}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v2
+        if-eqz v2, :fb_have
+        const v6, 0x${SEEK_BAR_ID.toString(16)}
+        invoke-virtual {v1, v6}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v2
+        if-eqz v2, :fb_nobar
+
+        :fb_have
+        const/4 v6, 0x3
+        invoke-static {v2, v6}, $SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
+        move-result-object v1
+        if-eqz v1, :fb_nobar
+        :fb_resolved
         check-cast v1, Landroid/widget/ProgressBar;
-        if-eqz v1, :fallback
         invoke-virtual {v1}, Landroid/widget/ProgressBar;->getMax()I
         move-result v2
-        if-lez v2, :fallback
+        if-lez v2, :fb_nomax
         iget-object v6, v14, $SKIP_STATE_CLASS->video:Lcom/vk/dto/common/VideoFile;
-        if-eqz v6, :fallback
+        if-eqz v6, :fb_novideo
         invoke-interface {v6}, Lcom/vk/dto/common/VideoFile;->getDuration()I
         move-result v6
-        if-lez v6, :fallback
+        if-lez v6, :fb_nodur
         int-to-long v6, v6
         const-wide/16 v10, 0x3e8
         mul-long/2addr v6, v10
@@ -1516,7 +1534,33 @@ private fun skipEngineSmali(): String = """
         int-to-long v6, v2
         div-long v12, v12, v6
         move-wide v3, v12
+        const-string v1, "fb ok"
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         goto :pos_ok
+
+        :fb_nobar
+        const-string v1, "fb no bar"
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        goto :fallback
+
+        :fb_noref
+        const-string v1, "fb bar null ref"
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        goto :fallback
+
+        :fb_nomax
+        const-string v1, "fb max"
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        goto :fallback
+
+        :fb_novideo
+        const-string v1, "fb no video"
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        goto :fallback
+
+        :fb_nodur
+        const-string v1, "fb dur"
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
 
         :fallback
         iget-boolean v2, v14, $SKIP_STATE_CLASS->seenPos:Z
