@@ -45,6 +45,30 @@ class SponsorSkipPatchTest {
     }
 
     @Test
+    fun `the state keeps the video it must re-read episodes from`() {
+        val context = createBytecodeContext(*fixtures.toTypedArray())
+        sponsorSkipPatch.execute(context)
+        val hook = context.classDefs.first { it.type == SKIP_ENGINE_CLASS }.methods
+            .first { it.name == "onVideoChanged" }.instr()
+
+        val write = hook.indexOfFirst {
+            it.opcode == Opcode.IPUT_OBJECT &&
+                (it as ReferenceInstruction).reference.toString().endsWith("->video:Lcom/vk/dto/common/VideoFile;")
+        }
+        assertTrue(write >= 0, "the state does not keep the video")
+        // v1 is the enabled flag by then, so the field must take the parameter copy.
+        val source = (hook[write] as TwoRegisterInstruction).registerA
+        assertTrue(
+            hook.take(write).any {
+                it.opcode == Opcode.MOVE_OBJECT_FROM16 &&
+                    (it as TwoRegisterInstruction).registerA == source &&
+                    (it as TwoRegisterInstruction).registerB == 15
+            },
+            "the video field is not written from the parameter",
+        )
+    }
+
+    @Test
     fun `the episodes adapter pins the list getter, the sort and the closing end`() {
         val episodes = sponsorSkipSources()[EPISODES_CLASS]!!
         assertTrue(episodes.contains("Lcom/vk/dto/common/VideoFile;->k3()Ljava/util/List;"))
