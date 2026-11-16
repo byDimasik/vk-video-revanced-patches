@@ -198,8 +198,12 @@ class RealApkSponsorSkipTest {
             assertEquals(Opcode.MOVE_RESULT, instructions[guardAt + 1].opcode, "$name does not keep the guard result")
             assertEquals(Opcode.IF_NEZ, instructions[guardAt + 2].opcode, "$name does not branch on off-main")
             assertTrue(
-                instructions.any { (it as? ReferenceInstruction)?.reference?.toString() == "$SKIP_ENGINE_CLASS->postMain(Ljava/lang/Runnable;)V" },
-                "$name does not defer through postMain",
+                instructions.any {
+                    (it as? ReferenceInstruction)?.reference?.toString()?.let { target ->
+                        target == "$SKIP_ENGINE_CLASS->postMain(Ljava/lang/Runnable;)V" || target.contains("->postVideo(")
+                    } == true
+                },
+                "$name does not defer off-main",
             )
         }
 

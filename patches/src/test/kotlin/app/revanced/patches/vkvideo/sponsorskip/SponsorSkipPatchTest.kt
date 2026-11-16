@@ -45,6 +45,37 @@ class SponsorSkipPatchTest {
     }
 
     @Test
+    fun `the state keeps the video it must re-read episodes from`() {
+        val context = createBytecodeContext(*fixtures.toTypedArray())
+        sponsorSkipPatch.execute(context)
+        val hook = context.classDefs.first { it.type == SKIP_ENGINE_CLASS }.methods
+            .first { it.name == "onVideoChanged" }.instr()
+
+        val write = hook.indexOfFirst {
+            it.opcode == Opcode.IPUT_OBJECT &&
+                (it as ReferenceInstruction).reference.toString().endsWith("->video:Lcom/vk/dto/common/VideoFile;")
+        }
+        assertTrue(write >= 0, "the state does not keep the video")
+        // v1 is the enabled flag by then, so the field must take the parameter copy.
+        val source = (hook[write] as TwoRegisterInstruction).registerA
+        assertTrue(
+            hook.take(write).any {
+                it.opcode == Opcode.MOVE_OBJECT_FROM16 &&
+                    (it as TwoRegisterInstruction).registerA == source &&
+                    (it as TwoRegisterInstruction).registerB == 15
+            },
+            "the video field is not written from the parameter",
+        )
+        // The remembered-video call has to take the same copy, not the enabled flag.
+        val remember = hook.indexOfFirst {
+            it.opcode == Opcode.INVOKE_STATIC &&
+                (it as ReferenceInstruction).reference.toString().contains("->rememberVideo(")
+        }
+        assertTrue(remember >= 0, "the video is not remembered")
+        assertEquals(source, (hook[remember] as FiveRegisterInstruction).registerD, "the remembered video is not the parameter copy")
+    }
+
+    @Test
     fun `the episodes adapter pins the list getter, the sort and the closing end`() {
         val episodes = sponsorSkipSources()[EPISODES_CLASS]!!
         assertTrue(episodes.contains("Lcom/vk/dto/common/VideoFile;->k3()Ljava/util/List;"))
@@ -391,10 +422,12 @@ class SponsorSkipPatchTest {
             val bodyLabel = body.indexOf("\n    :on_main", defer)
             assertTrue(bodyLabel > defer, "${entry.name} has no body label")
             val block = body.substring(defer, bodyLabel)
-            val built = block.indexOf("new-instance")
-            assertTrue(built > 0 && block.contains(SKIP_MAIN_CLASS), "${entry.name} does not build a dispatch")
-            assertEquals(entry.op, rangeOp(block, built), "${entry.name} posts the wrong op")
-            assertTrue(block.contains("postMain(Ljava/lang/Runnable;)V"), "${entry.name} does not post the dispatch")
+            val dispatches = block.contains("->postVideo(") || block.contains("->postMain(") || (block.contains("new-instance") && block.contains(SKIP_MAIN_CLASS))
+            assertTrue(dispatches, "${entry.name} does not dispatch off-main")
+            if (block.contains("new-instance")) {
+                assertEquals(entry.op, rangeOp(block, block.indexOf("new-instance")), "${entry.name} posts the wrong op")
+            }
+            assertTrue(block.contains("postMain(Ljava/lang/Runnable;)V") || block.contains("->postVideo("), "${entry.name} does not post the dispatch")
             assertTrue(block.trimEnd().endsWith("return-void"), "${entry.name} falls through after posting")
             val after = body.substring(bodyLabel)
             val contact = after.indexOf(entry.firstBody)
@@ -603,16 +636,16 @@ class SponsorSkipPatchTest {
     }
 
     @Test
-    fun `the tick evaluates while paused and gates only the skip`() {
+    fun `the tick evaluates every pass and never gates the skip on playback`() {
         val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
         val tick = engine.substring(engine.indexOf(".method public static tick"), engine.indexOf(".method private static evaluate"))
         val evaluateAt = tick.indexOf("->evaluate(")
-        // The liveness probe also calls isPlaying; the guard under test is the last one.
-        val playingAt = tick.lastIndexOf("->isPlaying()")
         val skipAt = tick.indexOf("->skip(")
-        assertTrue(evaluateAt >= 0 && evaluateAt < playingAt, "the scan is still gated by playback")
-        assertTrue(skipAt > playingAt, "skip is not gated by playback")
-        assertTrue(tick.substring(playingAt, skipAt).contains("if-eqz v8, :repost"), "the playing result does not guard the skip")
+        assertTrue(evaluateAt >= 0, "the tick never evaluates")
+        assertTrue(skipAt > evaluateAt, "the skip does not follow the scan")
+        // The page player reports a playing state the position does not always follow;
+        // a gate on isPlaying() is what killed autoskip.
+        assertTrue(!tick.contains("->isPlaying()"), "the skip is still gated by playback")
     }
 
     @Test
@@ -730,91 +763,116 @@ class SponsorSkipPatchTest {
         assertEquals(Opcode.MOVE_RESULT_WIDE, instructions[position + 1].opcode, "the position is not kept")
         val positionRegister = (instructions[position + 1] as OneRegisterInstruction).registerA
 
-        val aput = instructions.indexOfFirst { it.opcode == Opcode.APUT_BOOLEAN }
-        assertTrue(aput < position, "the segment is not consumed before the position is read")
-
         val deadCompare = instructions[position + 3]
         assertEquals(Opcode.CMP_LONG, deadCompare.opcode)
         assertEquals(positionRegister, (deadCompare as ThreeRegisterInstruction).registerB, "the -1 compare reads another value")
         val deadGuard = instructions[position + 4]
-        assertEquals(Opcode.IF_EQZ, deadGuard.opcode, "the dead controller is not compared with -1")
+        assertEquals(Opcode.IF_EQZ, deadGuard.opcode, "a missing position does not return (no position yet)")
+        // No position yet leaves the segment armed: the return must precede the aput.
+        val noPositionReturn = branchTarget(instructions, position + 4)
+        assertEquals(Opcode.RETURN_VOID, instructions[noPositionReturn].opcode, "the no-position arm does not return")
 
-        val endCompare = instructions[position + 5]
-        assertEquals(Opcode.CMP_LONG, endCompare.opcode, "the endMs compare does not follow the -1 check")
+        val aput = instructions.indexOfFirst { it.opcode == Opcode.APUT_BOOLEAN }
+        assertTrue(aput > position + 9, "the segment is consumed before the position is known")
+        val seekCall = instructions.indexOfFirst {
+            it.opcode == Opcode.INVOKE_INTERFACE && (it as ReferenceInstruction).reference.toString().contains("(J)V") &&
+                !(it as ReferenceInstruction).reference.toString().endsWith("getDuration()J")
+        }
+        assertTrue(seekCall > aput, "the seek runs before the consume")
+
+        // after the -1 guard: the consumed guard, then the endMs compare
+        assertEquals(Opcode.IGET_OBJECT, instructions[position + 5].opcode, "the consumed array is not read")
+        assertEquals(Opcode.AGET_BOOLEAN, instructions[position + 6].opcode)
+        assertEquals(Opcode.IF_NEZ, instructions[position + 7].opcode, "an already consumed segment is not skipped")
+        val endCompare = instructions[position + 8]
+        assertEquals(Opcode.CMP_LONG, endCompare.opcode, "the endMs compare does not follow the consumed guard")
         assertEquals(positionRegister, (endCompare as ThreeRegisterInstruction).registerB, "the end compare reads another value")
-        val endGuard = instructions[position + 6]
+        val endGuard = instructions[position + 9]
         assertEquals(Opcode.IF_LTZ, endGuard.opcode, "the live arm is not `if-ltz` (position before the end)")
 
-        // The -1 arm jumps to the no-seek block; the live arm jumps over it to `:seek`,
-        // and a live position that is not before the end falls through into it.
-        val overTarget = branchTarget(instructions, position + 4)
-        val seekTarget = branchTarget(instructions, position + 6)
-        val over = instructions[overTarget]
-        assertEquals(Opcode.INVOKE_STATIC, over.opcode)
-        assertTrue((over as ReferenceInstruction).reference.toString().contains("SkipButton;->hide"))
-        val overReturn = overTarget + 1
-        assertEquals(Opcode.RETURN_VOID, instructions[overReturn].opcode, "the no-seek block does not return")
-        assertEquals(overReturn + 1, seekTarget, "the seek arm does not follow the no-seek block")
-        assertEquals(overTarget, position + 7, "the passed section does not fall through into the no-seek block")
-        val seek = instructions[seekTarget]
-        assertEquals(Opcode.INVOKE_INTERFACE, seek.opcode)
-        assertTrue((seek as ReferenceInstruction).reference.toString().endsWith(";->getDuration()J"))
+        // The live arm jumps to the seek, and a position at/past the end falls through
+        // into the same consume-and-hide tail the seek uses.
+        val seekTarget = branchTarget(instructions, position + 9)
+        val seek = instructions.withIndex().indexOfFirst { (index, instruction) ->
+            index >= seekTarget && instruction.opcode == Opcode.INVOKE_INTERFACE &&
+                (instruction as ReferenceInstruction).reference.toString().endsWith(";->getDuration()J")
+        }
+        assertTrue(seek >= seekTarget, "the seek arm does not reach getDuration")
         assertTrue(
-            instructions.indexOfFirst { it.opcode == Opcode.RETURN_VOID && it === instructions[overReturn] } > position,
+            instructions.filterIndexed { index, _ -> index > position + 6 && index < seekTarget }.any { it.opcode == Opcode.APUT_BOOLEAN },
+            "the passed section is not consumed",
         )
-        assertEquals(2, instructions.count { it.opcode == Opcode.RETURN_VOID }, "skip must keep exactly two exits")
+        assertEquals(Opcode.RETURN_VOID, instructions[seekTarget - 1].opcode, "the passed section does not stop before the seek")
+        assertEquals(2, instructions.count { it.opcode == Opcode.RETURN_VOID }, "skip must keep the passed tail and the shared exit")
     }
 
     @Test
-    fun `a missing player hides the button`() {
+    fun `an unattached player hides the button only after the grace`() {
         val context = createBytecodeContext(*fixtures.toTypedArray())
         sponsorSkipPatch.execute(context)
         val tick = context.classDefs.first { it.type == SKIP_ENGINE_CLASS }.methods
-            .first { it.name == "tick" }
-        val instructions = tick.instr()
+            .first { it.name == "tick" }.instr()
 
-        val attached = instructions.indexOfFirst {
+        val attached = tick.indexOfFirst {
             (it as? ReferenceInstruction)?.reference?.toString() == "Landroid/view/View;->isAttachedToWindow()Z"
         }
         assertTrue(attached >= 0, "tick does not probe the attachment")
-        assertEquals(Opcode.MOVE_RESULT, instructions[attached + 1].opcode, "the attachment result is not kept")
-        val attachment = (instructions[attached + 1] as OneRegisterInstruction).registerA
-        // the section refresh sits between the probe and the guard
-        val attachGuard = instructions.indexFirst(attached + 2) {
-            it.opcode == Opcode.IF_EQZ && (it as OneRegisterInstruction).registerA == attachment
-        }
-        val attachTarget = branchTarget(instructions, attachGuard)
+        assertEquals(Opcode.MOVE_RESULT, tick[attached + 1].opcode, "the attachment result is not kept")
 
-        val position = instructions.indexOfFirst {
+        val position = tick.indexOfFirst {
             it.opcode == Opcode.INVOKE_INTERFACE &&
                 (it as ReferenceInstruction).reference.toString().endsWith(";->getPosition()J")
         }
         assertTrue(position > attached, "the position is read before the attachment probe")
-        assertEquals(Opcode.MOVE_RESULT_WIDE, instructions[position + 1].opcode)
-        val minusOne = instructions[position + 2]
+        assertEquals(Opcode.MOVE_RESULT_WIDE, tick[position + 1].opcode)
+        val minusOne = tick[position + 2]
         assertEquals(Opcode.CONST_WIDE_16, minusOne.opcode)
         assertEquals(-1L, (minusOne as NarrowLiteralInstruction).narrowLiteral.toLong())
-        assertEquals(Opcode.CMP_LONG, instructions[position + 3].opcode)
-        val positionGuard = instructions[position + 4]
-        assertEquals(Opcode.IF_EQZ, positionGuard.opcode, "-1 does not guard")
+        assertEquals(Opcode.CMP_LONG, tick[position + 3].opcode)
+        // A missing position no longer routes to the dead block; the live arm lands on
+        // the remembered-position write instead.
+        assertEquals(Opcode.IF_NEZ, tick[position + 4].opcode, "-1 does not leave the position")
 
-        assertEquals(attachTarget, branchTarget(instructions, position + 4), "the dead arms do not share one block")
-        val dead = instructions[attachTarget]
-        assertEquals(Opcode.INVOKE_STATIC, dead.opcode)
-        assertTrue((dead as ReferenceInstruction).reference.toString().contains("SkipButton;->hide"))
+        val liveArm = branchTarget(tick, position + 4)
+        assertTrue(liveArm > position + 4, "the -1 arm does not jump forward")
+        val readsLast = tick.subList(liveArm, minOf(liveArm + 12, tick.size)).any {
+            it.opcode == Opcode.IGET_WIDE &&
+                (it as ReferenceInstruction).reference.toString().contains("lastPosMs:J")
+        }
+        assertTrue(readsLast, "the live arm does not read the remembered position")
 
-        val invalidate = instructions.indexOfFirst {
+        val deadRead = tick.indexOfLast {
+            it.opcode == Opcode.IGET &&
+                (it as ReferenceInstruction).reference.toString().contains("deadTicks:I")
+        }
+        assertTrue(deadRead > position, "the dead counter is not read after the position")
+        val deadGuard = deadRead + 1
+        assertEquals(Opcode.CONST_4, tick[deadGuard].opcode, "the dead threshold is not loaded")
+        assertEquals(4, (tick[deadGuard] as NarrowLiteralInstruction).narrowLiteral, "the dead grace is not four ticks")
+        assertEquals(Opcode.IF_GE, tick[deadGuard + 1].opcode, "sub-threshold counts do not stay live")
+        val live = branchTarget(tick, deadGuard + 1)
+        val dead = tick.indexOfFirst {
+            it.opcode == Opcode.INVOKE_STATIC &&
+                (it as ReferenceInstruction).reference.toString().contains("SkipButton;->hide")
+        }
+        assertTrue(dead > deadGuard && dead < live, "the dead block does not hide inside its arm")
+        assertTrue(
+            tick.filterIndexed { index, _ -> index in (dead + 1) until live }.any { it.opcode == Opcode.GOTO },
+            "the dead arm does not leave past the scan",
+        )
+
+        val invalidate = tick.indexOfFirst {
             (it as? ReferenceInstruction)?.reference?.toString()?.endsWith("SeekbarSections;->invalidate()V") == true
         }
-        val evaluate = instructions.indexOfFirst {
+        val evaluate = tick.indexOfFirst {
             (it as? ReferenceInstruction)?.reference?.toString()?.endsWith("${SKIP_ENGINE_CLASS}->evaluate($SKIP_STATE_CLASS)I") == true
         }
-        assertTrue(attachTarget > invalidate, "the dead block runs before the section refresh")
-        assertTrue(attachTarget > evaluate, "the dead block does not stand down past the scan")
+        assertTrue(dead > invalidate, "the dead block runs before the section refresh")
+        assertTrue(dead < evaluate, "the dead block does not stand down before the scan")
     }
 
     @Test
-    fun `a frozen position while playing hides after the stall window`() {
+    fun `an unchanged position freezes only after the time window and keeps the button`() {
         val context = createBytecodeContext(*fixtures.toTypedArray())
         sponsorSkipPatch.execute(context)
         val engine = context.classDefs.first { it.type == SKIP_ENGINE_CLASS }
@@ -822,11 +880,22 @@ class SponsorSkipPatchTest {
         val tick = engine.methods.first { it.name == "tick" }.instr()
         val lastPos = tick.indexOfFirst {
             it.opcode == Opcode.IGET_WIDE &&
+                (it as ReferenceInstruction).reference.toString().contains("lastPosMs:J") &&
+                tick[tick.indexOf(it) + 1].opcode == Opcode.CMP_LONG
+        }
+        assertTrue(lastPos >= 0, "tick does not compare the position with lastPosMs")
+        val positionRead = tick.indexOfFirst {
+            it.opcode == Opcode.INVOKE_INTERFACE &&
+                (it as ReferenceInstruction).reference.toString().endsWith(";->getPosition()J")
+        }
+        val positionRegister = (tick[positionRead + 1] as OneRegisterInstruction).registerA
+        assertEquals(positionRegister, (tick[lastPos + 1] as ThreeRegisterInstruction).registerB, "the compare does not read the position")
+        assertEquals(Opcode.IF_NEZ, tick[lastPos + 2].opcode, "the compare is not a changed/unchanged split")
+        val lastPosWrite = tick.indexOfFirst {
+            it.opcode == Opcode.IPUT_WIDE &&
                 (it as ReferenceInstruction).reference.toString().contains("lastPosMs:J")
         }
-        assertTrue(lastPos >= 0, "tick does not read lastPosMs")
-        assertEquals(Opcode.CMP_LONG, tick[lastPos + 1].opcode, "the position is not compared with the last one")
-        assertEquals(Opcode.IF_EQZ, tick[lastPos + 2].opcode, "an unchanged position is not detected")
+        assertTrue(branchTarget(tick, lastPos + 2) > lastPosWrite, "an unchanged position does not reach the stall arm")
 
         val counterRead = tick.indexOfFirst {
             it.opcode == Opcode.IGET &&
@@ -837,42 +906,45 @@ class SponsorSkipPatchTest {
             (tick[counterRead + 2] as ReferenceInstruction).reference.toString().contains("stallTicks:I"),
             "the tick counter is not stored",
         )
-        assertEquals(Opcode.CONST_4, tick[counterRead + 3].opcode, "the stall threshold is not loaded")
-        assertEquals(4, (tick[counterRead + 3] as NarrowLiteralInstruction).narrowLiteral, "the stall window is not four ticks")
-        assertEquals(Opcode.IF_LT, tick[counterRead + 4].opcode, "sub-threshold counts do not stay in the grace window")
 
-        val frozenWrite = tick.indexOfFirst {
-            it.opcode == Opcode.IPUT_BOOLEAN &&
-                (it as ReferenceInstruction).reference.toString().contains("frozen:Z")
+        // The window is wall-clock, not a tick count: `now - lastChange` against 2500 ms.
+        val changeRead = tick.indexOfFirst {
+            it.opcode == Opcode.IGET_WIDE &&
+                (it as ReferenceInstruction).reference.toString().contains("lastChangeMs:J")
         }
-        assertTrue(frozenWrite >= 0, "frozen is never set")
-        assertTrue(frozenWrite > counterRead + 4, "the freeze does not follow the threshold guard")
-        assertTrue(
-            branchTarget(tick, counterRead + 4) > frozenWrite,
-            "the sub-threshold branch re-enters the freeze",
-        )
+        assertTrue(changeRead > counterRead, "the freeze does not read the last change time")
+        assertEquals(Opcode.SUB_LONG, tick[changeRead + 1].opcode, "the elapsed window is not computed")
+        assertEquals(Opcode.CONST_WIDE_16, tick[changeRead + 2].opcode, "the window length is not loaded")
+        assertEquals(2500L, (tick[changeRead + 2] as NarrowLiteralInstruction).narrowLiteral.toLong(), "the stall window is not 2500 ms")
+        assertEquals(Opcode.CMP_LONG, tick[changeRead + 3].opcode)
+        val windowGuard = tick[changeRead + 4]
+        assertEquals(Opcode.IF_GTZ, windowGuard.opcode, "sub-window stalls do not stay in the grace window")
+
+        val frozenWrite = tick.withIndex().indexOfFirst { (index, instruction) ->
+            index > changeRead && instruction.opcode == Opcode.IPUT_BOOLEAN &&
+                (instruction as ReferenceInstruction).reference.toString().contains("frozen:Z")
+        }
+        assertTrue(frozenWrite > changeRead + 4, "the freeze does not follow the window guard")
+        assertTrue(branchTarget(tick, changeRead + 4) > frozenWrite, "the sub-window branch does not skip the freeze")
+
+        // A freeze no longer hides: the dead block is driven by the attachment probe.
         val deadHide = tick.indexOfFirst {
             it.opcode == Opcode.INVOKE_STATIC &&
                 (it as ReferenceInstruction).reference.toString().contains("SkipButton;->hide")
         }
-        assertTrue(frozenWrite < deadHide, "the freeze does not fall into the hide")
+        assertTrue(frozenWrite < deadHide, "the freeze runs after the hide")
 
         val evaluate = engine.methods.first { it.name == "evaluate" }.instr()
-        val frozenRead = evaluate.indexOfFirst {
-            it.opcode == Opcode.IGET_BOOLEAN &&
-                (it as ReferenceInstruction).reference.toString().contains("frozen:Z")
-        }
-        assertTrue(frozenRead >= 0, "the reveal does not read frozen")
-        val guard = evaluate[frozenRead + 1]
-        assertEquals(Opcode.IF_NEZ, guard.opcode, "a frozen position is not blocked from showing")
-        val target = branchTarget(evaluate, frozenRead + 1)
-        assertEquals(Opcode.INVOKE_STATIC, evaluate[target].opcode)
-        assertTrue((evaluate[target] as ReferenceInstruction).reference.toString().contains("SkipButton;->hide"))
+        assertTrue(
+            evaluate.none { it.opcode == Opcode.IGET_BOOLEAN && (it as ReferenceInstruction).reference.toString().contains("frozen:Z") },
+            "the reveal still reads frozen",
+        )
         val show = evaluate.indexOfFirst {
             it.opcode == Opcode.INVOKE_STATIC &&
                 (it as ReferenceInstruction).reference.toString().contains("SkipButton;->show")
         }
-        assertTrue(target > show, "the frozen guard does not leave the reveal")
+        val reveal = evaluate.indexOfFirst { it.opcode == Opcode.APUT_BOOLEAN }
+        assertTrue(show > reveal, "the reveal does not reach the show")
     }
 
     @Test
