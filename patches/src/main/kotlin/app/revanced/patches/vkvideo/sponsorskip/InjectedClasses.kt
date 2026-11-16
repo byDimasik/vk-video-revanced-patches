@@ -1164,10 +1164,13 @@ private fun skipEngineSmali(): String = """
         invoke-static {p0}, $SKIP_ENGINE_CLASS;->stateOf(Lp73/a;)$SKIP_STATE_CLASS;
         move-result-object v0
         invoke-static {p0, p1}, $SKIP_ENGINE_CLASS;->rememberView(Lp73/a;Landroid/view/View;)V
-        if-nez v0, :return
+        if-eqz v0, :rebuild
         iput-object p1, v0, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        return-void
+
         # A resume re-attaches the view without announcing the video again; rebuild
         # the state so a released-and-resumed player keeps its engine.
+        :rebuild
         invoke-static {p0}, $SKIP_ENGINE_CLASS;->videoOf(Lp73/a;)Lcom/vk/dto/common/VideoFile;
         move-result-object v0
         if-eqz v0, :return
