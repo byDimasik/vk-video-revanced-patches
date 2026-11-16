@@ -116,7 +116,7 @@ internal val requiredMethods = mapOf(
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
         "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
-        "reload:1", "rememberVideo:2", "videoOf:1", "rememberBar:1", "findBar:2", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
+        "reload:1", "rememberVideo:2", "videoOf:1", "postVideo:2", "rememberBar:1", "findBar:2", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
     ),
     SKIP_MAIN_CLASS to listOf("<init>:5", "run:0"),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1"),
@@ -931,6 +931,20 @@ private fun skipEngineSmali(): String = """
         return v0
     .end method
 
+    .method private static postVideo(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
+        .registers 6
+
+        new-instance v0, $SKIP_MAIN_CLASS;
+        const/4 v1, 0x0
+        const/4 v2, 0x0
+        move-object v3, p0
+        move-object v4, p1
+        const/4 v5, 0x0
+        invoke-direct/range {v0 .. v5}, $SKIP_MAIN_CLASS;-><init>(I$SKIP_STATE_CLASS;Lp73/a;Lcom/vk/dto/common/VideoFile;Landroid/view/View;)V
+        invoke-static {v0}, $SKIP_ENGINE_CLASS;->postMain(Ljava/lang/Runnable;)V
+        return-void
+    .end method
+
     .method private static postMain(Ljava/lang/Runnable;)V
         .registers 2
 
@@ -985,20 +999,14 @@ private fun skipEngineSmali(): String = """
 
         move-object/from16 v0, p0
         move-object/from16 v1, p1
+        move-object/from16 v4, p1
         const-string v10, "hook"
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         if-eqz v0, :v0null
         invoke-static {}, $SKIP_ENGINE_CLASS;->onMain()Z
         move-result v10
         if-nez v10, :on_main
-        new-instance v4, $SKIP_MAIN_CLASS;
-        const/4 v5, 0x0
-        const/4 v6, 0x0
-        move-object v7, v0
-        move-object v8, v1
-        const/4 v9, 0x0
-        invoke-direct/range {v4 .. v9}, $SKIP_MAIN_CLASS;-><init>(I$SKIP_STATE_CLASS;Lp73/a;Lcom/vk/dto/common/VideoFile;Landroid/view/View;)V
-        invoke-static {v4}, $SKIP_ENGINE_CLASS;->postMain(Ljava/lang/Runnable;)V
+        invoke-static {v0, v1}, $SKIP_ENGINE_CLASS;->postVideo(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
         return-void
 
         :on_main
@@ -1100,7 +1108,6 @@ private fun skipEngineSmali(): String = """
         move-object v14, v2
         const/4 v15, 0x0
         invoke-direct/range {v10 .. v15}, $SKIP_STATE_CLASS;-><init>(Lp73/a;$SEGMENT_ARRAY[ZLandroid/os/Handler;Ljava/lang/Runnable;)V
-        move-object/from16 v4, p1
         iput-object v4, v10, $SKIP_STATE_CLASS->video:Lcom/vk/dto/common/VideoFile;
         invoke-static {v0, v4}, $SKIP_ENGINE_CLASS;->rememberVideo(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
         invoke-static {}, Landroid/os/SystemClock;->elapsedRealtime()J
@@ -1157,7 +1164,7 @@ private fun skipEngineSmali(): String = """
         invoke-static {p0}, $SKIP_ENGINE_CLASS;->stateOf(Lp73/a;)$SKIP_STATE_CLASS;
         move-result-object v0
         invoke-static {p0, p1}, $SKIP_ENGINE_CLASS;->rememberView(Lp73/a;Landroid/view/View;)V
-        if-eqz v0, :return
+        if-nez v0, :return
         iput-object p1, v0, $SKIP_STATE_CLASS->view:Landroid/view/View;
         # A resume re-attaches the view without announcing the video again; rebuild
         # the state so a released-and-resumed player keeps its engine.
@@ -1204,8 +1211,8 @@ private fun skipEngineSmali(): String = """
 
         if-eqz p0, :null
         instance-of v0, p0, Landroid/widget/ProgressBar;
-        if-eqz v0, :hit
-        if-gtz p1, :null
+        if-nez v0, :hit
+        if-lez p1, :null
         instance-of v0, p0, Landroid/view/ViewGroup;
         if-eqz v0, :null
         check-cast p0, Landroid/view/ViewGroup;
@@ -1491,7 +1498,7 @@ private fun skipEngineSmali(): String = """
         # The player instance can outlive its binding and report -1 forever; the seek
         # bar the app itself drives still carries the position as a fraction.
         iget-object v1, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
-        if-eqz v1, :fb_root
+        if-nez v1, :fb_root
         sget-object v1, $SKIP_ENGINE_CLASS->LAST_VIEW:Landroid/view/View;
         if-eqz v1, :fb_nobar
 
@@ -1503,7 +1510,7 @@ private fun skipEngineSmali(): String = """
         const v6, 0x${SEEK_BAR_VIEW_ID.toString(16)}
         invoke-virtual {v1, v6}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v2
-        if-eqz v2, :fb_have
+        if-nez v2, :fb_have
         const v6, 0x${SEEK_BAR_ID.toString(16)}
         invoke-virtual {v1, v6}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v2
@@ -1607,7 +1614,7 @@ private fun skipEngineSmali(): String = """
         # A usable position outranks the surface probe: the player can hand the
         # weakref out later than it starts ticking, and a null weakref with a live
         # timeline is a live player, not a dead one.
-        if-nez v5, :no_pos
+        if-eqz v5, :no_pos
         const/4 v2, 0x0
         iput v2, v14, $SKIP_STATE_CLASS->deadTicks:I
         goto :live
@@ -1633,6 +1640,14 @@ private fun skipEngineSmali(): String = """
         if-eqz v2, :hide
         invoke-static {v14}, $SKIP_ENGINE_CLASS;->evaluate($SKIP_STATE_CLASS;)I
         move-result v6
+        new-instance v7, Ljava/lang/StringBuilder;
+        const-string v10, "eval="
+        invoke-direct {v7, v10}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
+        invoke-virtual {v7, v6}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
+        invoke-virtual {v7, v3, v4}, Ljava/lang/StringBuilder;->append(J)Ljava/lang/StringBuilder;
+        invoke-virtual {v7}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+        move-result-object v7
+        invoke-static {v7}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         if-ltz v6, :repost
         const/4 v7, 0x1
         invoke-static {v14, v6, v7}, $SKIP_ENGINE_CLASS;->skip($SKIP_STATE_CLASS;IZ)V
@@ -1666,6 +1681,12 @@ private fun skipEngineSmali(): String = """
         if-eqz v3, :hidden
         invoke-interface {v0}, Lp73/a;->getPosition()J
         move-result-wide v1
+        const-wide/16 v6, -0x1
+        cmp-long v3, v1, v6
+        if-nez v3, :have_pos
+        iget-wide v1, p0, $SKIP_STATE_CLASS->lastPosMs:J
+
+        :have_pos
         iget-object v3, p0, $SKIP_STATE_CLASS->segments:$SEGMENT_ARRAY
         array-length v4, v3
         iget-object v5, p0, $SKIP_STATE_CLASS->consumed:[Z
@@ -1807,12 +1828,12 @@ private fun skipEngineSmali(): String = """
         move-result-wide v4
         const-wide/16 v6, -0x1
         cmp-long v8, v4, v6
-        if-nez v8, :return                # no position yet: leave the segment armed
+        if-eqz v8, :return                # no position yet: leave the segment armed
         iget-object v6, p0, $SKIP_STATE_CLASS->consumed:[Z
         aget-boolean v8, v6, p1
         if-nez v8, :return                # already consumed
         cmp-long v8, v4, v2
-        if-gez v8, :seek                  # still before the end: seek out of it
+        if-ltz v8, :seek                  # still before the end: seek out of it
         const/4 v8, 0x1
         aput-boolean v8, v6, p1
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V

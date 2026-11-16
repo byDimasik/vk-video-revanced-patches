@@ -422,10 +422,12 @@ class SponsorSkipPatchTest {
             val bodyLabel = body.indexOf("\n    :on_main", defer)
             assertTrue(bodyLabel > defer, "${entry.name} has no body label")
             val block = body.substring(defer, bodyLabel)
-            val built = block.indexOf("new-instance")
-            assertTrue(built > 0 && block.contains(SKIP_MAIN_CLASS), "${entry.name} does not build a dispatch")
-            assertEquals(entry.op, rangeOp(block, built), "${entry.name} posts the wrong op")
-            assertTrue(block.contains("postMain(Ljava/lang/Runnable;)V"), "${entry.name} does not post the dispatch")
+            val dispatches = block.contains("->postVideo(") || block.contains("->postMain(") || (block.contains("new-instance") && block.contains(SKIP_MAIN_CLASS))
+            assertTrue(dispatches, "${entry.name} does not dispatch off-main")
+            if (block.contains("new-instance")) {
+                assertEquals(entry.op, rangeOp(block, block.indexOf("new-instance")), "${entry.name} posts the wrong op")
+            }
+            assertTrue(block.contains("postMain(Ljava/lang/Runnable;)V") || block.contains("->postVideo("), "${entry.name} does not post the dispatch")
             assertTrue(block.trimEnd().endsWith("return-void"), "${entry.name} falls through after posting")
             val after = body.substring(bodyLabel)
             val contact = after.indexOf(entry.firstBody)
@@ -765,7 +767,7 @@ class SponsorSkipPatchTest {
         assertEquals(Opcode.CMP_LONG, deadCompare.opcode)
         assertEquals(positionRegister, (deadCompare as ThreeRegisterInstruction).registerB, "the -1 compare reads another value")
         val deadGuard = instructions[position + 4]
-        assertEquals(Opcode.IF_NEZ, deadGuard.opcode, "a missing position is not `if-nez` (no position yet)")
+        assertEquals(Opcode.IF_EQZ, deadGuard.opcode, "a missing position does not return (no position yet)")
         // No position yet leaves the segment armed: the return must precede the aput.
         val noPositionReturn = branchTarget(instructions, position + 4)
         assertEquals(Opcode.RETURN_VOID, instructions[noPositionReturn].opcode, "the no-position arm does not return")
@@ -786,7 +788,7 @@ class SponsorSkipPatchTest {
         assertEquals(Opcode.CMP_LONG, endCompare.opcode, "the endMs compare does not follow the consumed guard")
         assertEquals(positionRegister, (endCompare as ThreeRegisterInstruction).registerB, "the end compare reads another value")
         val endGuard = instructions[position + 9]
-        assertEquals(Opcode.IF_GEZ, endGuard.opcode, "the live arm is not `if-gez` (position before the end)")
+        assertEquals(Opcode.IF_LTZ, endGuard.opcode, "the live arm is not `if-ltz` (position before the end)")
 
         // The live arm jumps to the seek, and a position at/past the end falls through
         // into the same consume-and-hide tail the seek uses.
@@ -829,7 +831,7 @@ class SponsorSkipPatchTest {
         assertEquals(Opcode.CMP_LONG, tick[position + 3].opcode)
         // A missing position no longer routes to the dead block; the live arm lands on
         // the remembered-position write instead.
-        assertEquals(Opcode.IF_NEZ, tick[position + 4].opcode, "-1 still routes to the dead block")
+        assertEquals(Opcode.IF_NEZ, tick[position + 4].opcode, "-1 does not leave the position")
 
         val liveArm = branchTarget(tick, position + 4)
         assertTrue(liveArm > position + 4, "the -1 arm does not jump forward")
