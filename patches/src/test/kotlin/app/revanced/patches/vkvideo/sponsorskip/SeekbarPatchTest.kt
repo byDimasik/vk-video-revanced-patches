@@ -170,8 +170,8 @@ class SeekbarPatchTest {
     @Test
     fun `the tick gate branches to the hide path when disabled`() {
         val tick = sources[SKIP_ENGINE_CLASS]!!.substringAfter(".method public static tick")
-        val gate = tick.lines().first { it.contains(":hide") }
-        assertTrue(gate.contains("if-eqz v3, :hide"), "the gate is inverted: $gate")
+        val gate = tick.lines().first { it.contains(":hide") && !it.trim().startsWith("#") }
+        assertTrue(Regex("if-eqz v\\d+, :hide").containsMatchIn(gate), "the gate is inverted: $gate")
     }
 
     @Test
