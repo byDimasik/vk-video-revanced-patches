@@ -1254,16 +1254,16 @@ private fun skipEngineSmali(): String = """
         .registers 20
         .param p0, "state"
 
-        move-object/from16 v14, p19
+        move-object/from16 v14, p0
         if-eqz v14, :return
         iget-object v0, v14, $SKIP_STATE_CLASS->video:Lcom/vk/dto/common/VideoFile;
         if-eqz v0, :return
         invoke-interface {v0}, Lcom/vk/dto/common/VideoFile;->getDuration()I
-        move-result v1
-        int-to-long v1, v1
-        const-wide/16 v2, 0x3e8
-        mul-long/2addr v1, v2
-        invoke-static {v0, v1, v2}, $EPISODES_CLASS;->read(Lcom/vk/dto/common/VideoFile;J)$SEGMENT_ARRAY
+        move-result v2
+        int-to-long v2, v2
+        const-wide/16 v4, 0x3e8
+        mul-long/2addr v2, v4
+        invoke-static {v0, v2, v3}, $EPISODES_CLASS;->read(Lcom/vk/dto/common/VideoFile;J)$SEGMENT_ARRAY
         move-result-object v1
         array-length v2, v1
         if-eqz v2, :return
@@ -1316,7 +1316,7 @@ private fun skipEngineSmali(): String = """
         .registers 20
         .param p0, "state"
 
-        move-object/from16 v14, p19
+        move-object/from16 v14, p0
         if-eqz v14, :return
         iget-object v0, v14, $SKIP_STATE_CLASS->controller:Lp73/a;
         if-eqz v0, :return
