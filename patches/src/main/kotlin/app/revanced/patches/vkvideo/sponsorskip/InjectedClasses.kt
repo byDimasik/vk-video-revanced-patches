@@ -999,7 +999,7 @@ private fun skipEngineSmali(): String = """
 
         move-object/from16 v0, p0
         move-object/from16 v1, p1
-        move-object/from16 v4, p1
+        move-object/from16 v9, p1
         const-string v10, "hook"
         invoke-static {v10}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         if-eqz v0, :v0null
@@ -1108,8 +1108,8 @@ private fun skipEngineSmali(): String = """
         move-object v14, v2
         const/4 v15, 0x0
         invoke-direct/range {v10 .. v15}, $SKIP_STATE_CLASS;-><init>(Lp73/a;$SEGMENT_ARRAY[ZLandroid/os/Handler;Ljava/lang/Runnable;)V
-        iput-object v4, v10, $SKIP_STATE_CLASS->video:Lcom/vk/dto/common/VideoFile;
-        invoke-static {v0, v4}, $SKIP_ENGINE_CLASS;->rememberVideo(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
+        iput-object v9, v10, $SKIP_STATE_CLASS->video:Lcom/vk/dto/common/VideoFile;
+        invoke-static {v0, v9}, $SKIP_ENGINE_CLASS;->rememberVideo(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
         invoke-static {}, Landroid/os/SystemClock;->elapsedRealtime()J
         move-result-wide v6
         const-wide/16 v8, 0xfa0
