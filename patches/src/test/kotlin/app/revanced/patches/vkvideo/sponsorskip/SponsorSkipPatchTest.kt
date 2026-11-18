@@ -228,6 +228,7 @@ class SponsorSkipPatchTest {
         assertTrue(place.contains("invoke-virtual {v2}, Landroid/view/View;->getHeight()I"), "the container height is never read")
         assertTrue(place.contains("if-lt v9, v4, :return"), "a laid-out container bails out of the placement")
         assertTrue(place.contains("if-eqz v3, :content_view"), "a missing player container skips the content view")
+        assertTrue(place.contains("if-eqz v3, :content_root") && place.contains(":content_root"), "a missing content view does not fall back to the root")
         assertTrue(place.contains("->leftMargin:I") && place.contains("->topMargin:I"))
         assertTrue(place.contains("0x800030"), "place does not pin the gravity")
         assertTrue(place.contains("isAttachedToWindow"), "a detached surface is trusted")

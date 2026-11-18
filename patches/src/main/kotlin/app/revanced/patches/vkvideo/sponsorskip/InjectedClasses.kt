@@ -3103,7 +3103,10 @@ private fun skipButtonSmali(): String = """
         const v4, 0x1020002
         invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v3
-        if-nez v3, :have_container
+        if-eqz v3, :content_root
+        goto :have_container
+
+        :content_root
         move-object v3, v2
 
         :have_container
