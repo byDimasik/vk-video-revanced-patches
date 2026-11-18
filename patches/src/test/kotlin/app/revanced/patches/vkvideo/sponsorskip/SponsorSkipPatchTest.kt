@@ -227,7 +227,7 @@ class SponsorSkipPatchTest {
         assertEquals(4, Regex("getLocationInWindow").findAll(place).count(), "place does not read the surface, the container, the bar and the parent")
         assertTrue(place.contains("invoke-virtual {v2}, Landroid/view/View;->getHeight()I"), "the container height is never read")
         assertTrue(place.contains("if-lt v9, v4, :return"), "a laid-out container bails out of the placement")
-        assertTrue(place.contains("if-nez v3, :content_view"), "a missing player container skips the content view")
+        assertTrue(place.contains("if-eqz v3, :content_view"), "a missing player container skips the content view")
         assertTrue(place.contains("->leftMargin:I") && place.contains("->topMargin:I"))
         assertTrue(place.contains("0x800030"), "place does not pin the gravity")
         assertTrue(place.contains("isAttachedToWindow"), "a detached surface is trusted")
@@ -1061,6 +1061,7 @@ class SponsorSkipPatchTest {
         val map = viewOf.indexOf("->VIEWS:Ljava/util/WeakHashMap;")
         assertTrue(attach > 0 && own > attach && map > own, "the resolution order is not attach, own, map")
         assertEquals(3, Regex("isAttachedToWindow").findAll(viewOf).count(), "a detached remembered view is not filtered")
+        assertEquals(3, Regex("if-eqz v3, :").findAll(viewOf).count(), "a detached candidate is returned instead of a live one")
         assertTrue(viewOf.contains("sget-object v0, $SKIP_ENGINE_CLASS->LAST_VIEW"), "the last-view fallback is gone")
     }
 

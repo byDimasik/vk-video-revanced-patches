@@ -1345,7 +1345,7 @@ private fun skipEngineSmali(): String = """
         if-eqz v0, :own
         invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z
         move-result v3
-        if-nez v3, :own
+        if-eqz v3, :own
         return-object v0
 
         :own
@@ -1353,7 +1353,7 @@ private fun skipEngineSmali(): String = """
         if-eqz v0, :map
         invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z
         move-result v3
-        if-nez v3, :map
+        if-eqz v3, :map
         return-object v0
 
         :map
@@ -3096,14 +3096,14 @@ private fun skipButtonSmali(): String = """
         const v4, 0x7f0b098b
         invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v3
-        if-nez v3, :content_view
+        if-eqz v3, :content_view
         goto :have_container
 
         :content_view
         const v4, 0x1020002
         invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v3
-        if-eqz v3, :have_container
+        if-nez v3, :have_container
         move-object v3, v2
 
         :have_container
