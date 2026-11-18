@@ -222,60 +222,63 @@ class SponsorSkipPatchTest {
     }
 
     @Test
-    fun `the button clamps inside the player surface`() {
-        val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
-        val place = button.substring(button.indexOf(".method public static place"))
-        assertEquals(3, Regex("getLocationInWindow").findAll(place).count(), "place does not read the surface, the parent and the bar")
+    fun `place derives its box from the laid-out container, not from a cached measure`() {
+        val place = placeBody()
+        assertEquals(3, Regex("getLocationInWindow").findAll(place).count(), "place does not read the surface, the container and the bar")
+        assertTrue(place.contains("invoke-virtual {v2}, Landroid/view/View;->getHeight()I"), "the container height is never read")
+        assertTrue(place.contains("if-ge v9, v4, :return"), "an unlaid container does not bail out to the layout pass")
         assertTrue(place.contains("->leftMargin:I") && place.contains("->topMargin:I"))
         assertTrue(place.contains("0x800030"), "place does not pin the gravity")
-        assertTrue(place.contains("if-eqz v1, :fallback"), "a null surface does not route to the fallback")
-        assertEquals(3, Regex("if-eqz v1, :frame").findAll(place).count(), "the frame is not the terminal fallback")
-        assertTrue(place.contains("setMaxWidth") && place.contains("setMaxHeight"), "the button is not capped to the surface")
-        assertTrue(place.contains("if-eqz v3, :return"), "the layout is requested even when nothing changed")
-        assertTrue(button.replace(";;", ";").contains("invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V".replace(";;", ";")))
+        assertTrue(place.contains("isAttachedToWindow"), "a detached surface is trusted")
+        assertTrue(place.contains("if-eqz v3, :return"), "the params guard is missing")
+        assertTrue(place.contains("if-eqz v4, :return"), "the layout is requested even when nothing changed")
+        assertTrue(
+            sponsorSkipSources()[SKIP_BUTTON_CLASS]!!.replace(";;", ";")
+                .contains("invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V".replace(";;", ";")),
+        )
     }
-
     @Test
-    fun `the raised anchor is measured from the bar bottom in the parent frame`() {
+    fun `the anchor is measured from the bar top in container coordinates`() {
         val place = placeBody()
         assertTrue(
-            place.contains("invoke-virtual {v5, v6}, Landroid/view/View;->getLocationInWindow([I)V"),
-            "the bar location reuses another array than the parent one",
+            place.contains("invoke-virtual {v2, v7}, Landroid/view/View;->getLocationInWindow([I)V"),
+            "the container origin is not read first",
         )
-        assertTrue(place.contains("aget v15, v6, v4"), "the bar top is not read from the bar array")
-        assertTrue(place.contains("aget v4, v7, v4"), "the parent top is not read from the parent array")
-        assertTrue(place.contains("sub-int/2addr v15, v4"), "the parent origin is not subtracted")
-        assertTrue(place.contains("sub-int/2addr v15, v4\n    if-lez v12, :zero_bar"), "the anchor is not the bar top in the parent frame")
-        assertTrue(place.contains("sub-int/2addr v15, v6"), "the page anchor does not subtract the 8 dp gap")
-        assertTrue(place.contains("sub-int v12, v15, v13"), "the anchor does not subtract the button height")
+        assertTrue(
+            place.contains("invoke-virtual {v4}, Landroid/view/View;->getLocationInWindow([I)V"),
+            "the bar location does not use the second array",
+        )
+        assertTrue(place.contains("aget v9, v6, v9") && place.contains("aget v4, v7, v4"), "the bar and container tops are not the compared registers")
+        assertTrue(place.contains("sub-int v9, v9, v4"), "the container origin is not subtracted from the bar")
+        assertTrue(place.contains("sub-int v9, v9, v5"), "the anchor does not subtract the button height")
+        assertTrue(place.contains("sub-int v9, v9, v14"), "the anchor does not subtract the edge pad")
+        assertTrue(place.contains(":bottom\n    sub-int v9, v13, v5"), "the bottom fallback is not in container coordinates")
     }
-
     @Test
-    fun `the bar is looked up page id first, scoped to the content view with a decor fallback`() {
+    fun `the bar is looked up in the container, page id first`() {
         val place = placeBody()
-        val contentView = place.indexOf("const v5, 0x7f0b098b")
+        val container = place.indexOf("const v4, 0x7f0b098b")
+        val content = place.indexOf("const v4, 0x1020002")
         val pageBar = place.indexOf("const v4, 0x7f0b223d")
         val cardBar = place.indexOf("const v4, 0x7f0b2236")
-        val decor = place.indexOf("const v5, 0x1020002", contentView)
-        assertTrue(contentView > 0 && pageBar > 0 && cardBar > 0, "the ids are not all looked up")
-        assertTrue(contentView < pageBar, "the bar is searched before the content view")
-        assertTrue(decor in (contentView + 1) until pageBar, "the decor fallback does not follow a missing content view")
+        assertTrue(container > 0 && content > 0 && pageBar > 0 && cardBar > 0, "the ids are not all looked up")
+        assertTrue(container < content, "the player container is not searched before the decor")
+        assertTrue(content < pageBar, "the bar is searched before the container is resolved")
         assertTrue(pageBar < cardBar, "the page bar is not searched first")
-        assertTrue(place.contains("if-eqz v5, :bar_first"), "the page bar hit does not skip the card bar")
-        assertTrue(place.contains("if-eqz v5, :bar_first\n    const/4 v13, 0x0"), "the page host is not the guarded form")
-        assertTrue(place.contains("if-eqz v5, :no_bar\n    const/4 v13, 0x1"), "the card host is not recorded as the bar form")
+        assertTrue(place.contains("if-eqz v4, :bar_alt"), "the page bar hit does not skip the card bar")
+        assertTrue(place.contains("if-lez v9, :bottom"), "a zero bar height does not fall back")
+        assertTrue(place.contains("if-eqz v9, :bottom"), "a detached bar is used")
     }
-
     @Test
-    fun `place runs on seventeen registers with the parameter window kept last`() {
+    fun `place runs on sixteen registers with the parameter window kept last`() {
         val context = createBytecodeContext(*fixtures.toTypedArray())
         sponsorSkipPatch.execute(context)
         val method = MutableMethod(context.classDefs.first { it.type == SKIP_BUTTON_CLASS }.methods.first { it.name == "place" })
         val source = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!.substringAfter(".method public static place")
-        assertTrue(source.contains("move-object/from16 v15, p0"), "the parameter is not copied into a low register")
-        assertEquals(17, method.implementation!!.registerCount, "the register count does not match the reference map")
-        assertTrue(source.contains(".registers 17"), "the source and the assembled frame disagree")
-        val bound = 16
+        assertTrue(source.contains("move-object/from16 v15, p0"), "the parameter is not the window register")
+        assertEquals(16, method.implementation!!.registerCount, "the register count does not match the reference map")
+        assertTrue(source.contains(".registers 16"), "the source and the assembled frame disagree")
+        val bound = 15
         method.instr().forEach { instruction ->
             if (instruction is OneRegisterInstruction) {
                 assertTrue(instruction.registerA in 0 until bound + 1, "${instruction.opcode} reads a register past the frame")
@@ -283,29 +286,28 @@ class SponsorSkipPatchTest {
             (instruction as? TwoRegisterInstruction)?.let {
                 assertTrue(it.registerA <= bound && it.registerB <= bound, "${instruction.opcode} reads a register past the frame")
             }
+            // 22c field accesses only reach v15, which is why the frame is capped here.
+            (instruction as? ThreeRegisterInstruction)?.let {
+                assertTrue(it.registerA <= bound && it.registerB <= bound && it.registerC <= bound, "${instruction.opcode} reads past the frame")
+            }
         }
     }
-
     @Test
-    fun `the raise adds no measure or size calls to place`() {
+    fun `place neither measures nor re-caps the label`() {
         val place = placeBody()
         assertEquals(0, Regex("->measure").findAll(place).count(), "place measures")
-        assertEquals(1, Regex("->setMaxWidth").findAll(place).count(), "the width cap is set more than once")
-        assertEquals(1, Regex("->setMaxHeight").findAll(place).count(), "the height cap is set more than once")
+        assertEquals(0, Regex("->setMaxWidth").findAll(place).count(), "place caps the width")
+        assertEquals(0, Regex("->setMaxHeight").findAll(place).count(), "place caps the height")
+        assertEquals(0, Regex("DisplayMetrics").findAll(place).count(), "place reads the display metrics instead of the container")
     }
-
     @Test
-    fun `an unlaid or missing bar falls back to the fixed offset`() {
+    fun `an unlaid or missing bar falls back to the container bottom`() {
         val place = placeBody()
-        assertTrue(place.contains("const/16 v5, 0x1e"), "the fallback offset does not clear the bar")
-        assertTrue(place.contains(":target_fallback\n    const/16 v5, 0x1e"), "the fallback is not the anchor form")
-        assertTrue(place.contains("sub-int v15, v11, v5"), "the fallback does not lift the surface bottom by the offset")
-        assertTrue(place.contains("if-eqz v1, :no_bar"), "a missing container does not reach the fallback")
-        assertTrue(place.contains("if-lez v12, :zero_bar"), "a zero bar height does not reach the fallback")
-        assertTrue(place.contains(":zero_bar\n    const/4 v13, 0x1"), "a zero bar height does not take the same form as an unlaid alternate bar")
-        assertTrue(place.contains(":no_bar\n    const/4 v13, 0x2"), "the missing bar is not the fallback form")
+        assertTrue(place.contains(":bottom\n    sub-int v9, v13, v5"), "the fallback is not the container bottom")
+        assertTrue(place.contains("if-eqz v4, :bottom"), "the missing bar is not the fallback form")
+        assertTrue(place.contains("if-lez v9, :bottom"), "a zero bar height does not reach the fallback")
+        assertTrue(place.contains("if-eqz v9, :bottom"), "a detached bar does not reach the fallback")
     }
-
     @Test
     fun `show measures the label and writes the measured size before revealing it`() {
         val show = showBody()
@@ -355,32 +357,25 @@ class SponsorSkipPatchTest {
     @Test
     fun `place falls back to the layout params when the button has no extent`() {
         val place = placeBody()
-        assertTrue(place.contains("if-lez v12, :w_measured"), "a zero width does not fall back")
-        assertTrue(place.contains("iget v12, v2, Landroid/widget/FrameLayout\$LayoutParams;->width:I"), "the width fallback reads another field")
-        assertTrue(place.contains("if-lez v13, :h_measured"), "a zero height does not fall back")
-        assertTrue(place.contains("iget v13, v2, Landroid/widget/FrameLayout\$LayoutParams;->height:I"), "the height fallback reads another field")
+        assertTrue(place.contains("if-gtz v8, :w_ok"), "a zero width does not fall back")
+        assertTrue(place.contains("iget v8, v3, Landroid/view/ViewGroup\$LayoutParams;->width:I"), "the width fallback reads another field")
+        assertTrue(place.contains("if-gtz v5, :h_ok"), "a zero height does not fall back")
+        assertTrue(place.contains("iget v5, v3, Landroid/view/ViewGroup\$LayoutParams;->height:I"), "the height fallback reads another field")
     }
-
     @Test
-    fun `measure and place share one width floor`() {
+    fun `the measure keeps the width floor and place re-caps against the container`() {
         val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
         assertEquals(1, Regex("\\.method public static minWidth").findAll(button).count(), "the floor helper is duplicated")
         assertTrue(showBody().contains("->minWidth(Landroid/content/Context;I)I"), "the measure ignores the floor helper")
-        assertTrue(placeBody().contains("->minWidth(Landroid/content/Context;I)I"), "the place ignores the floor helper")
+        assertTrue(placeBody().contains("iput v8, v3, Landroid/view/ViewGroup\$LayoutParams;->width:I"), "place does not write the size back")
     }
-
     @Test
     fun `the floor raises the width instead of lowering it`() {
         assertTrue(
             showBody().contains("if-ge v6, v4, :m_w\n    move v6, v4"),
             "the measure keeps the smaller width when the floor is larger",
         )
-        assertTrue(
-            placeBody().contains("if-ge v4, v14, :w_max\n    move v4, v14"),
-            "the place keeps the smaller cap when the floor is larger",
-        )
     }
-
     @Test
     fun `the height spec is reduced by the inset and floored at one`() {
         val show = showBody()
@@ -390,23 +385,25 @@ class SponsorSkipPatchTest {
     }
 
     @Test
-    fun `the layout listener follows the surface and the button, then detaches`() {
+    fun `the layout listener follows the surface, the button and the container, then detaches`() {
         val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
         assertTrue(
             button.replace(";;", ";")
-                .contains("$SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;)V".replace(";;", ";")),
+                .contains("$SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;Landroid/view/View;)V".replace(";;", ";")),
+            "place does not watch the container",
         )
         val layout = sponsorSkipSources()[SKIP_LAYOUT_CLASS]!!
-        assertEquals(2, Regex("addOnLayoutChangeListener").findAll(layout).count(), "both slots are not watched")
+        assertEquals(3, Regex("addOnLayoutChangeListener").findAll(layout).count(), "not all three slots are watched")
         assertTrue(layout.contains("if-nez v0, :created") && layout.contains(":created"), "the listener is not created on demand")
         assertTrue(layout.contains("if-eq v1, p1"), "the surface slot does not skip the same view")
         assertTrue(layout.contains("if-eq v1, p2"), "the button slot does not skip the same view")
+        assertTrue(layout.contains("if-eq v1, p3"), "the container slot does not skip the same view")
         val stop = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!.substringAfter(".method private static stop")
-        assertEquals(2, Regex("removeOnLayoutChangeListener").findAll(stop).count(), "stop leaves a listener attached")
+        assertEquals(3, Regex("removeOnLayoutChangeListener").findAll(stop).count(), "stop leaves a listener attached")
         assertTrue(stop.contains("->listenerView:Landroid/view/View;"))
         assertTrue(stop.contains("->buttonView:Landroid/view/View;"))
+        assertTrue(stop.contains("->listenerContainer:Landroid/view/View;"))
     }
-
     @Test
     fun `every view-mutating entry point guards before its body`() {
         guardedEntries.forEach { entry ->
@@ -572,6 +569,8 @@ class SponsorSkipPatchTest {
             "$SKIP_ENGINE_CLASS->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V" to "guarded entry, posts op 0",
             "$SKIP_ENGINE_CLASS->onRelease(Lp73/a;)V" to "guarded entry, posts op 1",
             "$SKIP_ENGINE_CLASS->onSeek(Ljava/lang/Object;J)V" to "guarded entry, posts op 2",
+            "$SKIP_ENGINE_CLASS->onViewAttached(Lp73/a;Landroid/view/View;)V" to "guarded entry, posts op 4",
+            "$SKIP_ENGINE_CLASS->onViewAttached(Lb83/a;Landroid/view/View;)V" to "guarded entry, posts op 4",
             "$SKIP_TICK_CLASS->run()V" to "reposted only on the handler built from getMainLooper()",
             "$SKIP_CLICK_CLASS->onClick(Landroid/view/View;)V" to "view dispatch is main",
             "$SKIP_LAYOUT_CLASS->onLayoutChange(Landroid/view/View;IIIIIIII)V" to "dispatched by the layout pass, main by construction",
@@ -614,15 +613,17 @@ class SponsorSkipPatchTest {
     }
 
     @Test
-    fun `onViewAttached stays inline`() {
+    fun `onViewAttached defers the redraw to main and hands the view over`() {
         val attach = engineBody("onViewAttached", "Lp73/a;Landroid/view/View;")
-        assertTrue(!attach.contains("onMain()Z"), "onViewAttached was deferred")
+        assertTrue(attach.contains("onMain()Z"), "onViewAttached does not check the thread")
+        assertTrue(attach.contains("new-instance v1, $SKIP_MAIN_CLASS"), "the off-main path does not defer")
+        assertEquals(4, rangeOp(attach, attach.indexOf("new-instance")), "the redraw op is wrong")
+        assertTrue(attach.contains("->attachView:Landroid/view/View;"), "the attach event does not record the view")
         assertTrue(
             sponsorSkipSources()[SKIP_ENGINE_CLASS]!!.contains(".field private static volatile LAST_VIEW:"),
             "the cross-thread view handoff is not volatile",
         )
     }
-
     @Test
     fun `the diagnostic reports thread and layout state`() {
         val trace = engineBody("trace", "Ljava/lang/String;Landroid/view/View;")
@@ -666,14 +667,16 @@ class SponsorSkipPatchTest {
     @Test
     fun `the guards cover the added members`() {
         assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("place:1"))
-        assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("minWidth:2"))
+        assertTrue(requiredMethods.getValue(SKIP_BUTTON_CLASS).contains("textColor:0"))
         assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("onSeek:2"))
-        assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("skip:3"))
-        assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("rearm:2"))
+        assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).contains("redraw:1"))
         assertTrue(requiredMethods.getValue(CATEGORY_CLASS).contains("label:1"))
         assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).contains("lastToastMs"))
-        assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9", "watch:3")))
-        assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("view", "button", "listener", "listenerView", "buttonView")))
+        assertTrue(requiredMethods.getValue(SKIP_LAYOUT_CLASS).containsAll(listOf("<init>:1", "onLayoutChange:9", "watch:4")))
+        assertTrue(
+            requiredFields.getValue(SKIP_STATE_CLASS)
+                .containsAll(listOf("view", "attachView", "button", "listener", "listenerView", "buttonView", "listenerContainer", "lastIndex")),
+        )
         assertTrue(requiredFields.getValue(SKIP_STATE_CLASS).containsAll(listOf("lastPosMs", "stallTicks", "frozen")))
         assertTrue(sponsorSkipSources().containsKey(SKIP_LAYOUT_CLASS))
         assertTrue(requiredMethods.getValue(SKIP_ENGINE_CLASS).containsAll(listOf("onMain:0", "mainHandler:0", "postMain:1", "trace:2")))
@@ -682,7 +685,6 @@ class SponsorSkipPatchTest {
         assertTrue(requiredFields.getValue(SKIP_MAIN_CLASS).containsAll(listOf("op", "state", "controller", "video", "target")))
         assertTrue(sponsorSkipSources().containsKey(SKIP_MAIN_CLASS))
     }
-
     @Test
     fun `evaluate consumes and hides a segment that has ended`() {
         val context = createBytecodeContext(*fixtures.toTypedArray())
@@ -1008,6 +1010,49 @@ class SponsorSkipPatchTest {
     }
 
     /** The `show` body, sliced out for ordering assertions. */
+    @Test
+    fun `the label is light on the fixed scrim instead of computed from the category`() {
+        val button = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+        val color = button.substringAfter(".method public static textColor").substringBefore(".end method")
+        assertTrue(color.contains("const/4 v0, -0x1"), "the text colour is not the light constant")
+        val show = showBody()
+        assertTrue(show.contains("->textColor()I"), "show does not use the colour helper")
+        assertTrue(show.contains("const v4, -0x33ffffff"), "the scrim constant moved")
+        assertTrue(!show.contains("0x12b") && !show.contains("0x24b"), "the category luminance branch survived")
+        assertTrue(!show.contains("->color(I)I"), "the category colour is still resolved for the text")
+    }
+
+    @Test
+    fun `the resolved view prefers the last attach event and rejects a detached one`() {
+        val engine = sponsorSkipSources()[SKIP_ENGINE_CLASS]!!
+        val viewOf = engine.substringAfter(".method public static viewOf").substringBefore(".end method")
+        val attach = viewOf.indexOf("->attachView:Landroid/view/View;")
+        val own = viewOf.indexOf("->view:Landroid/view/View;")
+        val map = viewOf.indexOf("->VIEWS:Ljava/util/WeakHashMap;")
+        assertTrue(attach > 0 && own > attach && map > own, "the resolution order is not attach, own, map")
+        assertEquals(3, Regex("isAttachedToWindow").findAll(viewOf).count(), "a detached remembered view is not filtered")
+        assertTrue(viewOf.contains("sget-object v0, $SKIP_ENGINE_CLASS->LAST_VIEW"), "the last-view fallback is gone")
+    }
+
+    @Test
+    fun `the attach event re-shows a visible button against the new surface`() {
+        val redraw = engineBody("redraw", "$SKIP_STATE_CLASS").replace(";;", ";")
+        assertTrue(redraw.contains("getVisibility()I"), "redraw does not check visibility")
+        assertTrue(redraw.contains("->show("), "a visible button is not re-measured")
+        assertTrue(redraw.contains("->place("), "a hidden button is not repositioned")
+        assertTrue(redraw.contains("->lastIndex:I"), "the redraw loses the segment index")
+        val show = showBody()
+        assertTrue(show.contains("iput p1, p0, $SKIP_STATE_CLASS->lastIndex:I"), "show does not record the index")
+    }
+
+    @Test
+    fun `the main op table carries the redraw op`() {
+        val run = sponsorSkipSources()[SKIP_MAIN_CLASS]!!
+        assertTrue(run.contains("const/4 v1, 0x4") && run.contains(":op4"), "op 4 is not dispatched")
+        val op4 = run.substringAfter("\n    :op4").substringBefore(".end method")
+        assertTrue(op4.contains("->redraw("), "op 4 does not redraw")
+    }
+
     private fun showBody(): String = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
         .substringAfter(".method public static show")
         .substringBefore(".method public static hide")
