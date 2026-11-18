@@ -3129,7 +3129,7 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v1}, Landroid/view/View;->isAttachedToWindow()Z
         move-result v4
         if-eqz v4, :bounds_done
-        invoke-virtual {v1}, Landroid/view/View;->getLocationInWindow([I)V
+        invoke-virtual {v1, v6}, Landroid/view/View;->getLocationInWindow([I)V
         const/4 v4, 0x0
         aget v10, v6, v4
         aget v5, v7, v4
@@ -3231,7 +3231,7 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v4}, Landroid/view/View;->isAttachedToWindow()Z
         move-result v9
         if-eqz v9, :bottom
-        invoke-virtual {v4}, Landroid/view/View;->getLocationInWindow([I)V
+        invoke-virtual {v4, v6}, Landroid/view/View;->getLocationInWindow([I)V
         const/4 v9, 0x1
         aget v9, v6, v9
         const/4 v4, 0x1
