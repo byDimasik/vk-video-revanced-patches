@@ -1373,8 +1373,10 @@ private fun skipEngineSmali(): String = """
 
         :last
         sget-object v0, $SKIP_ENGINE_CLASS->LAST_VIEW:Landroid/view/View;
+        return-object v0
 
         :null
+        const/4 v0, 0x0
         return-object v0
     .end method
 
