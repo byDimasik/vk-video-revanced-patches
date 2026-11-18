@@ -371,7 +371,7 @@ class SponsorSkipPatchTest {
         val place = placeBody()
         assertTrue(place.contains("if-gt v4, v10, :bounds_ok") && place.contains("if-gt v5, v11, :bounds_set"), "an empty intersection is accepted")
         assertTrue(place.contains("if-le v4, v8, :clip_r") && place.contains("if-le v5, v9, :clip_b"), "the surface is not clipped to the container")
-        assertTrue(place.contains("if-ge v12, v9, :x_hi") && place.contains("if-ge v9, v4, :y_hi"), "a valid coordinate is overwritten")
+        assertTrue(place.contains("if-le v12, v9, :x_hi") && place.contains("if-le v9, v4, :y_hi"), "a valid coordinate is pulled down to the bottom limit")
         assertTrue(place.contains("if-ge v12, v9, :x_done") && place.contains("if-ge v9, v4, :y_done"), "a coordinate below the minimum is kept")
     }
     @Test

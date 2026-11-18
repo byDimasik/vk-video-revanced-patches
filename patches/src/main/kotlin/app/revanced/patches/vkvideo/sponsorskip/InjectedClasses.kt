@@ -3210,7 +3210,7 @@ private fun skipButtonSmali(): String = """
         sub-int v12, v12, v14
         sub-int v12, v12, v14
         add-int v9, v12, v14
-        if-ge v12, v9, :x_hi
+        if-le v12, v9, :x_hi
         move v12, v9
 
         :x_hi
@@ -3257,7 +3257,7 @@ private fun skipButtonSmali(): String = """
         :y_clamp
         sub-int v4, v13, v5
         sub-int v4, v4, v14
-        if-ge v9, v4, :y_hi
+        if-le v9, v4, :y_hi
         move v9, v4
 
         :y_hi
