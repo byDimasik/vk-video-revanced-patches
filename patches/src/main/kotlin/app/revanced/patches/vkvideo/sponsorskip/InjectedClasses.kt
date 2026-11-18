@@ -3187,7 +3187,7 @@ private fun skipButtonSmali(): String = """
         move-result v8
         iget v4, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
         if-lez v4, :w_ok
-        if-ne v4, v8, :w_ok
+        if-eq v4, v8, :w_ok
         move v8, v4
 
         :w_ok
@@ -3195,7 +3195,7 @@ private fun skipButtonSmali(): String = """
         move-result v5
         iget v4, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
         if-lez v4, :h_ok
-        if-ne v4, v5, :h_ok
+        if-eq v4, v5, :h_ok
         move v5, v4
 
         :h_ok
@@ -3270,8 +3270,10 @@ private fun skipButtonSmali(): String = """
         # button's own parent: shift by the difference of the two window origins.
         invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
         move-result-object v10
-        check-cast v10, Landroid/view/View;
         if-eqz v10, :no_shift
+        instance-of v4, v10, Landroid/view/View;
+        if-eqz v4, :no_shift
+        check-cast v10, Landroid/view/View;
         const/4 v4, 0x0
         aget v11, v7, v4
         invoke-virtual {v10, v6}, Landroid/view/View;->getLocationInWindow([I)V

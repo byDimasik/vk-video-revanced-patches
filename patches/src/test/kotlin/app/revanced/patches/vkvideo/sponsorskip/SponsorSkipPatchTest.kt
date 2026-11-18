@@ -356,15 +356,16 @@ class SponsorSkipPatchTest {
     }
 
     @Test
-    fun `place falls back to the layout params when the button has no extent`() {
+    fun `place prefers the freshly requested size over a stale laid-out one`() {
         val place = placeBody()
         assertTrue(place.contains("if-lez v4, :w_ok"), "a missing requested width does not fall back")
         assertTrue(place.contains("iget v4, v3, Landroid/view/ViewGroup\$LayoutParams;->width:I"), "the width is not read from the params")
-        assertTrue(place.contains("if-ne v4, v8, :w_ok"), "a differing requested width is not preferred")
+        assertTrue(place.contains("if-eq v4, v8, :w_ok"), "a stale differing width is not replaced by the requested one")
         assertTrue(place.contains("if-lez v4, :h_ok"), "a missing requested height does not fall back")
         assertTrue(place.contains("iget v4, v3, Landroid/view/ViewGroup\$LayoutParams;->height:I"), "the height is not read from the params")
-        assertTrue(place.contains("if-ne v4, v5, :h_ok"), "a differing requested height is not preferred")
+        assertTrue(place.contains("if-eq v4, v5, :h_ok"), "a stale differing height is not replaced by the requested one")
     }
+
     @Test
     fun `the clamps raise a coordinate instead of keeping the corner`() {
         val place = placeBody()
@@ -377,6 +378,7 @@ class SponsorSkipPatchTest {
     fun `the margins are shifted into the button parent origin`() {
         val place = placeBody()
         assertTrue(place.contains(":no_shift") && place.contains("if-eqz v10, :no_shift"), "a detached button has no origin to shift by")
+        assertTrue(place.contains("instance-of v4, v10, Landroid/view/View;"), "a non-view parent is cast anyway")
         assertTrue(place.contains("sub-int v11, v11, v4") && place.contains("add-int/2addr v12, v11"), "x is not shifted to the parent")
         assertTrue(place.contains("add-int/2addr v9, v11"), "y is not shifted to the parent")
         assertTrue(
