@@ -245,7 +245,7 @@ class SponsorSkipPatchTest {
             "the container origin is not read first",
         )
         assertTrue(
-            place.contains("invoke-virtual {v4}, Landroid/view/View;->getLocationInWindow([I)V"),
+            place.contains("invoke-virtual {v4, v6}, Landroid/view/View;->getLocationInWindow([I)V"),
             "the bar location does not use the second array",
         )
         assertTrue(place.contains("aget v9, v6, v9") && place.contains("aget v4, v7, v4"), "the bar and container tops are not the compared registers")
