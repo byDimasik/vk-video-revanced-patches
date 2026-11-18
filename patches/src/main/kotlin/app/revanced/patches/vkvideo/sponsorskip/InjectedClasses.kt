@@ -3096,7 +3096,10 @@ private fun skipButtonSmali(): String = """
         const v4, 0x7f0b098b
         invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v3
-        if-eqz v3, :have_container
+        if-nez v3, :content_view
+        goto :have_container
+
+        :content_view
         const v4, 0x1020002
         invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v3
@@ -3112,7 +3115,7 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v2}, Landroid/view/View;->getHeight()I
         move-result v9
         const/4 v4, 0x1
-        if-ge v9, v4, :return
+        if-lt v9, v4, :return
 
         const/4 v4, 0x2
         new-array v6, v4, [I
@@ -3125,7 +3128,7 @@ private fun skipButtonSmali(): String = """
         move v12, v8
         move v13, v9
         if-eqz v1, :bounds_done
-        if-ne v1, v2, :bounds_done
+        if-eq v1, v2, :bounds_done
         invoke-virtual {v1}, Landroid/view/View;->isAttachedToWindow()Z
         move-result v4
         if-eqz v4, :bounds_done
@@ -3144,11 +3147,11 @@ private fun skipButtonSmali(): String = """
         invoke-virtual {v1}, Landroid/view/View;->getHeight()I
         move-result v5
         add-int/2addr v5, v11
-        if-ge v4, v8, :clip_r
+        if-le v4, v8, :clip_r
         move v4, v8
 
         :clip_r
-        if-ge v5, v9, :clip_b
+        if-le v5, v9, :clip_b
         move v5, v9
 
         :clip_b
@@ -3160,11 +3163,11 @@ private fun skipButtonSmali(): String = """
         const/4 v11, 0x0
 
         :clip_t
-        if-le v4, v10, :bounds_ok
+        if-gt v4, v10, :bounds_ok
         goto :bounds_done
 
         :bounds_ok
-        if-le v5, v11, :bounds_set
+        if-gt v5, v11, :bounds_set
         goto :bounds_done
 
         :bounds_set
@@ -3177,17 +3180,23 @@ private fun skipButtonSmali(): String = """
         if-eqz v3, :return
         check-cast v3, Landroid/widget/FrameLayout${'$'}LayoutParams;
 
-        # Button size: the laid-out size when it has one, else the requested size.
+        # Button size: the requested size when show just measured a new one, else the
+        # laid-out size. A laid-out size that still differs from the request is a stale
+        # pre-handoff measure and would leave the button bigger than the mini surface.
         invoke-virtual {v0}, Landroid/view/View;->getWidth()I
         move-result v8
-        if-gtz v8, :w_ok
-        iget v8, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
+        iget v4, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
+        if-lez v4, :w_ok
+        if-ne v4, v8, :w_ok
+        move v8, v4
 
         :w_ok
         invoke-virtual {v0}, Landroid/view/View;->getHeight()I
         move-result v5
-        if-gtz v5, :h_ok
-        iget v5, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
+        iget v4, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
+        if-lez v4, :h_ok
+        if-ne v4, v5, :h_ok
+        move v5, v4
 
         :h_ok
         invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
@@ -3201,12 +3210,12 @@ private fun skipButtonSmali(): String = """
         sub-int v12, v12, v14
         sub-int v12, v12, v14
         add-int v9, v12, v14
-        if-le v12, v9, :x_hi
+        if-ge v12, v9, :x_hi
         move v12, v9
 
         :x_hi
         add-int v9, v10, v14
-        if-lt v12, v9, :x_done
+        if-ge v12, v9, :x_done
         move v12, v9
 
         :x_done
@@ -3248,15 +3257,34 @@ private fun skipButtonSmali(): String = """
         :y_clamp
         sub-int v4, v13, v5
         sub-int v4, v4, v14
-        if-le v9, v4, :y_hi
+        if-ge v9, v4, :y_hi
         move v9, v4
 
         :y_hi
         add-int v4, v11, v14
-        if-lt v9, v4, :y_done
+        if-ge v9, v4, :y_done
         move v9, v4
 
         :y_done
+        # x and y are in container coordinates, the margins below are offsets inside the
+        # button's own parent: shift by the difference of the two window origins.
+        invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v10
+        check-cast v10, Landroid/view/View;
+        if-eqz v10, :no_shift
+        const/4 v4, 0x0
+        aget v11, v7, v4
+        invoke-virtual {v10, v6}, Landroid/view/View;->getLocationInWindow([I)V
+        aget v4, v6, v4
+        sub-int v11, v11, v4
+        add-int/2addr v12, v11
+        const/4 v4, 0x1
+        aget v11, v7, v4
+        aget v4, v6, v4
+        sub-int v11, v11, v4
+        add-int/2addr v9, v11
+
+        :no_shift
         iput v8, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
         iput v5, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
         const/4 v4, 0x0

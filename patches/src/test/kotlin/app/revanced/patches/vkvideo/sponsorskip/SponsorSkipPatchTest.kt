@@ -224,9 +224,10 @@ class SponsorSkipPatchTest {
     @Test
     fun `place derives its box from the laid-out container, not from a cached measure`() {
         val place = placeBody()
-        assertEquals(3, Regex("getLocationInWindow").findAll(place).count(), "place does not read the surface, the container and the bar")
+        assertEquals(4, Regex("getLocationInWindow").findAll(place).count(), "place does not read the surface, the container, the bar and the parent")
         assertTrue(place.contains("invoke-virtual {v2}, Landroid/view/View;->getHeight()I"), "the container height is never read")
-        assertTrue(place.contains("if-ge v9, v4, :return"), "an unlaid container does not bail out to the layout pass")
+        assertTrue(place.contains("if-lt v9, v4, :return"), "a laid-out container bails out of the placement")
+        assertTrue(place.contains("if-nez v3, :content_view"), "a missing player container skips the content view")
         assertTrue(place.contains("->leftMargin:I") && place.contains("->topMargin:I"))
         assertTrue(place.contains("0x800030"), "place does not pin the gravity")
         assertTrue(place.contains("isAttachedToWindow"), "a detached surface is trusted")
@@ -357,10 +358,37 @@ class SponsorSkipPatchTest {
     @Test
     fun `place falls back to the layout params when the button has no extent`() {
         val place = placeBody()
-        assertTrue(place.contains("if-gtz v8, :w_ok"), "a zero width does not fall back")
-        assertTrue(place.contains("iget v8, v3, Landroid/view/ViewGroup\$LayoutParams;->width:I"), "the width fallback reads another field")
-        assertTrue(place.contains("if-gtz v5, :h_ok"), "a zero height does not fall back")
-        assertTrue(place.contains("iget v5, v3, Landroid/view/ViewGroup\$LayoutParams;->height:I"), "the height fallback reads another field")
+        assertTrue(place.contains("if-lez v4, :w_ok"), "a missing requested width does not fall back")
+        assertTrue(place.contains("iget v4, v3, Landroid/view/ViewGroup\$LayoutParams;->width:I"), "the width is not read from the params")
+        assertTrue(place.contains("if-ne v4, v8, :w_ok"), "a differing requested width is not preferred")
+        assertTrue(place.contains("if-lez v4, :h_ok"), "a missing requested height does not fall back")
+        assertTrue(place.contains("iget v4, v3, Landroid/view/ViewGroup\$LayoutParams;->height:I"), "the height is not read from the params")
+        assertTrue(place.contains("if-ne v4, v5, :h_ok"), "a differing requested height is not preferred")
+    }
+    @Test
+    fun `the clamps raise a coordinate instead of keeping the corner`() {
+        val place = placeBody()
+        assertTrue(place.contains("if-gt v4, v10, :bounds_ok") && place.contains("if-gt v5, v11, :bounds_set"), "an empty intersection is accepted")
+        assertTrue(place.contains("if-le v4, v8, :clip_r") && place.contains("if-le v5, v9, :clip_b"), "the surface is not clipped to the container")
+        assertTrue(place.contains("if-ge v12, v9, :x_hi") && place.contains("if-ge v9, v4, :y_hi"), "a valid coordinate is overwritten")
+        assertTrue(place.contains("if-ge v12, v9, :x_done") && place.contains("if-ge v9, v4, :y_done"), "a coordinate below the minimum is kept")
+    }
+    @Test
+    fun `the margins are shifted into the button parent origin`() {
+        val place = placeBody()
+        assertTrue(place.contains(":no_shift") && place.contains("if-eqz v10, :no_shift"), "a detached button has no origin to shift by")
+        assertTrue(place.contains("sub-int v11, v11, v4") && place.contains("add-int/2addr v12, v11"), "x is not shifted to the parent")
+        assertTrue(place.contains("add-int/2addr v9, v11"), "y is not shifted to the parent")
+        assertTrue(
+            place.indexOf("add-int/2addr v9, v11") < place.indexOf("->leftMargin:I"),
+            "the shift runs after the margins are written",
+        )
+    }
+    @Test
+    fun `the bounds only narrow, never widen`() {
+        val place = placeBody()
+        assertTrue(place.contains("if-eq v1, v2, :bounds_done"), "a live surface is skipped")
+        assertTrue(place.contains("if-eqz v4, :bounds_done"), "a detached surface is trusted")
     }
     @Test
     fun `the measure keeps the width floor and place re-caps against the container`() {
