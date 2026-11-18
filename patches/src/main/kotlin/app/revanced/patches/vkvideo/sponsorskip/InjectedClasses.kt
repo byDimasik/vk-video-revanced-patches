@@ -115,13 +115,13 @@ internal val requiredMethods = mapOf(
     SKIP_TICK_CLASS to listOf("<init>:1", "run:0"),
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
-        "rememberView:2", "viewOf:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
+        "rememberView:2", "viewOf:1", "redraw:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
         "reload:1", "rememberVideo:2", "videoOf:1", "postVideo:2", "rememberBar:1", "findBar:2", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
     ),
     SKIP_MAIN_CLASS to listOf("<init>:5", "run:0"),
-    SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1"),
+    SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1", "textColor:0"),
     SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
-    SKIP_LAYOUT_CLASS to listOf("<init>:1", "onLayoutChange:9", "watch:3"),
+    SKIP_LAYOUT_CLASS to listOf("<init>:1", "onLayoutChange:9", "watch:4"),
     PLAYED_SECTIONS_CLASS to listOf("<init>:4", "draw:1", "num:2", "setAlpha:1", "setColorFilter:1", "getOpacity:0"),
     SEEK_SECTIONS_CLASS to listOf("apply:2", "invalidate:0"),
 )
@@ -131,7 +131,8 @@ internal val requiredFields = mapOf(
     SKIP_ENGINE_CLASS to listOf("MAIN", "VIDEOS", "BAR"),
     SKIP_MAIN_CLASS to listOf("op", "state", "controller", "video", "target"),
     SKIP_STATE_CLASS to listOf(
-        "view", "button", "listener", "listenerView", "buttonView", "lastToastMs", "lastPosMs", "stallTicks", "frozen",
+        "view", "attachView", "button", "listener", "listenerView", "buttonView", "listenerContainer", "lastIndex",
+        "lastToastMs", "lastPosMs", "stallTicks", "frozen",
         "lastChangeMs", "emptyUntil", "deadTicks", "seenPos", "video",
     ),
     PLAYED_SECTIONS_CLASS to listOf("strength", "track"),
@@ -715,9 +716,12 @@ private fun skipStateSmali(): String = """
     .field public tick:Ljava/lang/Runnable;
     .field public button:Landroid/widget/TextView;
     .field public view:Landroid/view/View;
+    .field public attachView:Landroid/view/View;
     .field public listener:Landroid/view/View${'$'}OnLayoutChangeListener;
     .field public listenerView:Landroid/view/View;
     .field public buttonView:Landroid/view/View;
+    .field public listenerContainer:Landroid/view/View;
+    .field public lastIndex:I
     .field public lastToastMs:J
     .field public lastPosMs:J
     .field public lastChangeMs:J
@@ -811,6 +815,8 @@ private fun skipMainSmali(): String = """
         if-eq v0, v1, :op1
         const/4 v1, 0x2
         if-eq v0, v1, :op2
+        const/4 v1, 0x4
+        if-eq v0, v1, :op4
         iget-object v1, p0, $SKIP_MAIN_CLASS->state:$SKIP_STATE_CLASS;
         if-eqz v1, :return
         iget-object v2, v1, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
@@ -829,6 +835,7 @@ private fun skipMainSmali(): String = """
         const/4 v0, 0x0
         iput-object v0, v1, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
         iput-object v0, v1, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        iput-object v0, v1, $SKIP_STATE_CLASS->attachView:Landroid/view/View;
 
         :return
         return-void
@@ -848,6 +855,11 @@ private fun skipMainSmali(): String = """
         const/4 v1, 0x0
         const-wide/16 v2, 0x0
         invoke-static {v1, v2, v3}, $SKIP_ENGINE_CLASS->onSeek(Ljava/lang/Object;J)V
+        return-void
+
+        :op4
+        iget-object v1, p0, $SKIP_MAIN_CLASS->state:$SKIP_STATE_CLASS;
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->redraw($SKIP_STATE_CLASS;)V
         return-void
     .end method
 """.trimIndent()
@@ -1155,7 +1167,7 @@ private fun skipEngineSmali(): String = """
     .end method
 
     .method public static onViewAttached(Lp73/a;Landroid/view/View;)V
-        .registers 5
+        .registers 7
         .param p0, "controller"
         .param p1, "view"
 
@@ -1165,7 +1177,26 @@ private fun skipEngineSmali(): String = """
         move-result-object v0
         invoke-static {p0, p1}, $SKIP_ENGINE_CLASS;->rememberView(Lp73/a;Landroid/view/View;)V
         if-eqz v0, :rebuild
+        iput-object p1, v0, $SKIP_STATE_CLASS->attachView:Landroid/view/View;
         iput-object p1, v0, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        # The attach event is the fold trigger: re-parent and re-measure right here,
+        # not on the next 250ms tick, so a mini hand-off cannot lose the race to the
+        # stale surface the previous tick remembered.
+        invoke-static {}, $SKIP_ENGINE_CLASS;->onMain()Z
+        move-result v1
+        if-nez v1, :inline
+        new-instance v1, $SKIP_MAIN_CLASS;
+        const/4 v2, 0x4
+        move-object v3, v0
+        const/4 v4, 0x0
+        const/4 v5, 0x0
+        const/4 v6, 0x0
+        invoke-direct/range {v1 .. v6}, $SKIP_MAIN_CLASS;-><init>(I$SKIP_STATE_CLASS;Lp73/a;Lcom/vk/dto/common/VideoFile;Landroid/view/View;)V
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->postMain(Ljava/lang/Runnable;)V
+        return-void
+
+        :inline
+        invoke-static {v0}, $SKIP_ENGINE_CLASS;->redraw($SKIP_STATE_CLASS;)V
         return-void
 
         # A resume re-attaches the view without announcing the video again; rebuild
@@ -1175,6 +1206,29 @@ private fun skipEngineSmali(): String = """
         move-result-object v0
         if-eqz v0, :return
         invoke-static {p0, v0}, $SKIP_ENGINE_CLASS;->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
+
+        :return
+        return-void
+    .end method
+
+    # An attached-surface change while the button is up: re-run the whole show path
+    # (parent, size, placement) against the surface that just attached.
+    .method public static redraw($SKIP_STATE_CLASS;)V
+        .registers 3
+        .param p0, "state"
+
+        if-eqz p0, :return
+        iget-object v0, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
+        if-eqz v0, :return
+        invoke-virtual {v0}, Landroid/view/View;->getVisibility()I
+        move-result v1
+        if-nez v1, :place
+        iget v1, p0, $SKIP_STATE_CLASS->lastIndex:I
+        invoke-static {p0, v1}, $SKIP_BUTTON_CLASS;->show($SKIP_STATE_CLASS;I)V
+        return-void
+
+        :place
+        invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V
 
         :return
         return-void
@@ -1278,11 +1332,31 @@ private fun skipEngineSmali(): String = """
         return-void
     .end method
 
+    # Resolution order: the view named by the LAST attach event, the state's own
+    # remembered view, the controller's remembered attach view, then the global last
+    # view. A view that is no longer attached to a window never wins a live one: the
+    # player hands out a new view on every surface swap (mini fold, page switch), and
+    # a detached leftover keeps its stale measured size.
     .method public static viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
-        .registers 4
+        .registers 5
 
+        if-eqz p0, :null
+        iget-object v0, p0, $SKIP_STATE_CLASS->attachView:Landroid/view/View;
+        if-eqz v0, :own
+        invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v3
+        if-eqz v3, :own
+        return-object v0
+
+        :own
         iget-object v0, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
-        if-eqz v0, :done
+        if-eqz v0, :map
+        invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v3
+        if-eqz v3, :map
+        return-object v0
+
+        :map
         iget-object v1, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
         if-eqz v1, :last
         sget-object v2, $SKIP_ENGINE_CLASS->VIEWS:Ljava/util/WeakHashMap;
@@ -1291,14 +1365,18 @@ private fun skipEngineSmali(): String = """
         move-result-object v0
         check-cast v0, Landroid/view/View;
         monitor-exit v2
-        if-eqz v0, :done
-        sget-object v0, $SKIP_ENGINE_CLASS->LAST_VIEW:Landroid/view/View;
-        goto :done
+        if-eqz v0, :last
+        invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v3
+        if-eqz v3, :last
+        return-object v0
 
         :last
         sget-object v0, $SKIP_ENGINE_CLASS->LAST_VIEW:Landroid/view/View;
+        return-object v0
 
-        :done
+        :null
+        const/4 v0, 0x0
         return-object v0
     .end method
 
@@ -1971,6 +2049,11 @@ private fun skipEngineSmali(): String = """
 
         :button_detach
         iget-object v0, p0, $SKIP_STATE_CLASS->buttonView:Landroid/view/View;
+        if-eqz v0, :container_detach
+        invoke-virtual {v0, v2}, Landroid/view/View;->removeOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
+
+        :container_detach
+        iget-object v0, p0, $SKIP_STATE_CLASS->listenerContainer:Landroid/view/View;
         if-eqz v0, :detach
         invoke-virtual {v0, v2}, Landroid/view/View;->removeOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
 
@@ -1978,6 +2061,8 @@ private fun skipEngineSmali(): String = """
         const/4 v0, 0x0
         iput-object v0, p0, $SKIP_STATE_CLASS->listenerView:Landroid/view/View;
         iput-object v0, p0, $SKIP_STATE_CLASS->buttonView:Landroid/view/View;
+        iput-object v0, p0, $SKIP_STATE_CLASS->listenerContainer:Landroid/view/View;
+        iput-object v0, p0, $SKIP_STATE_CLASS->attachView:Landroid/view/View;
         iget-object v5, p0, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
         if-eqz v5, :overlay
         new-instance v0, $SKIP_MAIN_CLASS;
@@ -2821,35 +2906,16 @@ private fun skipButtonSmali(): String = """
         move-result-object v4
         invoke-virtual {v2, v4}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
 
-        iget v0, v1, $SEGMENT_CLASS->category:I
-        invoke-static {v0}, $CATEGORY_CLASS;->color(I)I
+        # The chip's backdrop is a fixed 0xCC000000 scrim (never the category
+        # colour), so contrast is decided against the scrim, not against the
+        # category: white on the scrim is ~13:1 for every category. The luminance
+        # branch this replaces compared the TEXT to a colour the background does
+        # not use, and picked black for the dark category colours (sponsor green,
+        # outro blue) -> black on black.
+        invoke-static {}, $SKIP_BUTTON_CLASS;->textColor()I
         move-result v0
-        const/16 v5, 0xff
-        move v6, v0
-        shr-int/lit8 v6, v6, 0x8
-        and-int/2addr v6, v5
-        const/16 v7, 0x12b
-        mul-int/2addr v6, v7
-        move v7, v0
-        shr-int/lit8 v7, v7, 0x10
-        and-int/2addr v7, v5
-        const/16 v8, 0x24b
-        mul-int/2addr v7, v8
-        and-int/2addr v0, v5
-        const/16 v8, 0x72
-        mul-int/2addr v0, v8
-        add-int/2addr v6, v7
-        add-int/2addr v6, v0
-        const/16 v7, 0x3e8
-        div-int/2addr v6, v7
-        const/16 v7, 0x80
-        if-ge v6, v7, :black
-        const/4 v0, -0x1
-        goto :text_color
-        :black
-        const v0, 0xff000000
-        :text_color
         invoke-virtual {v2, v0}, Landroid/widget/TextView;->setTextColor(I)V
+        iput p1, p0, $SKIP_STATE_CLASS->lastIndex:I
 
         # Only hide for the re-measure when the button is up: a per-tick invisible
         # flip blinks the button and swallows taps.
@@ -2980,6 +3046,14 @@ private fun skipButtonSmali(): String = """
         return-void
     .end method
 
+    # Fixed light label colour: the background is always the dark scrim above.
+    .method public static textColor()I
+        .registers 1
+
+        const/4 v0, -0x1
+        return v0
+    .end method
+
     .method public static minWidth(Landroid/content/Context;I)I
         .registers 4
         .param p0, "context"
@@ -2996,286 +3070,263 @@ private fun skipButtonSmali(): String = """
         return v0
     .end method
 
+    # Placement is re-derived from the CURRENT geometry on every call: the container's
+    # own laid-out size is the authority, the surface only narrows the box. Nothing is
+    # taken from a cached measure or from a previous orientation's window coordinates.
     .method public static place($SKIP_STATE_CLASS;)V
-        .registers 17
+        .registers 16
         .param p0, "state"
-        move-object/from16 v15, p0
-        const/4 v12, 0x0
 
-        if-eqz v15, :return
+        if-eqz p0, :return
+        move-object/from16 v15, p0
         iget-object v0, v15, $SKIP_STATE_CLASS->button:Landroid/widget/TextView;
         if-eqz v0, :return
-        const/4 v14, 0x0
         invoke-static {v15}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
         move-result-object v1
         invoke-static {v1}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
         move-result-object v1
-        if-eqz v1, :fallback
-        goto :live
-
-        :fallback
-        iget-object v1, v15, $SKIP_STATE_CLASS->controller:Lp73/a;
-        if-eqz v1, :frame
-        instance-of v4, v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
-        if-eqz v4, :frame
-        check-cast v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
-        iget-object v1, v1, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->K:Ljava/lang/ref/WeakReference;
-        if-eqz v1, :frame
-        invoke-virtual {v1}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
-        move-result-object v1
-        check-cast v1, Landroid/view/View;
-        invoke-static {v1}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
-        move-result-object v1
-        if-eqz v1, :frame
-        goto :live
-
-        :frame
-        invoke-virtual {v0}, Landroid/view/View;->getRootView()Landroid/view/View;
-        move-result-object v4
-        const v5, 0x1020002
-        invoke-virtual {v4, v5}, Landroid/view/View;->findViewById(I)Landroid/view/View;
-        move-result-object v1
-        if-eqz v1, :display
-        goto :live
-
-        :display
-        if-eqz v4, :return
-        move-object v1, v4
-        const/4 v14, 0x1
-
-        :live
+        if-eqz v1, :no_surface
         iput-object v1, v15, $SKIP_STATE_CLASS->view:Landroid/view/View;
-        invoke-static {v15, v1, v0}, $SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;)V
-        const/16 v15, 0x0
-        invoke-virtual {v0}, Landroid/view/View;->getLayoutParams()Landroid/view/ViewGroup${'$'}LayoutParams;
+
+        :no_surface
+        # Container: the player container, else the decor, else the button's root.
+        invoke-virtual {v0}, Landroid/view/View;->getRootView()Landroid/view/View;
         move-result-object v2
         if-eqz v2, :return
-        check-cast v2, Landroid/widget/FrameLayout${'$'}LayoutParams;
-        invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        const v4, 0x7f0b098b
+        invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v3
+        if-eqz v3, :content_view
+        goto :have_container
+
+        :content_view
+        const v4, 0x1020002
+        invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v3
+        if-eqz v3, :content_root
+        goto :have_container
+
+        :content_root
+        move-object v3, v2
+
+        :have_container
         if-eqz v3, :return
-        check-cast v3, Landroid/view/ViewGroup;
+        move-object v2, v3
+        invoke-static {v15, v1, v0, v2}, $SKIP_LAYOUT_CLASS;->watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;Landroid/view/View;)V
+        invoke-virtual {v2}, Landroid/view/View;->getWidth()I
+        move-result v8
+        invoke-virtual {v2}, Landroid/view/View;->getHeight()I
+        move-result v9
+        const/4 v4, 0x1
+        if-lt v9, v4, :return
+
         const/4 v4, 0x2
         new-array v6, v4, [I
         new-array v7, v4, [I
+        invoke-virtual {v2, v7}, Landroid/view/View;->getLocationInWindow([I)V
+
+        # Bounds: the whole container, narrowed to the live surface when there is one.
+        const/4 v10, 0x0
+        const/4 v11, 0x0
+        move v12, v8
+        move v13, v9
+        if-eqz v1, :bounds_done
+        if-eq v1, v2, :bounds_done
+        invoke-virtual {v1}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v4
+        if-eqz v4, :bounds_done
         invoke-virtual {v1, v6}, Landroid/view/View;->getLocationInWindow([I)V
-        invoke-virtual {v3, v7}, Landroid/view/View;->getLocationInWindow([I)V
-        const/4 v3, 0x0
         const/4 v4, 0x0
-        aget v8, v6, v4
+        aget v10, v6, v4
         aget v5, v7, v4
-        sub-int/2addr v8, v5
+        sub-int/2addr v10, v5
         const/4 v4, 0x1
-        aget v9, v6, v4
+        aget v11, v6, v4
         aget v5, v7, v4
-        sub-int/2addr v9, v5
+        sub-int/2addr v11, v5
         invoke-virtual {v1}, Landroid/view/View;->getWidth()I
-        move-result v10
-        add-int/2addr v10, v8
+        move-result v4
+        add-int/2addr v4, v10
         invoke-virtual {v1}, Landroid/view/View;->getHeight()I
-        move-result v11
-        add-int/2addr v11, v9
-        const/4 v13, 0x2
-        invoke-virtual {v0}, Landroid/view/View;->getRootView()Landroid/view/View;
-        move-result-object v4
-        const v5, 0x7f0b098b
-        invoke-virtual {v4, v5}, Landroid/view/View;->findViewById(I)Landroid/view/View;
-        move-result-object v1
-        if-eqz v1, :container_decor
-        goto :container_ok
-
-        :container_decor
-        const v5, 0x1020002
-        invoke-virtual {v4, v5}, Landroid/view/View;->findViewById(I)Landroid/view/View;
-        move-result-object v1
-        if-eqz v1, :container_root
-        goto :container_ok
-
-        :container_root
-        move-object v1, v4
-
-        :container_ok
-        if-eqz v1, :no_bar
-        const v4, 0x${SEEK_BAR_VIEW_ID.toString(16)}
-        invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
-        move-result-object v5
-        if-eqz v5, :bar_first
-        const/4 v13, 0x0
-        goto :bar_ready
-
-        :bar_first
-        const v4, 0x${SEEK_BAR_ID.toString(16)}
-        invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
-        move-result-object v5
-        if-eqz v5, :no_bar
-        const/4 v13, 0x1
-
-        :bar_ready
-        invoke-virtual {v5}, Landroid/view/View;->getHeight()I
-        move-result v12
-        invoke-virtual {v5, v6}, Landroid/view/View;->getLocationInWindow([I)V
-        const/4 v4, 0x1
-        aget v15, v6, v4
-        aget v4, v7, v4
-        sub-int/2addr v15, v4
-        if-lez v12, :zero_bar
-        const/4 v13, 0x2
-        goto :bars_done
-
-        :zero_bar
-        const/4 v13, 0x1
-        goto :bars_done
-
-        :no_bar
-        const/4 v13, 0x2
-
-        :bars_done
-        invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
-        move-result-object v4
-        if-eqz v14, :no_display
-        invoke-virtual {v4}, Landroid/content/Context;->getResources()Landroid/content/res/Resources;
-        move-result-object v5
-        invoke-virtual {v5}, Landroid/content/res/Resources;->getDisplayMetrics()Landroid/util/DisplayMetrics;
-        move-result-object v5
-        iget v10, v5, Landroid/util/DisplayMetrics;->widthPixels:I
-        iget v11, v5, Landroid/util/DisplayMetrics;->heightPixels:I
-        const/4 v8, 0x0
-        const/4 v9, 0x0
-
-        :no_display
-        move-object v14, v4
-        const/16 v5, 0x8
-        invoke-static {v4, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
-        move-result v6
-        const/16 v5, 0x10
-        invoke-static {v4, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
-        move-result v7
-        move v5, v13
-        if-eqz v5, :target_page
-        const/4 v4, 0x2
-        if-ne v5, v4, :target_fallback
-        const/16 v5, 0xa
-        invoke-static {v14, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
         move-result v5
-        sub-int/2addr v15, v5
-        goto :target_done
+        add-int/2addr v5, v11
+        if-le v4, v8, :clip_r
+        move v4, v8
 
-        :target_page
-        sub-int/2addr v15, v6
-        goto :target_done
+        :clip_r
+        if-le v5, v9, :clip_b
+        move v5, v9
 
-        :target_fallback
-        const/16 v5, 0x1e
-        invoke-static {v14, v5}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
-        move-result v5
-        sub-int v15, v11, v5
+        :clip_b
+        if-ltz v10, :clip_l
+        const/4 v10, 0x0
 
-        :target_done
+        :clip_l
+        if-ltz v11, :clip_t
+        const/4 v11, 0x0
+
+        :clip_t
+        if-gt v4, v10, :bounds_ok
+        goto :bounds_done
+
+        :bounds_ok
+        if-gt v5, v11, :bounds_set
+        goto :bounds_done
+
+        :bounds_set
+        move v12, v4
+        move v13, v5
+
+        :bounds_done
+        invoke-virtual {v0}, Landroid/view/View;->getLayoutParams()Landroid/view/ViewGroup${'$'}LayoutParams;
+        move-result-object v3
+        if-eqz v3, :return
+        check-cast v3, Landroid/widget/FrameLayout${'$'}LayoutParams;
+
+        # Button size: the requested size when show just measured a new one, else the
+        # laid-out size. A laid-out size that still differs from the request is a stale
+        # pre-handoff measure and would leave the button bigger than the mini surface.
         invoke-virtual {v0}, Landroid/view/View;->getWidth()I
-        move-result v12
-        if-lez v12, :w_measured
-        iget v12, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->width:I
+        move-result v8
+        iget v4, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
+        if-lez v4, :w_ok
+        if-eq v4, v8, :w_ok
+        move v8, v4
 
-        :w_measured
+        :w_ok
         invoke-virtual {v0}, Landroid/view/View;->getHeight()I
-        move-result v13
-        if-lez v13, :h_measured
-        iget v13, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->height:I
+        move-result v5
+        iget v4, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
+        if-lez v4, :h_ok
+        if-eq v4, v5, :h_ok
+        move v5, v4
 
-        :h_measured
-        sub-int v4, v10, v8
-        add-int v5, v6, v6
-        sub-int v4, v4, v5
-        sub-int v5, v10, v8
-        invoke-static {v14, v5}, $SKIP_BUTTON_CLASS;->minWidth(Landroid/content/Context;I)I
+        :h_ok
+        invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
+        move-result-object v9
+        const/16 v4, 0x8
+        invoke-static {v9, v4}, $SKIP_BUTTON_CLASS;->dp(Landroid/content/Context;I)I
         move-result v14
-        if-ge v4, v14, :w_max
-        move v4, v14
 
-        :w_max
-        invoke-virtual {v0}, Landroid/widget/TextView;->getMaxWidth()I
-        move-result v5
-        if-eq v5, v4, :w_set
-        invoke-virtual {v0, v4}, Landroid/widget/TextView;->setMaxWidth(I)V
-        const/4 v3, 0x1
+        # x from the right edge with a 16dp (2x pad) margin, clamped into the bounds.
+        sub-int v12, v12, v8
+        sub-int v12, v12, v14
+        sub-int v12, v12, v14
+        add-int v9, v12, v14
+        if-le v12, v9, :x_hi
+        move v12, v9
 
-        :w_set
-        sub-int v4, v11, v9
-        add-int v5, v6, v6
-        sub-int v4, v4, v5
-        const/4 v5, 0x1
-        if-ge v4, v5, :h_max
-        move v4, v5
-
-        :h_max
-        invoke-virtual {v0}, Landroid/widget/TextView;->getMaxHeight()I
-        move-result v5
-        if-eq v5, v4, :h_set
-        invoke-virtual {v0, v4}, Landroid/widget/TextView;->setMaxHeight(I)V
-        const/4 v3, 0x1
-
-        :h_set
-        sub-int v14, v10, v12
-        sub-int/2addr v14, v7
-        sub-int v5, v10, v12
-        sub-int/2addr v5, v6
-        if-le v14, v5, :x_high
-        move v14, v5
-
-        :x_high
-        add-int v5, v8, v6
-        if-lt v14, v5, :x_low
-        goto :x_done
-
-        :x_low
-        move v14, v5
+        :x_hi
+        add-int v9, v10, v14
+        if-ge v12, v9, :x_done
+        move v12, v9
 
         :x_done
-        sub-int v12, v15, v13
+        # y: above the seek bar when the bar is live in THIS container, else the
+        # bottom edge -- both in current container coordinates.
+        const v4, 0x${SEEK_BAR_VIEW_ID.toString(16)}
+        invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v4
+        if-eqz v4, :bar_alt
+        goto :bar_try
 
-        :y_high
-        sub-int v5, v11, v13
-        sub-int/2addr v5, v6
-        if-le v12, v5, :y_high2
-        move v12, v5
+        :bar_alt
+        const v4, 0x${SEEK_BAR_ID.toString(16)}
+        invoke-virtual {v2, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v4
+        if-eqz v4, :bottom
 
-        :y_high2
-        add-int v5, v9, v6
-        if-lt v12, v5, :y_low
-        goto :y_done
+        :bar_try
+        invoke-virtual {v4}, Landroid/view/View;->getHeight()I
+        move-result v9
+        if-lez v9, :bottom
+        invoke-virtual {v4}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v9
+        if-eqz v9, :bottom
+        invoke-virtual {v4, v6}, Landroid/view/View;->getLocationInWindow([I)V
+        const/4 v9, 0x1
+        aget v9, v6, v9
+        const/4 v4, 0x1
+        aget v4, v7, v4
+        sub-int v9, v9, v4
+        sub-int v9, v9, v5
+        sub-int v9, v9, v14
+        goto :y_clamp
 
-        :y_low
-        move v12, v5
+        :bottom
+        sub-int v9, v13, v5
+        sub-int v9, v9, v14
+
+        :y_clamp
+        sub-int v4, v13, v5
+        sub-int v4, v4, v14
+        if-le v9, v4, :y_hi
+        move v9, v4
+
+        :y_hi
+        add-int v4, v11, v14
+        if-ge v9, v4, :y_done
+        move v9, v4
 
         :y_done
-        iget v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->leftMargin:I
-        if-eq v5, v14, :margins
-        iput v14, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->leftMargin:I
-        const/4 v3, 0x1
+        # x and y are in container coordinates, the margins below are offsets inside the
+        # button's own parent: shift by the difference of the two window origins.
+        invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v10
+        if-eqz v10, :no_shift
+        instance-of v4, v10, Landroid/view/View;
+        if-eqz v4, :no_shift
+        check-cast v10, Landroid/view/View;
+        const/4 v4, 0x0
+        aget v11, v7, v4
+        invoke-virtual {v10, v6}, Landroid/view/View;->getLocationInWindow([I)V
+        aget v4, v6, v4
+        sub-int v11, v11, v4
+        add-int/2addr v12, v11
+        const/4 v4, 0x1
+        aget v11, v7, v4
+        aget v4, v6, v4
+        sub-int v11, v11, v4
+        add-int/2addr v9, v11
 
-        :margins
-        iget v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->topMargin:I
-        if-eq v5, v12, :zero
-        iput v12, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->topMargin:I
-        const/4 v3, 0x1
+        :no_shift
+        iput v8, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
+        iput v5, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->height:I
+        const/4 v4, 0x0
+        iget v8, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->leftMargin:I
+        if-eq v8, v12, :m_right
+        iput v12, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->leftMargin:I
+        const/4 v4, 0x1
 
-        :zero
-        iget v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->rightMargin:I
-        if-eqz v5, :gravity
-        const/4 v5, 0x0
-        iput v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->rightMargin:I
-        iput v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->bottomMargin:I
-        const/4 v3, 0x1
+        :m_right
+        iget v8, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->rightMargin:I
+        if-eqz v8, :m_bottom
+        const/4 v8, 0x0
+        iput v8, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->rightMargin:I
+        const/4 v4, 0x1
 
-        :gravity
-        iget v5, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->gravity:I
-        const v4, 0x800030
-        if-eq v5, v4, :changed
-        iput v4, v2, Landroid/widget/FrameLayout${'$'}LayoutParams;->gravity:I
-        const/4 v3, 0x1
+        :m_bottom
+        iget v8, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->bottomMargin:I
+        if-eqz v8, :m_top
+        const/4 v8, 0x0
+        iput v8, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->bottomMargin:I
+        const/4 v4, 0x1
+
+        :m_top
+        iget v8, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->topMargin:I
+        if-eq v8, v9, :m_gravity
+        iput v9, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->topMargin:I
+        const/4 v4, 0x1
+
+        :m_gravity
+        iget v8, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->gravity:I
+        const v5, 0x800030
+        if-eq v8, v5, :changed
+        iput v5, v3, Landroid/widget/FrameLayout${'$'}LayoutParams;->gravity:I
+        const/4 v4, 0x1
 
         :changed
-        if-eqz v3, :return
+        if-eqz v4, :return
         invoke-virtual {v0}, Landroid/view/View;->requestLayout()V
 
         :return
@@ -3377,11 +3428,12 @@ private fun skipLayoutSmali(): String = """
         return-void
     .end method
 
-    .method public static watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;)V
+    .method public static watch($SKIP_STATE_CLASS;Landroid/view/View;Landroid/view/View;Landroid/view/View;)V
         .registers 6
         .param p0, "state"
         .param p1, "surface"
         .param p2, "button"
+        .param p3, "container"
 
         if-eqz p0, :return
         iget-object v0, p0, $SKIP_STATE_CLASS->listener:Landroid/view/View${'$'}OnLayoutChangeListener;
@@ -3403,14 +3455,27 @@ private fun skipLayoutSmali(): String = """
 
         :surface
         iget-object v1, p0, $SKIP_STATE_CLASS->buttonView:Landroid/view/View;
-        if-eq v1, p2, :return
+        if-eq v1, p2, :button
         if-eqz v1, :button_add
         invoke-virtual {v1, v0}, Landroid/view/View;->removeOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
 
         :button_add
-        if-eqz p2, :return
+        if-eqz p2, :button
         invoke-virtual {p2, v0}, Landroid/view/View;->addOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
         iput-object p2, p0, $SKIP_STATE_CLASS->buttonView:Landroid/view/View;
+
+        :button
+        # The container is watched too: a rotation re-lays out the container even when
+        # the surface itself is replaced, and place() needs the fresh height then.
+        iget-object v1, p0, $SKIP_STATE_CLASS->listenerContainer:Landroid/view/View;
+        if-eq v1, p3, :return
+        if-eqz v1, :container_add
+        invoke-virtual {v1, v0}, Landroid/view/View;->removeOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
+
+        :container_add
+        if-eqz p3, :return
+        invoke-virtual {p3, v0}, Landroid/view/View;->addOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
+        iput-object p3, p0, $SKIP_STATE_CLASS->listenerContainer:Landroid/view/View;
 
         :return
         return-void
