@@ -24,6 +24,7 @@ internal const val SKIP_LAYOUT_CLASS = "${SPONSOR_SKIP_PACKAGE}SkipButton\$Layou
 internal const val OVERLAY_CLASS = "${SPONSOR_SKIP_PACKAGE}SeekbarOverlay;"
 internal const val PLAYED_SECTIONS_CLASS = "${SPONSOR_SKIP_PACKAGE}PlayedSections;"
 internal const val SEEK_SECTIONS_CLASS = "${SPONSOR_SKIP_PACKAGE}SeekbarSections;"
+internal const val SEEK_RELAYOUT_CLASS = "${SPONSOR_SKIP_PACKAGE}SeekbarSections${'$'}Relayout;"
 
 /** The `OneVideoSeekBarView` id from `one_video_simple_controls_view.xml`. */
 internal const val SEEK_BAR_VIEW_ID = 0x7f0b223d
@@ -96,6 +97,7 @@ internal fun sponsorSkipSources(api: AutoPlayApi = LEGACY_AUTO_PLAY_API): Map<St
     SKIP_LAYOUT_CLASS to skipLayoutSmali(),
     PLAYED_SECTIONS_CLASS to playedSectionsSmali(),
     SEEK_SECTIONS_CLASS to seekbarSectionsSmali(),
+    SEEK_RELAYOUT_CLASS to seekRelayoutSmali(),
 ).mapValues { (_, source) ->
     source
         .replace("Lp73/a;->s(J)V", "${api.controller}->${api.seekMethod}(J)V")
@@ -122,8 +124,9 @@ internal val requiredMethods = mapOf(
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1", "textColor:0"),
     SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
     SKIP_LAYOUT_CLASS to listOf("<init>:1", "onLayoutChange:9", "watch:4"),
-    PLAYED_SECTIONS_CLASS to listOf("<init>:4", "draw:1", "num:2", "setAlpha:1", "setColorFilter:1", "getOpacity:0"),
-    SEEK_SECTIONS_CLASS to listOf("apply:2", "invalidate:0"),
+    PLAYED_SECTIONS_CLASS to listOf("<init>:4", "draw:1", "num:2", "setAlpha:1", "setColorFilter:1", "getOpacity:0", "onBoundsChange:1"),
+    SEEK_SECTIONS_CLASS to listOf("apply:2", "invalidate:0", "relayout:9"),
+    SEEK_RELAYOUT_CLASS to listOf("<init>:0", "onLayoutChange:9"),
 )
 
 /** Added fields that a stale generation of the class can miss; methods alone do not catch them. */
@@ -2217,6 +2220,25 @@ private fun playedSectionsSmali(): String = """
         return-object v0
     .end method
 
+    .method protected onBoundsChange(Landroid/graphics/Rect;)V
+        .registers 3
+        .param p1, "bounds"
+
+        invoke-super {p0, p1}, Landroid/graphics/drawable/Drawable;->onBoundsChange(Landroid/graphics/Rect;)V
+        invoke-virtual {p1}, Landroid/graphics/Rect;->width()I
+        move-result v0
+        if-gtz v0, :skip
+        iput v0, p0, $PLAYED_SECTIONS_CLASS;->width:I
+        invoke-virtual {p1}, Landroid/graphics/Rect;->centerY()I
+        move-result v0
+        int-to-float v0, v0
+        iput v0, p0, $PLAYED_SECTIONS_CLASS;->center:F
+
+        :skip
+        invoke-virtual {p0}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
+        return-void
+    .end method
+
     .method public setAlpha(I)V
         .registers 4
 
@@ -2272,7 +2294,12 @@ private fun playedSectionsSmali(): String = """
         .param p1, "canvas"
 
         iput-object p1, p0, $PLAYED_SECTIONS_CLASS;->target:Landroid/graphics/Canvas;
-        invoke-virtual {p0}, Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;
+        iget-object v3, p0, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
+        if-eqz v3, :return
+        # The layer rect is the CURRENT bar rect: our own bounds are only written when the
+        # wrapper is installed and the ClipDrawable never re-propagates a later rect, so a
+        # cached width survived a configuration change and mis-mapped every fraction (#89).
+        invoke-virtual {v3}, Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;
         move-result-object v0
         invoke-virtual {v0}, Landroid/graphics/Rect;->isEmpty()Z
         move-result v1
@@ -2285,10 +2312,7 @@ private fun playedSectionsSmali(): String = """
         move-result v1
         int-to-float v1, v1
         iput v1, p0, $PLAYED_SECTIONS_CLASS;->center:F
-        iget-object v3, p0, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
-        if-eqz v3, :return
-        invoke-virtual {p0}, Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;
-        move-result-object v0
+        invoke-virtual {p0, v0}, Landroid/graphics/drawable/Drawable;->setBounds(Landroid/graphics/Rect;)V
         invoke-virtual {v3, v0}, Landroid/graphics/drawable/Drawable;->setBounds(Landroid/graphics/Rect;)V
         invoke-virtual {p0}, Landroid/graphics/drawable/Drawable;->getLevel()I
         move-result v0
@@ -2567,6 +2591,8 @@ private fun seekbarSectionsSmali(): String = """
     .super Ljava/lang/Object;
 
     .field private static volatile CURRENT:Ljava/lang/ref/WeakReference;
+    .field private static volatile WATCHED:Ljava/lang/ref/WeakReference;
+    .field private static volatile LISTENER:Landroid/view/View${'$'}OnLayoutChangeListener;
 
     .method public static invalidate()V
         .registers 2
@@ -2583,6 +2609,42 @@ private fun seekbarSectionsSmali(): String = """
         return-void
     .end method
 
+    .method public static watch(Landroid/view/View;)V
+        .registers 4
+        .param p0, "view"
+
+        # One listener per bar: a configuration change re-lays the bar out and this is what
+        # re-runs the recolor, instead of waiting for a position/tick event (#89).
+        sget-object v0, $SEEK_SECTIONS_CLASS;->WATCHED:Ljava/lang/ref/WeakReference;
+        if-eqz v0, :fresh
+        invoke-virtual {v0}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
+        move-result-object v0
+        if-eq v0, p0, :fresh
+        return-void
+
+        :fresh
+        new-instance v0, Ljava/lang/ref/WeakReference;
+        invoke-direct {v0, p0}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
+        sput-object v0, $SEEK_SECTIONS_CLASS;->WATCHED:Ljava/lang/ref/WeakReference;
+        sget-object v0, $SEEK_SECTIONS_CLASS;->LISTENER:Landroid/view/View${'$'}OnLayoutChangeListener;
+        if-nez v0, :have
+        new-instance v0, $SEEK_RELAYOUT_CLASS;
+        invoke-direct {v0}, $SEEK_RELAYOUT_CLASS;-><init>()V
+        sput-object v0, $SEEK_SECTIONS_CLASS;->LISTENER:Landroid/view/View${'$'}OnLayoutChangeListener;
+
+        :have
+        invoke-virtual {p0, v0}, Landroid/view/View;->addOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
+        return-void
+    .end method
+
+    .method public static relayout(Landroid/view/View;IIIIIIII)V
+        .registers 10
+        .param p0, "view"
+
+        invoke-static {}, $SEEK_SECTIONS_CLASS;->invalidate()V
+        return-void
+    .end method
+
     .method public static apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V
         .registers 12
 
@@ -2591,6 +2653,7 @@ private fun seekbarSectionsSmali(): String = """
         .param p1, "drawable"
 
         if-eqz p1, :return
+        invoke-static {p0}, $SEEK_SECTIONS_CLASS;->watch(Landroid/view/View;)V
         instance-of v0, p1, Ldp7/c;
         if-nez v0, :family
         instance-of v0, p1, Lnp7/c;
@@ -2791,6 +2854,27 @@ private fun seekbarSectionsSmali(): String = """
         invoke-virtual {v9}, Landroid/graphics/drawable/Drawable;->invalidateSelf()V
 
         :return
+        return-void
+    .end method
+""".trimIndent()
+
+/** Re-runs the band recolor on any bar layout/size change (rotation, inset, split resize). */
+private fun seekRelayoutSmali(): String = """
+    .class public final $SEEK_RELAYOUT_CLASS
+    .super Ljava/lang/Object;
+    .implements Landroid/view/View${'$'}OnLayoutChangeListener;
+
+    .method public constructor <init>()V
+        .registers 1
+
+        invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+        return-void
+    .end method
+
+    .method public onLayoutChange(Landroid/view/View;IIIIIIII)V
+        .registers 10
+
+        invoke-static/range {p1 .. p9}, $SEEK_SECTIONS_CLASS;->relayout(Landroid/view/View;IIIIIIII)V
         return-void
     .end method
 """.trimIndent()
