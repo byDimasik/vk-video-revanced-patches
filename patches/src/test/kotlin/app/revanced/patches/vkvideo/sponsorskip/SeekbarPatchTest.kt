@@ -275,4 +275,106 @@ class SeekbarPatchTest {
         assertFalse(methods.contains("<init>:1"), "the stale 1-arg entry survived")
         assertTrue(requiredFields.getValue(PLAYED_SECTIONS_CLASS).containsAll(listOf("strength", "track")), "the new fields are not pinned")
     }
+
+    /** The injected sources collapse a doubled `;` (descriptor + delimiter) into one. */
+    private fun smali(text: String) = text.replace(";;", ";")
+
+    @Test
+    fun `the band width comes from the live layer rect, not the wrapper bounds`() {
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val draw = drawable.substringAfter(".method public draw").substringBefore(".end method")
+        val source = draw.indexOf(smali("$PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;"))
+        val bounds = draw.indexOf("Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;")
+        val width = draw.indexOf(smali("$PLAYED_SECTIONS_CLASS;->width:I"))
+        assertTrue(source >= 0 && source < bounds, "the source is not read before the rect")
+        assertTrue(bounds < width, "the rect is not read before the width is stored")
+        assertTrue(
+            draw.contains("invoke-virtual {v3}, Landroid/graphics/drawable/Drawable;->getBounds()Landroid/graphics/Rect;"),
+            "the bounds are not taken from the source drawable",
+        )
+        assertTrue(
+            draw.contains("invoke-virtual {p0, v0}, Landroid/graphics/drawable/Drawable;->setBounds(Landroid/graphics/Rect;)V"),
+            "the stale wrapper bounds are not refreshed from the live rect",
+        )
+        assertTrue(
+            draw.contains("invoke-virtual {v3, v0}, Landroid/graphics/drawable/Drawable;->setBounds(Landroid/graphics/Rect;)V"),
+            "the source is not re-bounded from the live rect",
+        )
+        assertFalse(
+            draw.substringBefore(smali("iget-object v3, p0, $PLAYED_SECTIONS_CLASS;->source")).contains("getBounds"),
+            "draw still measures the wrapper's own (stale) bounds",
+        )
+    }
+
+    @Test
+    fun `a bounds change refreshes the mapping and repaints`() {
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val change = drawable.substringAfter(".method protected onBoundsChange").substringBefore(".end method")
+        assertTrue(change.contains("invoke-super"), "the super bounds change is not called")
+        assertTrue(
+            change.contains(smali("$PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;")),
+            "the wrapped source is not forwarded the new bounds",
+        )
+        assertTrue(
+            change.contains("invoke-virtual {v0, p1}, Landroid/graphics/drawable/Drawable;->setBounds(Landroid/graphics/Rect;)V"),
+            "a resize does not re-bound the source, so the bands stay mapped to the old width",
+        )
+        assertTrue(
+            change.indexOf("if-eqz v0, :nosource") < change.indexOf(":nosource"),
+            "the source forward is not skipped when the source is still empty",
+        )
+        assertTrue(
+            change.indexOf(smali("$PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;")) <
+                change.indexOf("Landroid/graphics/Rect;->width()I"),
+            "the source is not re-bounded before the width is read",
+        )
+        assertTrue(change.contains("Landroid/graphics/Rect;->width()I"), "the new width is not read")
+        assertTrue(change.contains(smali("$PLAYED_SECTIONS_CLASS;->width:I")), "the new width is not stored")
+        assertTrue(change.contains("Landroid/graphics/Rect;->centerY()I"), "the new centre is not read")
+        assertTrue(change.contains(smali("$PLAYED_SECTIONS_CLASS;->center:F")), "the new centre is not stored")
+        assertTrue(change.contains("invalidateSelf()V"), "the bands are not repainted on a size change")
+    }
+
+    @Test
+    fun `apply watches the bar for layout changes and registers one listener per bar`() {
+        val sections = sources[SEEK_SECTIONS_CLASS]!!
+        val apply = sections.substringAfter(".method public static apply")
+        assertTrue(apply.contains(smali("$SEEK_SECTIONS_CLASS;->watch(Landroid/view/View;)V")), "the bar is not watched")
+        val watch = sections.substringAfter(".method public static watch").substringBefore(".end method")
+        assertTrue(watch.contains(smali("$SEEK_SECTIONS_CLASS;->WATCHED")), "the watched bar is not remembered")
+        assertTrue(watch.contains("if-ne v0, p0, :fresh"), "a different bar does not get a fresh registration")
+        assertTrue(
+            watch.substringAfter("if-ne v0, p0, :fresh").trimStart().startsWith("return-void"),
+            "the same bar is not returned for without re-registering",
+        )
+        val referent = watch.substringAfter("Ljava/lang/ref/Reference;->get()Ljava/lang/Object;")
+            .substringBefore("if-ne v0, p0, :fresh")
+        assertTrue(
+            referent.contains("move-result-object v0") && !referent.contains("if-"),
+            "a cleared reference is not treated as a different bar",
+        )
+        assertTrue(watch.contains(smali("$SEEK_SECTIONS_CLASS;->LISTENER")), "the listener is not cached")
+        assertTrue(watch.contains("addOnLayoutChangeListener"), "the listener is not attached")
+        assertTrue(
+            watch.contains("removeOnLayoutChangeListener"),
+            "the listener is not dropped from the previous bar when a different bar is watched",
+        )
+        assertTrue(
+            watch.indexOf("removeOnLayoutChangeListener") < watch.indexOf("addOnLayoutChangeListener"),
+            "the old bar is detached after the new bar is attached",
+        )
+        assertTrue(
+            watch.indexOf(":detached") < watch.indexOf("new-instance") &&
+                watch.contains("if-eqz v1, :detached"),
+            "a cleared reference is not treated as a fresh registration",
+        )
+        val relayout = sections.substringAfter(".method public static relayout").substringBefore(".end method")
+        assertTrue(relayout.contains(smali("$SEEK_SECTIONS_CLASS;->invalidate()V")), "a layout change does not invalidate")
+        val listener = sources[SEEK_RELAYOUT_CLASS]!!
+        assertTrue(listener.contains(".implements Landroid/view/View\$OnLayoutChangeListener;"), "the listener does not implement the interface")
+        assertTrue(
+            listener.contains(smali("invoke-static/range {p1 .. p9}, $SEEK_SECTIONS_CLASS;->relayout(Landroid/view/View;IIIIIIII)V")),
+            "the listener does not forward the full callback",
+        )
+    }
 }
