@@ -2225,6 +2225,13 @@ private fun playedSectionsSmali(): String = """
         .param p1, "bounds"
 
         invoke-super {p0, p1}, Landroid/graphics/drawable/Drawable;->onBoundsChange(Landroid/graphics/Rect;)V
+        # The wrapped ClipDrawable caches its rect and never re-propagates ours, so the source
+        # has to follow the parent directly on every resize as well as at installation (#89).
+        iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->source:Landroid/graphics/drawable/Drawable;
+        if-eqz v0, :nosource
+        invoke-virtual {v0, p1}, Landroid/graphics/drawable/Drawable;->setBounds(Landroid/graphics/Rect;)V
+
+        :nosource
         invoke-virtual {p1}, Landroid/graphics/Rect;->width()I
         move-result v0
         if-gtz v0, :skip
@@ -2623,6 +2630,20 @@ private fun seekbarSectionsSmali(): String = """
         return-void
 
         :fresh
+        # A new bar (fresh player instance or re-attached view) replaces the watched one.
+        # Drop the listener from the previous live bar first, or it keeps invalidation tied to
+        # a bar whose overlay is no longer CURRENT (#89).
+        sget-object v1, $SEEK_SECTIONS_CLASS;->WATCHED:Ljava/lang/ref/WeakReference;
+        if-eqz v1, :detached
+        invoke-virtual {v1}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
+        move-result-object v1
+        if-eqz v1, :detached
+        sget-object v2, $SEEK_SECTIONS_CLASS;->LISTENER:Landroid/view/View${'$'}OnLayoutChangeListener;
+        if-eqz v2, :detached
+        check-cast v1, Landroid/view/View;
+        invoke-virtual {v1, v2}, Landroid/view/View;->removeOnLayoutChangeListener(Landroid/view/View${'$'}OnLayoutChangeListener;)V
+
+        :detached
         new-instance v0, Ljava/lang/ref/WeakReference;
         invoke-direct {v0, p0}, Ljava/lang/ref/WeakReference;-><init>(Ljava/lang/Object;)V
         sput-object v0, $SEEK_SECTIONS_CLASS;->WATCHED:Ljava/lang/ref/WeakReference;
