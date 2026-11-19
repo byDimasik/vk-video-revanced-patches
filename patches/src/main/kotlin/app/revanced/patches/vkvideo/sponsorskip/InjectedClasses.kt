@@ -2621,12 +2621,14 @@ private fun seekbarSectionsSmali(): String = """
         .param p0, "view"
 
         # One listener per bar: a configuration change re-lays the bar out and this is what
-        # re-runs the recolor, instead of waiting for a position/tick event (#89).
+        # re-runs the recolor, instead of waiting for a position/tick event (#89). Only the
+        # very same bar returns early: a different bar, a never-watched one and a cleared
+        # reference (get() yields null) all fall through to the fresh registration below.
         sget-object v0, $SEEK_SECTIONS_CLASS;->WATCHED:Ljava/lang/ref/WeakReference;
         if-eqz v0, :fresh
         invoke-virtual {v0}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
         move-result-object v0
-        if-eq v0, p0, :fresh
+        if-ne v0, p0, :fresh
         return-void
 
         :fresh

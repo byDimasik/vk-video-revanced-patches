@@ -342,7 +342,17 @@ class SeekbarPatchTest {
         assertTrue(apply.contains(smali("$SEEK_SECTIONS_CLASS;->watch(Landroid/view/View;)V")), "the bar is not watched")
         val watch = sections.substringAfter(".method public static watch").substringBefore(".end method")
         assertTrue(watch.contains(smali("$SEEK_SECTIONS_CLASS;->WATCHED")), "the watched bar is not remembered")
-        assertTrue(watch.contains("if-eq v0, p0, :fresh"), "a repeated apply re-registers the listener")
+        assertTrue(watch.contains("if-ne v0, p0, :fresh"), "a different bar does not get a fresh registration")
+        assertTrue(
+            watch.substringAfter("if-ne v0, p0, :fresh").trimStart().startsWith("return-void"),
+            "the same bar is not returned for without re-registering",
+        )
+        val referent = watch.substringAfter("Ljava/lang/ref/Reference;->get()Ljava/lang/Object;")
+            .substringBefore("if-ne v0, p0, :fresh")
+        assertTrue(
+            referent.contains("move-result-object v0") && !referent.contains("if-"),
+            "a cleared reference is not treated as a different bar",
+        )
         assertTrue(watch.contains(smali("$SEEK_SECTIONS_CLASS;->LISTENER")), "the listener is not cached")
         assertTrue(watch.contains("addOnLayoutChangeListener"), "the listener is not attached")
         assertTrue(
