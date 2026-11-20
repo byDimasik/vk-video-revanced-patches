@@ -2543,29 +2543,32 @@ private fun playedSectionsSmali(): String = """
     .end method
 
     .method private colour()I
-        .registers 16
+        .registers 17
 
-        iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
+        # p0 is v16, which a 4-bit field cannot address, so it is parked in v15 first; the
+        # wide reads below clobber v11-v14 and the result accumulator lives in v16 (#89).
+        move-object/from16 v15, p0
+        iget-object v0, v15, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
         if-eqz v0, :native
         array-length v1, v0
         if-eqz v1, :native
-        iget-wide v2, p0, $PLAYED_SECTIONS_CLASS;->duration:J
+        iget-wide v2, v15, $PLAYED_SECTIONS_CLASS;->duration:J
         const-wide/16 v4, 0x0
         cmp-long v6, v2, v4
         if-lez v6, :native
-        iget v7, p0, $PLAYED_SECTIONS_CLASS;->fraction:F
-        iget v8, p0, $PLAYED_SECTIONS_CLASS;->fractionEnd:F
+        iget v7, v15, $PLAYED_SECTIONS_CLASS;->fraction:F
+        iget v8, v15, $PLAYED_SECTIONS_CLASS;->fractionEnd:F
         const/4 v6, 0x0
         const/4 v9, 0x0
-        const/4 v12, 0x0
+        const/16 v16, 0x0
 
         :loop
         if-ge v9, v1, :scanned
         aget-object v10, v0, v9
         iget-wide v11, v10, $SEGMENT_CLASS;->startMs:J
         long-to-float v11, v11
-        long-to-float v13, v2
-        div-float v11, v11, v13
+        long-to-float v14, v2
+        div-float v11, v11, v14
         iget-wide v13, v10, $SEGMENT_CLASS;->endMs:J
         long-to-float v13, v13
         long-to-float v14, v2
@@ -2581,23 +2584,23 @@ private fun playedSectionsSmali(): String = """
 
         :lo
         # hi = min(segment end, band end)
-        cmpl-float v15, v13, v8
-        if-gtz v15, :hi_seg
-        move v15, v8
+        cmpl-float v5, v13, v8
+        if-gtz v5, :hi_seg
+        move v5, v8
         goto :hi
 
         :hi_seg
-        move v15, v13
+        move v5, v13
 
         :hi
         # The band takes the colour of the segment it overlaps MOST. The app absorbs a band
         # narrower than its minimum width into the next one, so a band's start is no longer a
         # segment boundary and a nearest-start match flips the colour by one on a narrow
         # (portrait) bar (#89). Overlap is width-stable: the same visible span keeps its colour.
-        sub-float v15, v15, v14
-        cmpl-float v14, v15, v12
+        sub-float v5, v5, v14
+        cmpl-float v14, v5, v16
         if-gtz v14, :next
-        move v12, v15
+        move/from16 v16, v5
         move v6, v9
 
         :next

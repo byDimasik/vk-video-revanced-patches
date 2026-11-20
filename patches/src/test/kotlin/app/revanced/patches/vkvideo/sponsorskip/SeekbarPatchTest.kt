@@ -117,12 +117,17 @@ class SeekbarPatchTest {
         val best = colour.indexOf("move v6, v9")
         assertTrue(best > 0, "the best index is not recorded")
         assertTrue(colour.contains(smali("$PLAYED_SECTIONS_CLASS;->fractionEnd:F")), "the band end fraction is not read")
-        assertTrue(colour.contains("sub-float v15, v15, v14"), "the overlap is not the span intersection")
-        assertTrue(colour.contains("cmpl-float v14, v15, v12"), "the overlap is not compared against the best one")
+        assertTrue(colour.contains("sub-float v5, v5, v14"), "the overlap is not the span intersection")
+        assertTrue(colour.contains("cmpl-float v14, v5, v16"), "the overlap is not compared against the best one")
         assertTrue(colour.contains("if-gtz v14, :next"), "a non-larger overlap still overwrites the best index")
-        assertTrue(colour.indexOf(":lo") < colour.indexOf("sub-float v15, v15, v14"), "the intersection is not clamped before the overlap")
+        assertTrue(colour.indexOf(":lo") < colour.indexOf("sub-float v5, v5, v14"), "the intersection is not clamped before the overlap")
         assertTrue(colour.contains(":hi"), "the upper bound is not clamped")
         assertFalse(colour.contains("0x7f7fffff"), "the nearest-start distance seed survived")
+        // `iget-wide` clobbers the register after its base (11-12, 13-14), so the accumulator
+        // must live outside that window or the verifier rejects the class (#89 device VerifyError).
+        assertTrue(colour.contains(".registers 17"), "the accumulator register was not widened")
+        assertTrue(colour.contains("const/16 v16, 0x0") && colour.contains("cmpl-float v14, v5, v16"), "the accumulator is not v16")
+        assertFalse(colour.contains("cmpl-float v14, v5, v12"), "the accumulator sits in the wide-read window")
     }
 
     @Test
