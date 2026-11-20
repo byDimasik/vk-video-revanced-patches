@@ -3661,7 +3661,8 @@ private fun skipButtonSmali(): String = """
         const v4, 0x${SEEK_BAR_VIEW_ID.toString(16)}
         invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v5
-        if-eqz v5, :have
+        # A page-bar hit is kept; the card bar is only tried when the page bar is missing.
+        if-nez v5, :have
         const v4, 0x${SEEK_BAR_ID.toString(16)}
         invoke-virtual {v1, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
         move-result-object v5
@@ -3710,10 +3711,10 @@ private fun skipButtonSmali(): String = """
         if-eqz v0, :return
         invoke-virtual {v0}, Landroid/view/View;->getVisibility()I
         move-result v1
-        # GONE means "no video right now": only show() may bring that back. An INVISIBLE
-        # button is a deferred placement and must keep following (#92).
+        # GONE means "no video right now": only show() may bring that back. VISIBLE and
+        # the deferred INVISIBLE state must both keep following (#92).
         const/16 v3, 0x8
-        if-ne v1, v3, :return
+        if-eq v1, v3, :return
         iget-object v2, p0, $SKIP_STATE_CLASS->anchor:Landroid/view/View;
         if-eqz v2, :return
         invoke-virtual {v2}, Landroid/view/View;->isAttachedToWindow()Z
@@ -3730,7 +3731,8 @@ private fun skipButtonSmali(): String = """
         const/4 v3, 0x1
         aget v0, v1, v3
         iget v3, p0, $SKIP_STATE_CLASS->anchorY:I
-        if-ne v0, v3, :return
+        # x unchanged: a y move still re-places, an unchanged y returns.
+        if-eq v0, v3, :return
 
         :moved
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->place($SKIP_STATE_CLASS;)V

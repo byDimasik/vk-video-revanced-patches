@@ -272,7 +272,7 @@ class SponsorSkipPatchTest {
         val cardBar = anchor.indexOf("0x7f0b2236")
         assertTrue(pageBar > 0 && cardBar > 0, "the bar ids are not both looked up")
         assertTrue(pageBar < cardBar, "the page bar is not searched first")
-        assertTrue(anchor.contains("if-eqz v5, :have"), "the page bar hit does not skip the card bar")
+        assertTrue(anchor.contains("if-nez v5, :have"), "the page bar hit does not skip the card bar")
         assertTrue(anchor.contains("if-lez v6, :up"), "a zero-height bar is accepted as an anchor")
         assertTrue(anchor.contains("if-eqz v6, :up"), "a detached bar is accepted as an anchor")
         assertTrue(
@@ -339,10 +339,10 @@ class SponsorSkipPatchTest {
         assertTrue(follow.contains("const/4 v1, 0x2") && follow.contains("new-array v1, v1, [I"), "follow allocates no origin array")
         assertTrue(follow.contains("->anchorX:I") && follow.contains("->anchorY:I"), "follow never compares the stored origin")
         assertTrue(follow.contains("if-ne v0, v3, :moved"), "a moved x does not re-place")
-        assertTrue(follow.contains("if-ne v0, v3, :return"), "a moved y does not re-place")
+        assertTrue(follow.contains("if-eq v0, v3, :return"), "an unchanged y still re-places")
         assertTrue(follow.substringAfter(":moved").contains("->place($SKIP_STATE_CLASS)V"), "follow does not re-place")
         assertTrue(follow.contains("const/16 v3, 0x8"), "follow does not skip a GONE button")
-        assertTrue(!follow.contains("if-nez v1, :return"), "follow still skips a deferred (INVISIBLE) button")
+        assertTrue(follow.contains("if-eq v1, v3, :return"), "follow still skips a deferred (INVISIBLE) button")
     }
 
     @Test
