@@ -138,7 +138,7 @@ internal val requiredFields = mapOf(
         "lastToastMs", "lastPosMs", "stallTicks", "frozen",
         "lastChangeMs", "emptyUntil", "deadTicks", "seenPos", "video",
     ),
-    PLAYED_SECTIONS_CLASS to listOf("strength", "track"),
+    PLAYED_SECTIONS_CLASS to listOf("strength", "track", "fractionEnd"),
 )
 
 private fun categorySmali(): String = """
@@ -2106,6 +2106,7 @@ private fun playedSectionsSmali(): String = """
     .field private thick:F
     .field private effective:I
     .field private fraction:F
+    .field private fractionEnd:F
     .field private broken:Z
     .field private list:Ljava/lang/reflect/Field;
     .field private thin:Ljava/lang/reflect/Field;
@@ -2435,6 +2436,11 @@ private fun playedSectionsSmali(): String = """
         int-to-float v13, v13
         div-float v13, v5, v13
         iput v13, v15, $PLAYED_SECTIONS_CLASS;->fraction:F
+        # The colour is chosen by span overlap, so the END fraction travels with the start (#89).
+        iget v13, v15, $PLAYED_SECTIONS_CLASS;->width:I
+        int-to-float v13, v13
+        div-float v13, v7, v13
+        iput v13, v15, $PLAYED_SECTIONS_CLASS;->fractionEnd:F
         invoke-direct/range {v15 .. v15}, $PLAYED_SECTIONS_CLASS;->colour()I
         move-result v12
         iget-boolean v13, v15, $PLAYED_SECTIONS_CLASS;->track:Z
@@ -2499,6 +2505,11 @@ private fun playedSectionsSmali(): String = """
         int-to-float v13, v13
         div-float v13, v5, v13
         iput v13, v15, $PLAYED_SECTIONS_CLASS;->fraction:F
+        # The colour is chosen by span overlap, so the END fraction travels with the start (#89).
+        iget v13, v15, $PLAYED_SECTIONS_CLASS;->width:I
+        int-to-float v13, v13
+        div-float v13, v7, v13
+        iput v13, v15, $PLAYED_SECTIONS_CLASS;->fractionEnd:F
         invoke-direct/range {v15 .. v15}, $PLAYED_SECTIONS_CLASS;->colour()I
         move-result v12
         iget-boolean v14, v15, $PLAYED_SECTIONS_CLASS;->track:Z
@@ -2543,9 +2554,10 @@ private fun playedSectionsSmali(): String = """
         cmp-long v6, v2, v4
         if-lez v6, :native
         iget v7, p0, $PLAYED_SECTIONS_CLASS;->fraction:F
-        const/4 v6, -0x1
-        const v8, 0x7f7fffff
+        iget v8, p0, $PLAYED_SECTIONS_CLASS;->fractionEnd:F
+        const/4 v6, 0x0
         const/4 v9, 0x0
+        const/4 v12, 0x0
 
         :loop
         if-ge v9, v1, :scanned
@@ -2554,19 +2566,38 @@ private fun playedSectionsSmali(): String = """
         long-to-float v11, v11
         long-to-float v13, v2
         div-float v11, v11, v13
-        sub-float v11, v11, v7
-        const/4 v13, 0x0
-        cmpg-float v13, v11, v13
-        if-ltz v13, :neg
-        goto :abs
+        iget-wide v13, v10, $SEGMENT_CLASS;->endMs:J
+        long-to-float v13, v13
+        long-to-float v14, v2
+        div-float v13, v13, v14
+        # lo = max(segment start, band start)
+        cmpl-float v14, v11, v7
+        if-gtz v14, :lo_band
+        move v14, v11
+        goto :lo
 
-        :neg
-        neg-float v11, v11
+        :lo_band
+        move v14, v7
 
-        :abs
-        cmpl-float v13, v11, v8
-        if-gez v13, :next
-        move v8, v11
+        :lo
+        # hi = min(segment end, band end)
+        cmpl-float v15, v13, v8
+        if-gtz v15, :hi_seg
+        move v15, v8
+        goto :hi
+
+        :hi_seg
+        move v15, v13
+
+        :hi
+        # The band takes the colour of the segment it overlaps MOST. The app absorbs a band
+        # narrower than its minimum width into the next one, so a band's start is no longer a
+        # segment boundary and a nearest-start match flips the colour by one on a narrow
+        # (portrait) bar (#89). Overlap is width-stable: the same visible span keeps its colour.
+        sub-float v15, v15, v14
+        cmpl-float v14, v15, v12
+        if-gtz v14, :next
+        move v12, v15
         move v6, v9
 
         :next

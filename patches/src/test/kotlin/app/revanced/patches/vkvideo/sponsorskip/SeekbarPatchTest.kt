@@ -112,14 +112,84 @@ class SeekbarPatchTest {
     }
 
     @Test
-    fun `the colour picks the nearest segment start`() {
+    fun `the colour picks the segment with the largest overlap, not the nearest start`() {
         val colour = sources[PLAYED_SECTIONS_CLASS]!!.substringAfter(".method private colour")
         val best = colour.indexOf("move v6, v9")
-        assertTrue(best > 0, "the nearest index is not recorded")
-        assertTrue(colour.contains("cmpg-float"), "the distance sign is not handled")
-        assertTrue(colour.contains("if-ltz v13, :neg"), "a negative delta is not negated")
-        assertTrue(colour.contains("if-gez v13, :next"), "a farther segment overwrites the best one")
-        assertFalse(colour.contains(":equal"), "the exact-count shortcut survived without a counter")
+        assertTrue(best > 0, "the best index is not recorded")
+        assertTrue(colour.contains(smali("$PLAYED_SECTIONS_CLASS;->fractionEnd:F")), "the band end fraction is not read")
+        assertTrue(colour.contains("sub-float v15, v15, v14"), "the overlap is not the span intersection")
+        assertTrue(colour.contains("cmpl-float v14, v15, v12"), "the overlap is not compared against the best one")
+        assertTrue(colour.contains("if-gtz v14, :next"), "a non-larger overlap still overwrites the best index")
+        assertTrue(colour.indexOf(":lo") < colour.indexOf("sub-float v15, v15, v14"), "the intersection is not clamped before the overlap")
+        assertTrue(colour.contains(":hi"), "the upper bound is not clamped")
+        assertFalse(colour.contains("0x7f7fffff"), "the nearest-start distance seed survived")
+    }
+
+    @Test
+    fun `a band keeps its own section colour at every bar width`() {
+        // Mirror of the app's band producer (np7/c.onBoundsChange) plus the injected selector:
+        // a band narrower than the minimum width is absorbed into the NEXT band, which shifts
+        // every later band's start off its own section boundary. Portrait (narrow) bars hit the
+        // absorption around 13-16%, and a nearest-start match then painted that block with the
+        // neighbour's colour (#89).
+        val sections = listOf(0.0f to 0.13f, 0.13f to 0.16f, 0.16f to 0.42f, 0.42f to 0.75f, 0.75f to 1.0f)
+        val narrow = listOf(0, 2, 3, 4) // 13-16% absorbed into the 16-42% block
+        val wide = listOf(0, 1, 2, 3, 4)
+        for (width in listOf(240, 360, 720, 1280)) {
+            val expected = if (width == 240) narrow else wide
+            val bands = bandsFor(sections, width, minWidth = 8f)
+            val colours = bands.map { (start, end) -> dominant(sections, start / width, end / width) }
+            assertEquals(expected, colours, "colour order at width $width")
+            // Every band takes a distinct, forward-ordered section colour: none repeats a
+            // section and none steps back to a previous neighbour (the portrait bug).
+            val ordered = colours.zipWithNext().all { (left, right) -> right > left }
+            assertTrue(ordered, "colour order is not strictly forward at width $width: $colours")
+
+            // The block covering the 13-16% region must carry a section that really covers
+            // most of that region's pixels, in both the absorbed (portrait) and split cases.
+            val from = (0.13f * width).toInt()
+            val to = (0.16f * width).toInt()
+            val sample = bands.indexOfFirst { (start, end) -> start <= from && end >= to }
+            if (sample >= 0) {
+                assertEquals(if (width == 240) 2 else 1, colours[sample], "the 13-16% block took the wrong colour at width $width")
+            }
+        }
+    }
+
+    /** The app's producer: bands narrower than [minWidth] are carried into the next band. */
+    private fun bandsFor(sections: List<Pair<Float, Float>>, width: Int, minWidth: Float): List<Pair<Float, Float>> {
+        val bounds = sections.map { it.first } + sections.last().second
+        val bands = mutableListOf<Pair<Float, Float>>()
+        var left = 0f
+        var carry = 0f
+        sections.indices.forEach { i ->
+            val units = (bounds[i + 1] - bounds[i]) * 10000f + carry
+            val end = minOf(width.toFloat(), left + units / 10000f * width)
+            if (end >= left + minWidth) {
+                bands += left to end
+                left = end
+                carry = 0f
+            } else if (i == sections.lastIndex) {
+                bands[bands.lastIndex] = bands.last()!!.first to end
+            } else {
+                carry = units
+            }
+        }
+        return bands
+    }
+
+    /** The injected selector: the section overlapping the band the most wins. */
+    private fun dominant(sections: List<Pair<Float, Float>>, start: Float, end: Float): Int {
+        var best = 0
+        var bestOverlap = Float.NEGATIVE_INFINITY
+        sections.forEachIndexed { index, (segmentStart, segmentEnd) ->
+            val overlap = minOf(segmentEnd, end) - maxOf(segmentStart, start)
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap
+                best = index
+            }
+        }
+        return best
     }
 
     @Test
