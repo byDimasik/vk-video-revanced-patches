@@ -112,14 +112,110 @@ class SeekbarPatchTest {
     }
 
     @Test
-    fun `the colour picks the nearest segment start`() {
-        val colour = sources[PLAYED_SECTIONS_CLASS]!!.substringAfter(".method private colour")
+    fun `the colour picks the segment with the largest overlap, not the nearest start`() {
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val colour = drawable.substringAfter(".method private colour")
         val best = colour.indexOf("move v6, v9")
-        assertTrue(best > 0, "the nearest index is not recorded")
-        assertTrue(colour.contains("cmpg-float"), "the distance sign is not handled")
-        assertTrue(colour.contains("if-ltz v13, :neg"), "a negative delta is not negated")
-        assertTrue(colour.contains("if-gez v13, :next"), "a farther segment overwrites the best one")
-        assertFalse(colour.contains(":equal"), "the exact-count shortcut survived without a counter")
+        assertTrue(best > 0, "the best index is not recorded")
+        assertTrue(colour.contains("const/4 v6, -0x1"), "the best index is not seeded to -1, so the native fallback never runs")
+        assertTrue(colour.contains("if-ltz v6, :native"), "the missing-pick guard is inverted")
+        assertTrue(colour.contains("if-ltz v0, :native"), "the unknown-category guard is inverted")
+        assertTrue(colour.contains(smali("$PLAYED_SECTIONS_CLASS;->fractionEnd:F")), "the band end fraction is not read")
+        assertTrue(colour.contains("sub-float v5, v5, v14"), "the overlap is not the span intersection")
+        assertTrue(colour.contains("cmpl-float v14, v5, v16"), "the overlap is not compared against the best one")
+        assertTrue(colour.contains("if-lez v14, :next"), "a non-larger overlap still overwrites the best index")
+        assertTrue(colour.indexOf(":lo") < colour.indexOf("sub-float v5, v5, v14"), "the intersection is not clamped before the overlap")
+        assertTrue(colour.contains(":hi"), "the upper bound is not clamped")
+        // Both clamps take the inner edge: lo = max(start), hi = min(end). Swapping either pair
+        // turns the intersection into the outer span, so the last section always wins (#89).
+        // The z-forms are single-register (21t): `if-gtz vA, vB, :label` does not assemble, and
+        // the miss only surfaces at patch time, not in these string tests (#89).
+        assertTrue(colour.contains("if-gtz v14, :lo_band"), "the lower clamp branch is missing or two-register")
+        assertTrue(colour.contains("if-gtz v5, :hi_seg"), "the upper clamp branch is missing or two-register")
+        // Normalised so the assertions do not depend on the smali indentation depth.
+        val flat = colour.lines().joinToString("\n") { it.trim() }
+        assertTrue(flat.contains("if-gtz v14, :lo_band\nmove v14, v7\ngoto :lo"), "the lo branch or its band-start fall-through is wrong")
+        assertTrue(flat.contains(":lo_band\nmove v14, v11"), "lo takes the band start instead of the segment start")
+        assertTrue(flat.contains("if-gtz v5, :hi_seg\nmove v5, v13\ngoto :hi"), "the hi branch or its segment-end fall-through is wrong")
+        assertTrue(flat.contains(":hi_seg\nmove v5, v8"), "hi takes the segment end instead of the band end")
+        assertFalse(colour.contains("0x7f7fffff"), "the nearest-start distance seed survived")
+        // `iget-wide` clobbers the register after its base (11-12, 13-14), so the accumulator
+        // must live outside that window or the verifier rejects the class (#89 device VerifyError).
+        assertTrue(colour.contains(".registers 17"), "the accumulator register was not widened")
+        assertTrue(colour.contains("const/16 v16, 0x0") && colour.contains("cmpl-float v14, v5, v16"), "the accumulator is not v16")
+        assertFalse(colour.contains("cmpl-float v14, v5, v12"), "the accumulator sits in the wide-read window")
+        // The diagnostics are gated: compared against zero is fine, but `sget v, ...; if-eqz v`
+        // on a field declared `Z = 0x1` produces an int static value and the whole dex fails
+        // verification ("unexpected static field initial value type: 'I' vs 'Z'").
+        assertTrue(drawable.contains(".field private static DEBUG:Z = false"), "the trace flag is not a boolean literal")
+        assertFalse(drawable.contains("DEBUG:Z = 0x"), "the trace flag carries an int static value")
+    }
+
+    @Test
+    fun `a band keeps its own section colour at every bar width`() {
+        // Mirror of the app's band producer (np7/c.onBoundsChange) plus the injected selector:
+        // a band narrower than the minimum width is absorbed into the NEXT band, which shifts
+        // every later band's start off its own section boundary. Portrait (narrow) bars hit the
+        // absorption around 13-16%, and a nearest-start match then painted that block with the
+        // neighbour's colour (#89).
+        val sections = listOf(0.0f to 0.13f, 0.13f to 0.16f, 0.16f to 0.42f, 0.42f to 0.75f, 0.75f to 1.0f)
+        val narrow = listOf(0, 2, 3, 4) // 13-16% absorbed into the 16-42% block
+        val wide = listOf(0, 1, 2, 3, 4)
+        for (width in listOf(240, 360, 720, 1280)) {
+            val expected = if (width == 240) narrow else wide
+            val bands = bandsFor(sections, width, minWidth = 8f)
+            val colours = bands.map { (start, end) -> dominant(sections, start / width, end / width) }
+            assertEquals(expected, colours, "colour order at width $width")
+            // Every band takes a distinct, forward-ordered section colour: none repeats a
+            // section and none steps back to a previous neighbour (the portrait bug).
+            val ordered = colours.zipWithNext().all { (left, right) -> right > left }
+            assertTrue(ordered, "colour order is not strictly forward at width $width: $colours")
+
+            // The block covering the 13-16% region must carry a section that really covers
+            // most of that region's pixels, in both the absorbed (portrait) and split cases.
+            val from = (0.13f * width).toInt()
+            val to = (0.16f * width).toInt()
+            val sample = bands.indexOfFirst { (start, end) -> start <= from && end >= to }
+            if (sample >= 0) {
+                assertEquals(if (width == 240) 2 else 1, colours[sample], "the 13-16% block took the wrong colour at width $width")
+            }
+        }
+    }
+
+    /** The app's producer: bands narrower than [minWidth] are carried into the next band. */
+    private fun bandsFor(sections: List<Pair<Float, Float>>, width: Int, minWidth: Float): List<Pair<Float, Float>> {
+        val bounds = sections.map { it.first } + sections.last().second
+        val bands = mutableListOf<Pair<Float, Float>>()
+        var left = 0f
+        var carry = 0f
+        sections.indices.forEach { i ->
+            val units = (bounds[i + 1] - bounds[i]) * 10000f + carry
+            val end = minOf(width.toFloat(), left + units / 10000f * width)
+            if (end >= left + minWidth) {
+                bands += left to end
+                left = end
+                carry = 0f
+            } else if (i == sections.lastIndex) {
+                bands[bands.lastIndex] = bands.last()!!.first to end
+            } else {
+                carry = units
+            }
+        }
+        return bands
+    }
+
+    /** The injected selector: the section overlapping the band the most wins. */
+    private fun dominant(sections: List<Pair<Float, Float>>, start: Float, end: Float): Int {
+        var best = 0
+        var bestOverlap = Float.NEGATIVE_INFINITY
+        sections.forEachIndexed { index, (segmentStart, segmentEnd) ->
+            val overlap = minOf(segmentEnd, end) - maxOf(segmentStart, start)
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap
+                best = index
+            }
+        }
+        return best
     }
 
     @Test
