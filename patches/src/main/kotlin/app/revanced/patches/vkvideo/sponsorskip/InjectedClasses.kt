@@ -2131,7 +2131,10 @@ private fun playedSectionsSmali(): String = """
     .field private factor:Ljava/lang/reflect/Field;
     .field private start:Ljava/lang/reflect/Field;
     .field private end:Ljava/lang/reflect/Field;
-    .field private static final NATIVE:I = 0xff528bcc
+    # Diagnostics for the colour mapping; flip to 0x1 for a gate build, 0x0 to ship quiet.
+.field private static DEBUG:Z = false
+
+.field private static final NATIVE:I = 0xff528bcc
 
     .method public constructor <init>(Landroid/graphics/drawable/Drawable;IIZ)V
         .registers 8
@@ -2486,8 +2489,11 @@ private fun playedSectionsSmali(): String = """
         :read_fail
         const/4 v0, 0x1
         iput-boolean v0, v15, $PLAYED_SECTIONS_CLASS;->broken:Z
+        sget-boolean v1, $PLAYED_SECTIONS_CLASS;->DEBUG:Z
+        if-eqz v1, :nolog_fail
         const-string v0, "DBG-fail"
         invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        :nolog_fail
         return-void
 
         .catch Ljava/lang/Exception; {:try_read .. :try_end_read} :read_fail
@@ -2582,6 +2588,8 @@ private fun playedSectionsSmali(): String = """
         const/4 v6, -0x1
         const/4 v9, 0x0
         const/16 v16, 0x0
+        sget-boolean v12, $PLAYED_SECTIONS_CLASS;->DEBUG:Z
+        if-eqz v12, :nolog_pre
         aget-object v10, v0, v9
         iget-wide v11, v10, $SEGMENT_CLASS;->startMs:J
         long-to-int v11, v11
@@ -2597,6 +2605,7 @@ private fun playedSectionsSmali(): String = """
         float-to-int v14, v14
         invoke-static {v13, v14}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
 
+        :nolog_pre
         :loop
         if-ge v9, v1, :scanned
         aget-object v10, v0, v9
@@ -2633,11 +2642,14 @@ private fun playedSectionsSmali(): String = """
         # segment boundary and a nearest-start match flips the colour by one on a narrow
         # (portrait) bar (#89). Overlap is width-stable: the same visible span keeps its colour.
         sub-float v5, v5, v14
+        sget-boolean v12, $PLAYED_SECTIONS_CLASS;->DEBUG:Z
+        if-eqz v12, :nolog_ov
         const-string v13, "DBG-ov"
         const v12, 0x447a0000
         mul-float v12, v5, v12
         float-to-int v12, v12
         invoke-static {v13, v12}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
+        :nolog_ov
         cmpl-float v14, v5, v16
         if-lez v14, :next
         move/from16 v16, v5
@@ -2649,30 +2661,45 @@ private fun playedSectionsSmali(): String = """
 
         :scanned
         # v6 is the best index or -1 when no band overlapped a section at all.
+        sget-boolean v12, $PLAYED_SECTIONS_CLASS;->DEBUG:Z
+        if-eqz v12, :nolog_pick
         const-string v13, "DBG-pick"
         move v14, v6
         invoke-static {v13, v14}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
+        :nolog_pick
         if-ltz v6, :native
         aget-object v0, v0, v6
         iget v0, v0, $SEGMENT_CLASS;->category:I
+        sget-boolean v12, $PLAYED_SECTIONS_CLASS;->DEBUG:Z
+        if-eqz v12, :nolog_cat
         const-string v13, "DBG-cat"
         invoke-static {v13, v0}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
+        :nolog_cat
         if-ltz v0, :native
         invoke-static {v0}, $BEHAVIOR_STORE_CLASS;->getBehavior(I)I
         move-result v1
+        sget-boolean v12, $PLAYED_SECTIONS_CLASS;->DEBUG:Z
+        if-eqz v12, :nolog_beh
         const-string v13, "DBG-beh"
         invoke-static {v13, v1}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
+        :nolog_beh
         const/4 v2, 0x2
         if-eq v1, v2, :native
         invoke-static {v0}, $CATEGORY_CLASS;->color(I)I
         move-result v0
+        sget-boolean v1, $PLAYED_SECTIONS_CLASS;->DEBUG:Z
+        if-eqz v1, :nolog_ok
         const-string v1, "DBG-ok"
         invoke-static {v1}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        :nolog_ok
         return v0
 
         :native
+        sget-boolean v1, $PLAYED_SECTIONS_CLASS;->DEBUG:Z
+        if-eqz v1, :nolog_native
         const-string v0, "DBG-native"
         invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        :nolog_native
         sget v0, $PLAYED_SECTIONS_CLASS;->NATIVE:I
         return v0
     .end method

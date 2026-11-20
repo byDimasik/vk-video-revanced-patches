@@ -113,7 +113,8 @@ class SeekbarPatchTest {
 
     @Test
     fun `the colour picks the segment with the largest overlap, not the nearest start`() {
-        val colour = sources[PLAYED_SECTIONS_CLASS]!!.substringAfter(".method private colour")
+        val drawable = sources[PLAYED_SECTIONS_CLASS]!!
+        val colour = drawable.substringAfter(".method private colour")
         val best = colour.indexOf("move v6, v9")
         assertTrue(best > 0, "the best index is not recorded")
         assertTrue(colour.contains("const/4 v6, -0x1"), "the best index is not seeded to -1, so the native fallback never runs")
@@ -143,6 +144,11 @@ class SeekbarPatchTest {
         assertTrue(colour.contains(".registers 17"), "the accumulator register was not widened")
         assertTrue(colour.contains("const/16 v16, 0x0") && colour.contains("cmpl-float v14, v5, v16"), "the accumulator is not v16")
         assertFalse(colour.contains("cmpl-float v14, v5, v12"), "the accumulator sits in the wide-read window")
+        // The diagnostics are gated: compared against zero is fine, but `sget v, ...; if-eqz v`
+        // on a field declared `Z = 0x1` produces an int static value and the whole dex fails
+        // verification ("unexpected static field initial value type: 'I' vs 'Z'").
+        assertTrue(drawable.contains(".field private static DEBUG:Z = false"), "the trace flag is not a boolean literal")
+        assertFalse(drawable.contains("DEBUG:Z = 0x"), "the trace flag carries an int static value")
     }
 
     @Test
