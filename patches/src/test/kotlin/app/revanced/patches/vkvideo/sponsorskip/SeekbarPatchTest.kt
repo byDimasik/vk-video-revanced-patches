@@ -116,12 +116,27 @@ class SeekbarPatchTest {
         val colour = sources[PLAYED_SECTIONS_CLASS]!!.substringAfter(".method private colour")
         val best = colour.indexOf("move v6, v9")
         assertTrue(best > 0, "the best index is not recorded")
+        assertTrue(colour.contains("const/4 v6, -0x1"), "the best index is not seeded to -1, so the native fallback never runs")
+        assertTrue(colour.contains("if-ltz v6, :native"), "the missing-pick guard is inverted")
+        assertTrue(colour.contains("if-ltz v0, :native"), "the unknown-category guard is inverted")
         assertTrue(colour.contains(smali("$PLAYED_SECTIONS_CLASS;->fractionEnd:F")), "the band end fraction is not read")
         assertTrue(colour.contains("sub-float v5, v5, v14"), "the overlap is not the span intersection")
         assertTrue(colour.contains("cmpl-float v14, v5, v16"), "the overlap is not compared against the best one")
-        assertTrue(colour.contains("if-gtz v14, :next"), "a non-larger overlap still overwrites the best index")
+        assertTrue(colour.contains("if-lez v14, :next"), "a non-larger overlap still overwrites the best index")
         assertTrue(colour.indexOf(":lo") < colour.indexOf("sub-float v5, v5, v14"), "the intersection is not clamped before the overlap")
         assertTrue(colour.contains(":hi"), "the upper bound is not clamped")
+        // Both clamps take the inner edge: lo = max(start), hi = min(end). Swapping either pair
+        // turns the intersection into the outer span, so the last section always wins (#89).
+        // The z-forms are single-register (21t): `if-gtz vA, vB, :label` does not assemble, and
+        // the miss only surfaces at patch time, not in these string tests (#89).
+        assertTrue(colour.contains("if-gtz v14, :lo_band"), "the lower clamp branch is missing or two-register")
+        assertTrue(colour.contains("if-gtz v5, :hi_seg"), "the upper clamp branch is missing or two-register")
+        // Normalised so the assertions do not depend on the smali indentation depth.
+        val flat = colour.lines().joinToString("\n") { it.trim() }
+        assertTrue(flat.contains("if-gtz v14, :lo_band\nmove v14, v7\ngoto :lo"), "the lo branch or its band-start fall-through is wrong")
+        assertTrue(flat.contains(":lo_band\nmove v14, v11"), "lo takes the band start instead of the segment start")
+        assertTrue(flat.contains("if-gtz v5, :hi_seg\nmove v5, v13\ngoto :hi"), "the hi branch or its segment-end fall-through is wrong")
+        assertTrue(flat.contains(":hi_seg\nmove v5, v8"), "hi takes the segment end instead of the band end")
         assertFalse(colour.contains("0x7f7fffff"), "the nearest-start distance seed survived")
         // `iget-wide` clobbers the register after its base (11-12, 13-14), so the accumulator
         // must live outside that window or the verifier rejects the class (#89 device VerifyError).

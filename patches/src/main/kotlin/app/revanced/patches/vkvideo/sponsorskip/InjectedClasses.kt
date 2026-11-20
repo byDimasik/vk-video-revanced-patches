@@ -118,7 +118,7 @@ internal val requiredMethods = mapOf(
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
         "rememberView:2", "viewOf:1", "redraw:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
-        "reload:1", "rememberVideo:2", "videoOf:1", "postVideo:2", "rememberBar:1", "findBar:2", "onMain:0", "mainHandler:0", "postMain:1", "trace:2",
+        "reload:1", "rememberVideo:2", "videoOf:1", "postVideo:2", "rememberBar:1", "findBar:2", "onMain:0", "mainHandler:0", "postMain:1", "trace:2", "log:1", "logInt:2",
     ),
     SKIP_MAIN_CLASS to listOf("<init>:5", "run:0"),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1", "textColor:0"),
@@ -920,6 +920,22 @@ private fun skipEngineSmali(): String = """
 
         const-string v0, "SponsorSkip"
         invoke-static {v0, p0}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
+        return-void
+    .end method
+
+    .method public static logInt(Ljava/lang/String;I)V
+        .registers 3
+
+        new-instance v0, Ljava/lang/StringBuilder;
+        invoke-direct {v0}, Ljava/lang/StringBuilder;-><init>()V
+        invoke-virtual {v0, p0}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        const-string v1, "="
+        invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        invoke-virtual {v0, p1}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
+        invoke-virtual {v0}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+        move-result-object v1
+        const-string v0, "SponsorSkip"
+        invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
         return-void
     .end method
 
@@ -2312,8 +2328,11 @@ private fun playedSectionsSmali(): String = """
         invoke-virtual {v0}, Landroid/graphics/Rect;->isEmpty()Z
         move-result v1
         if-nez v1, :return
-        invoke-virtual {v0}, Landroid/graphics/Rect;->width()I
-        move-result v1
+        # The current rect is the bar: width is taken from its edges, not Rect.width(), so a
+        # zero-width frame cannot slip through the draw path (#89).
+        iget v9, v0, Landroid/graphics/Rect;->left:I
+        iget v10, v0, Landroid/graphics/Rect;->right:I
+        sub-int v1, v10, v9
         if-lez v1, :return
         iput v1, p0, $PLAYED_SECTIONS_CLASS;->width:I
         invoke-virtual {v0}, Landroid/graphics/Rect;->centerY()I
@@ -2467,6 +2486,8 @@ private fun playedSectionsSmali(): String = """
         :read_fail
         const/4 v0, 0x1
         iput-boolean v0, v15, $PLAYED_SECTIONS_CLASS;->broken:Z
+        const-string v0, "DBG-fail"
+        invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         return-void
 
         .catch Ljava/lang/Exception; {:try_read .. :try_end_read} :read_fail
@@ -2558,9 +2579,23 @@ private fun playedSectionsSmali(): String = """
         if-lez v6, :native
         iget v7, v15, $PLAYED_SECTIONS_CLASS;->fraction:F
         iget v8, v15, $PLAYED_SECTIONS_CLASS;->fractionEnd:F
-        const/4 v6, 0x0
+        const/4 v6, -0x1
         const/4 v9, 0x0
         const/16 v16, 0x0
+        aget-object v10, v0, v9
+        iget-wide v11, v10, $SEGMENT_CLASS;->startMs:J
+        long-to-int v11, v11
+        const-string v13, "DBG-s0"
+        invoke-static {v13, v11}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
+        iget-wide v11, v10, $SEGMENT_CLASS;->endMs:J
+        long-to-int v11, v11
+        const-string v13, "DBG-e0"
+        invoke-static {v13, v11}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
+        const-string v13, "DBG-fr"
+        const v14, 0x447a0000
+        mul-float v14, v7, v14
+        float-to-int v14, v14
+        invoke-static {v13, v14}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
 
         :loop
         if-ge v9, v1, :scanned
@@ -2576,21 +2611,21 @@ private fun playedSectionsSmali(): String = """
         # lo = max(segment start, band start)
         cmpl-float v14, v11, v7
         if-gtz v14, :lo_band
-        move v14, v11
+        move v14, v7
         goto :lo
 
         :lo_band
-        move v14, v7
+        move v14, v11
 
         :lo
         # hi = min(segment end, band end)
         cmpl-float v5, v13, v8
         if-gtz v5, :hi_seg
-        move v5, v8
+        move v5, v13
         goto :hi
 
         :hi_seg
-        move v5, v13
+        move v5, v8
 
         :hi
         # The band takes the colour of the segment it overlaps MOST. The app absorbs a band
@@ -2598,8 +2633,13 @@ private fun playedSectionsSmali(): String = """
         # segment boundary and a nearest-start match flips the colour by one on a narrow
         # (portrait) bar (#89). Overlap is width-stable: the same visible span keeps its colour.
         sub-float v5, v5, v14
+        const-string v13, "DBG-ov"
+        const v12, 0x447a0000
+        mul-float v12, v5, v12
+        float-to-int v12, v12
+        invoke-static {v13, v12}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
         cmpl-float v14, v5, v16
-        if-gtz v14, :next
+        if-lez v14, :next
         move/from16 v16, v5
         move v6, v9
 
@@ -2608,19 +2648,31 @@ private fun playedSectionsSmali(): String = """
         goto :loop
 
         :scanned
+        # v6 is the best index or -1 when no band overlapped a section at all.
+        const-string v13, "DBG-pick"
+        move v14, v6
+        invoke-static {v13, v14}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
         if-ltz v6, :native
         aget-object v0, v0, v6
         iget v0, v0, $SEGMENT_CLASS;->category:I
+        const-string v13, "DBG-cat"
+        invoke-static {v13, v0}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
         if-ltz v0, :native
         invoke-static {v0}, $BEHAVIOR_STORE_CLASS;->getBehavior(I)I
         move-result v1
+        const-string v13, "DBG-beh"
+        invoke-static {v13, v1}, $SKIP_ENGINE_CLASS;->logInt(Ljava/lang/String;I)V
         const/4 v2, 0x2
         if-eq v1, v2, :native
         invoke-static {v0}, $CATEGORY_CLASS;->color(I)I
         move-result v0
+        const-string v1, "DBG-ok"
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         return v0
 
         :native
+        const-string v0, "DBG-native"
+        invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
         sget v0, $PLAYED_SECTIONS_CLASS;->NATIVE:I
         return v0
     .end method
