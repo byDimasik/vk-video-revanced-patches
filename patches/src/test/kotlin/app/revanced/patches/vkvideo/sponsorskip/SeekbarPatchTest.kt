@@ -244,10 +244,10 @@ class SeekbarPatchTest {
     @Test
     fun `the state keeps no overlay bookkeeping`() {
         val state = sources[SKIP_STATE_CLASS]!!
-        listOf("view:Landroid/view/View;").forEach {
+        listOf("view:Landroid/view/View;", "anchor:Landroid/view/View;", "bar:Landroid/view/View;", "anchorX:I", "anchorY:I").forEach {
             assertTrue(state.contains(".field public $it") || state.contains(".field public final $it"), "missing $it")
         }
-        listOf("bar:", "overlay:", "dirty:", "bands:", "stamp:", "sections:").forEach {
+        listOf("overlay:", "dirty:", "bands:", "stamp:", "sections:").forEach {
             assertFalse(state.contains(it), "the removed state field $it survived")
         }
     }

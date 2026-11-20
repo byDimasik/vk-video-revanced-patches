@@ -227,8 +227,12 @@ class SponsorSkipPatchTest {
         assertEquals(4, Regex("getLocationInWindow").findAll(place).count(), "place does not read the surface, the container, the bar and the parent")
         assertTrue(place.contains("invoke-virtual {v2}, Landroid/view/View;->getHeight()I"), "the container height is never read")
         assertTrue(place.contains("if-lt v9, v4, :return"), "a laid-out container bails out of the placement")
-        assertTrue(place.contains("if-eqz v3, :content_view"), "a missing player container skips the content view")
-        assertTrue(place.contains("if-eqz v3, :content_root") && place.contains(":content_root"), "a missing content view does not fall back to the root")
+        assertTrue(
+            place.contains("->anchorOf($SKIP_STATE_CLASS)Landroid/view/View;"),
+            "the container is not resolved from the surface",
+        )
+        assertTrue(!place.contains("0x7f0b098b"), "the container is still pinned to the decor-level player view id")
+        assertTrue(!place.contains("0x1020002"), "the container still falls back to the window content view")
         assertTrue(place.contains("->leftMargin:I") && place.contains("->topMargin:I"))
         assertTrue(place.contains("0x800030"), "place does not pin the gravity")
         assertTrue(place.contains("isAttachedToWindow"), "a detached surface is trusted")
@@ -257,19 +261,96 @@ class SponsorSkipPatchTest {
         assertTrue(place.contains(":bottom\n    sub-int v9, v13, v5"), "the bottom fallback is not in container coordinates")
     }
     @Test
-    fun `the bar is looked up in the container, page id first`() {
-        val place = placeBody()
-        val container = place.indexOf("const v4, 0x7f0b098b")
-        val content = place.indexOf("const v4, 0x1020002")
-        val pageBar = place.indexOf("const v4, 0x7f0b223d")
-        val cardBar = place.indexOf("const v4, 0x7f0b2236")
-        assertTrue(container > 0 && content > 0 && pageBar > 0 && cardBar > 0, "the ids are not all looked up")
-        assertTrue(container < content, "the player container is not searched before the decor")
-        assertTrue(content < pageBar, "the bar is searched before the container is resolved")
+    fun `the anchor is the nearest ancestor of the surface that holds a live bar`() {
+        val anchor = anchorBody()
+        assertTrue(
+            anchor.contains("Landroid/view/View;->getParent()Landroid/view/ViewParent;"),
+            "the anchor walk does not go upward from the surface",
+        )
+        assertTrue(anchor.contains("instance-of v6, v1, Landroid/view/View;"), "a non-view parent is cast anyway")
+        val pageBar = anchor.indexOf("0x7f0b223d")
+        val cardBar = anchor.indexOf("0x7f0b2236")
+        assertTrue(pageBar > 0 && cardBar > 0, "the bar ids are not both looked up")
         assertTrue(pageBar < cardBar, "the page bar is not searched first")
-        assertTrue(place.contains("if-eqz v4, :bar_alt"), "the page bar hit does not skip the card bar")
-        assertTrue(place.contains("if-lez v9, :bottom"), "a zero bar height does not fall back")
-        assertTrue(place.contains("if-eqz v9, :bottom"), "a detached bar is used")
+        assertTrue(anchor.contains("if-nez v5, :have"), "the page bar hit does not skip the card bar")
+        assertTrue(anchor.contains("if-lez v6, :up"), "a zero-height bar is accepted as an anchor")
+        assertTrue(anchor.contains("if-eqz v6, :up"), "a detached bar is accepted as an anchor")
+        assertTrue(
+            anchor.contains(":up\n    invoke-virtual {v1}, Landroid/view/View;->getParent()"),
+            "a bar-less ancestor does not continue the walk",
+        )
+        assertTrue(
+            anchor.indexOf(":up") < anchor.indexOf("->bar:Landroid/view/View;"),
+            "the walk runs before the bar is recorded",
+        )
+    }
+
+    @Test
+    fun `a wrong-parent or unmeasurable container defers instead of parking in a corner`() {
+        val place = placeBody()
+        val anchorAt = place.indexOf("->anchorOf(")
+        assertTrue(anchorAt > 0, "place does not resolve an anchor")
+        assertTrue(
+            place.substringAfter("->anchorOf(").contains("if-eqz v2, :return"),
+            "a missing anchor falls through to a default corner instead of returning",
+        )
+        assertTrue(!place.contains("getRootView"), "the window root is still used as a placement authority")
+        val anchor = anchorBody()
+        assertTrue(
+            anchor.contains(":fallback\n    const/4 v5, 0x0"),
+            "the no-bar fallback does not clear the stale bar",
+        )
+        assertTrue(
+            anchor.substringAfter(":fallback").contains("return-object v0"),
+            "the no-bar fallback is not the surface box",
+        )
+        assertTrue(anchor.contains(":null\n    const/4 v5, 0x0"), "the no-surface fallback is gone")
+        assertTrue(anchor.substringAfter(":null").contains("return-object v5"), "a no-surface case returns a non-null view")
+        assertTrue(anchor.contains("const/16 v3, 0xa") && anchor.contains("if-ge v2, v3, :fallback"), "the walk has no depth cap")
+    }
+
+    @Test
+    fun `show only reveals the chip after the anchor bound`() {
+        val show = showBody()
+        val placeAt = show.indexOf("->place($SKIP_STATE_CLASS)V")
+        val guardAt = show.indexOf("->anchor:Landroid/view/View;", placeAt)
+        val revealAt = show.lastIndexOf("setVisibility")
+        assertTrue(placeAt > 0 && guardAt > placeAt, "the reveal is not guarded by a bound anchor")
+        assertTrue(guardAt < revealAt, "the reveal runs before the guard")
+        assertTrue(
+            show.contains("if-eqz v4, :return"),
+            "an unresolved anchor still reveals the chip at its default position",
+        )
+    }
+
+    @Test
+    fun `place records the anchor it followed`() {
+        val place = placeBody()
+        assertTrue(place.contains("iput-object v2, v15, $SKIP_STATE_CLASS->anchor:Landroid/view/View;"), "the anchor is not remembered")
+        assertTrue(place.contains("iput v4, v15, $SKIP_STATE_CLASS->anchorX:I"), "the anchor x is not remembered")
+        assertTrue(place.contains("iput v4, v15, $SKIP_STATE_CLASS->anchorY:I"), "the anchor y is not remembered")
+    }
+
+    @Test
+    fun `the per-tick follow re-places only when the anchor actually moved`() {
+        val follow = followBody()
+        assertTrue(follow.contains("->anchor:Landroid/view/View;"), "follow ignores the bound anchor")
+        assertTrue(follow.contains("isAttachedToWindow"), "follow follows a detached anchor")
+        assertTrue(follow.contains("const/4 v1, 0x2") && follow.contains("new-array v1, v1, [I"), "follow allocates no origin array")
+        assertTrue(follow.contains("->anchorX:I") && follow.contains("->anchorY:I"), "follow never compares the stored origin")
+        assertTrue(follow.contains("if-ne v0, v3, :moved"), "a moved x does not re-place")
+        assertTrue(follow.contains("if-eq v0, v3, :return"), "an unchanged y still re-places")
+        assertTrue(follow.substringAfter(":moved").contains("->place($SKIP_STATE_CLASS)V"), "follow does not re-place")
+        assertTrue(follow.contains("const/16 v3, 0x8"), "follow does not skip a GONE button")
+        assertTrue(follow.contains("if-eq v1, v3, :return"), "follow still skips a deferred (INVISIBLE) button")
+    }
+
+    @Test
+    fun `place reveals a deferred button once the geometry resolves`() {
+        val place = placeBody()
+        assertTrue(place.contains(":vis_done"), "the deferred reveal is gone")
+        assertTrue(place.contains("const/16 v5, 0x4") && place.contains("if-ne v6, v5, :vis_done"), "the reveal ignores the VISIBLE state")
+        assertTrue(place.substringAfter(":vis_done").contains("setVisibility(I)V"), "the deferred button never becomes visible")
     }
     @Test
     fun `place runs on sixteen registers with the parameter window kept last`() {
@@ -1092,7 +1173,17 @@ class SponsorSkipPatchTest {
     /** The `place` body, sliced out for ordering assertions. */
     private fun placeBody(): String = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
         .substringAfter(".method public static place")
+        .substringBefore(".method private static anchorOf")
+
+    /** The per-tick follow body. */
+    private fun followBody(): String = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+        .substringAfter(".method public static follow")
         .substringBefore(".method private static sized")
+
+    /** The anchor resolution body. */
+    private fun anchorBody(): String = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
+        .substringAfter(".method private static anchorOf")
+        .substringBefore(".method public static follow")
 
     /** Asserts `fetch → move-result R → if-eqz R, :return` at [at]. */
     private fun assertNullGuard(
