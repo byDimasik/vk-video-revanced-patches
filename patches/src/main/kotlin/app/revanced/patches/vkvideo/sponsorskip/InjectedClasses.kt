@@ -2824,6 +2824,8 @@ private fun seekbarSectionsSmali(): String = """
 
         :have
         invoke-static {p0}, $SEEK_SECTIONS_CLASS;->rebind(Landroid/view/View;)V
+
+        :return
         return-void
     .end method
 
