@@ -422,7 +422,9 @@ class SeekbarPatchTest {
         val alive = tick.substringAfter(":alive").substringBefore("\n    :probed")
         assertTrue(alive.contains(smali("$SKIP_STATE_CLASS->deadTicks:I")), "the dead->alive transition is not read")
         assertTrue(alive.contains("if-eqz v1, :unattached"), "an attached probe is routed to the dead-tick counter")
-        assertTrue(alive.contains("if-lez v2, :probed"), "a returning tick (positive deadTicks) skips the resume")
+        assertTrue(alive.contains(smali("$SKIP_STATE_CLASS->detached:Z")), "detachment is not tracked separately from position liveness")
+        assertTrue(alive.contains("or-int/2addr v2, v3"), "the detached flag is not combined with the positive counter")
+        assertTrue(alive.contains("if-lez v2, :probed"), "the resume gate is not the combined-trigger positive guard")
         assertTrue(alive.contains(smali("$SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V")), "a returning surface does not resume")
     }
 
@@ -434,6 +436,14 @@ class SeekbarPatchTest {
         assertTrue(active in 0 until cached, "the live state is not probed before the cache check")
         assertTrue(draw.contains("if-eqz v4, :source"), "an empty cache does not fall back to the source")
         assertTrue(draw.contains(smali("$PLAYED_SECTIONS_CLASS;->duration:J")), "the remembered duration is not kept")
+        val staleIdx = Regex("\\n +:stale").find(draw)?.range?.first ?: -1
+        val cachedIdx = Regex("\\n +:cached").find(draw)?.range?.first ?: -1
+        assertTrue(staleIdx in 0 until cachedIdx, "the stale-cache clear must precede the cached continuation")
+        val stale = draw.substring(staleIdx, cachedIdx)
+        assertTrue(
+            stale.contains(smali("$PLAYED_SECTIONS_CLASS;->segments:[L")) && stale.contains(smali("$PLAYED_SECTIONS_CLASS;->duration:J")),
+            "the stale branch does not clear the previous video's cache",
+        )
         val refresh = draw.substringAfter(smali("$SKIP_ENGINE_CLASS->active()"))
         assertTrue(refresh.contains("if-eqz v2, :cached"), "a missing state does not skip to the cached draw")
         assertTrue(refresh.contains(":cached"), "the cached draw label is missing")
@@ -471,6 +481,15 @@ class SeekbarPatchTest {
         // layer count does not grow (the `:add` branch itself checks the last layer first).
         val add = body.substringAfter("\n    :add\n")
         assertTrue(add.contains(smali("instance-of v7, v6, $PLAYED_SECTIONS_CLASS")), "the add path can duplicate the wrapper")
+    }
+
+    @Test
+    fun `findBar walks children while any remain and stops on the count`() {
+        val findBar = sources[SKIP_ENGINE_CLASS]!!.substringAfter(".method public static findBar").substringBefore(".end method")
+        val loop = findBar.substringAfter("\n    :loop").substringBefore("\n    :hit")
+        assertTrue(loop.contains("if-ge v0, v2, :null"), "the child-walk guard exits before the children are visited")
+        assertFalse(loop.contains("if-lt v0, v2, :null"), "the reversed child-walk guard survived")
+        assertTrue(loop.contains("getChildAt(I)Landroid/view/View;"), "the walk does not visit children")
     }
 
     /** The injected sources collapse a doubled `;` (descriptor + delimiter) into one. */

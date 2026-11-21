@@ -137,7 +137,7 @@ internal val requiredFields = mapOf(
         "view", "attachView", "button", "listener", "listenerView", "buttonView", "listenerContainer",
         "anchor", "bar", "anchorX", "anchorY", "lastIndex",
         "lastToastMs", "lastPosMs", "stallTicks", "frozen",
-        "lastChangeMs", "emptyUntil", "deadTicks", "seenPos", "video",
+        "lastChangeMs", "emptyUntil", "deadTicks", "detached", "seenPos", "video",
     ),
     PLAYED_SECTIONS_CLASS to listOf("strength", "track", "fractionEnd"),
 )
@@ -736,6 +736,7 @@ private fun skipStateSmali(): String = """
     .field public emptyUntil:J
     .field public stallTicks:I
     .field public deadTicks:I
+    .field public detached:Z
     .field public frozen:Z
     .field public seenPos:Z
     .field public video:Lcom/vk/dto/common/VideoFile;
@@ -757,6 +758,7 @@ private fun skipStateSmali(): String = """
         const/4 p1, 0x0
         iput p1, p0, $SKIP_STATE_CLASS->stallTicks:I
         iput p1, p0, $SKIP_STATE_CLASS->deadTicks:I
+        iput-boolean p1, p0, $SKIP_STATE_CLASS->detached:Z
         iput-boolean p1, p0, $SKIP_STATE_CLASS->frozen:Z
         iput-boolean p1, p0, $SKIP_STATE_CLASS->seenPos:Z
         return-void
@@ -1363,7 +1365,9 @@ private fun skipEngineSmali(): String = """
         :loop
         invoke-virtual {p0}, Landroid/view/ViewGroup;->getChildCount()I
         move-result v2
-        if-lt v0, v2, :null
+        # Exit only when the index is exhausted; `if-lt` bailed out on the first child
+        # (0 < count -> :null) and never visited anything (#89, CR round 2).
+        if-ge v0, v2, :null
         invoke-virtual {p0, v0}, Landroid/view/ViewGroup;->getChildAt(I)Landroid/view/View;
         move-result-object v2
         invoke-static {v2, v1}, $SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
@@ -1644,9 +1648,16 @@ private fun skipEngineSmali(): String = """
         # an attached surface is the resume trigger (#89).
         if-eqz v1, :unattached
         # Coming back from a dead/unattached window is a resume: re-attach the band layer
-        # from the remembered sections, the same as an attach event would (#89).
-        iget v2, v14, $SKIP_STATE_CLASS->deadTicks:I
+        # from the remembered sections, the same as an attach event would (#89). The trigger
+        # is the detached flag OR the saved deadTicks counter: a usable position resets the
+        # counter (button liveness outranks the probe) but must not consume the resume
+        # trigger, so detachment is tracked in state the position handling never touches
+        # (#89, CR round 2).
+        iget-boolean v2, v14, $SKIP_STATE_CLASS->detached:Z
+        iget v3, v14, $SKIP_STATE_CLASS->deadTicks:I
+        or-int/2addr v2, v3
         const/4 v3, 0x0
+        iput-boolean v3, v14, $SKIP_STATE_CLASS->detached:Z
         iput v3, v14, $SKIP_STATE_CLASS->deadTicks:I
         if-lez v2, :probed
         iget-object v3, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
@@ -1654,6 +1665,8 @@ private fun skipEngineSmali(): String = """
         goto :probed
 
         :unattached
+        const/4 v2, 0x1
+        iput-boolean v2, v14, $SKIP_STATE_CLASS->detached:Z
         iget v2, v14, $SKIP_STATE_CLASS->deadTicks:I
         add-int/lit8 v2, v2, 0x1
         iput v2, v14, $SKIP_STATE_CLASS->deadTicks:I
@@ -2442,6 +2455,17 @@ private fun playedSectionsSmali(): String = """
         if-eqz v10, :cached
         iput-object v5, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
         iput-wide v6, p0, $PLAYED_SECTIONS_CLASS;->duration:J
+        goto :cached
+
+        :stale
+        # The live state exists but has nothing to draw yet: it belongs to a video switch,
+        # so the previous video's cached bands must not repaint over the new video's native
+        # intervals. A missing state keeps the cache: that is the STOP recovery path (#89,
+        # CR round 2).
+        const/4 v10, 0x0
+        iput-object v10, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
+        const-wide/16 v10, 0x0
+        iput-wide v10, p0, $PLAYED_SECTIONS_CLASS;->duration:J
 
         :cached
         # Remembered sections are the fallback: an app STOP clears the engine state but the
