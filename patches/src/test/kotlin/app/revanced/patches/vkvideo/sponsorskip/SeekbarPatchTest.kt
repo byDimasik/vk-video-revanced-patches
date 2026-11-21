@@ -377,7 +377,7 @@ class SeekbarPatchTest {
     fun `a resume re-attaches the layer and never assumes the caller has a bar`() {
         val sections = sources[SEEK_SECTIONS_CLASS]!!
         val resume = sections.substringAfter(".method public static resume").substringBefore(".end method")
-        assertTrue(resume.contains("if-eqz p0, :have"), "a missing view does not fall through to the remembered bar")
+        assertTrue(resume.contains("if-nez p0, :have"), "a supplied view is not used before the remembered-bar fallback")
         assertTrue(resume.contains(smali("$SEEK_SECTIONS_CLASS;->WATCHED")), "the remembered bar is not the fallback")
         assertTrue(resume.contains("if-eqz v0, :return"), "a cleared reference is not tolerated")
         assertTrue(resume.contains(smali("$SEEK_SECTIONS_CLASS;->rebind(Landroid/view/View;)V")), "resume does not rebind")
@@ -386,6 +386,7 @@ class SeekbarPatchTest {
         assertTrue(rebind.contains("instance-of v0, p0, Landroid/widget/ProgressBar;"), "a bar is not recognised")
         assertTrue(rebind.contains(smali("$SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;")), "a surface is not walked down to its bar")
         assertTrue(rebind.contains("isAttachedToWindow()Z"), "a detached bar is not skipped")
+        assertTrue(rebind.contains("if-eqz v0, :return"), "an attached bar is rejected instead of the detached one")
         assertTrue(rebind.contains("getProgressDrawable()Landroid/graphics/drawable/Drawable;"), "the live drawable is not read")
         assertTrue(rebind.contains(smali("$SEEK_SECTIONS_CLASS;->apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V")), "the layer is not re-applied")
         assertTrue(sections.contains(".method public static findBar") || sources[SKIP_ENGINE_CLASS]!!.contains(".method public static findBar"), "findBar is not reachable from the layer")
@@ -420,16 +421,17 @@ class SeekbarPatchTest {
         val tick = engine.substringAfter(".method public static tick")
         val alive = tick.substringAfter(":alive").substringBefore("\n    :probed")
         assertTrue(alive.contains(smali("$SKIP_STATE_CLASS->deadTicks:I")), "the dead->alive transition is not read")
-        assertTrue(alive.contains("if-gtz v2, :probed"), "a live-to-live tick re-runs the resume")
+        assertTrue(alive.contains("if-eqz v1, :unattached"), "an attached probe is routed to the dead-tick counter")
+        assertTrue(alive.contains("if-lez v2, :probed"), "a returning tick (positive deadTicks) skips the resume")
         assertTrue(alive.contains(smali("$SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V")), "a returning surface does not resume")
     }
 
     @Test
     fun `the layer keeps painting remembered sections without an engine state`() {
         val draw = sources[PLAYED_SECTIONS_CLASS]!!.substringAfter(".method public draw").substringBefore(".end method")
-        val cached = draw.indexOf(smali("$PLAYED_SECTIONS_CLASS;->segments:[L"))
         val active = draw.indexOf(smali("$SKIP_ENGINE_CLASS->active()"))
-        assertTrue(cached in 0 until active, "the cached sections are not probed before the live state")
+        val cached = draw.indexOf(smali("$PLAYED_SECTIONS_CLASS;->segments:[L"))
+        assertTrue(active in 0 until cached, "the live state is not probed before the cache check")
         assertTrue(draw.contains("if-eqz v4, :source"), "an empty cache does not fall back to the source")
         assertTrue(draw.contains(smali("$PLAYED_SECTIONS_CLASS;->duration:J")), "the remembered duration is not kept")
         val refresh = draw.substringAfter(smali("$SKIP_ENGINE_CLASS->active()"))
@@ -447,7 +449,8 @@ class SeekbarPatchTest {
         val engine = sources[SKIP_ENGINE_CLASS]!!
         val revive = engine.substringAfter(".method public static revive").substringBefore(".end method")
         assertTrue(revive.contains(smali("$SKIP_ENGINE_CLASS->ACTIVE")), "a live state is not short-circuited")
-        assertTrue(revive.contains("if-eqz v0, :return"), "the short circuit is missing")
+        assertTrue(revive.contains("if-nez v0, :return"), "the short circuit returns on a null state instead of a live one")
+        assertTrue(revive.contains("if-eqz v5, :scan"), "the scan exits while entries remain")
         assertTrue(revive.contains(smali("$SKIP_ENGINE_CLASS->VIDEOS")), "the remembered videos are not scanned")
         assertTrue(revive.contains("entrySet()Ljava/util/Set;"), "the scan does not walk the entries")
         assertTrue(revive.contains("Ljava/util/Map\$Entry;->getValue()Ljava/lang/Object;"), "the remembered video is not read")

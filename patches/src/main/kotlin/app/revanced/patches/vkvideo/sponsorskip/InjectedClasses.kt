@@ -928,7 +928,9 @@ private fun skipEngineSmali(): String = """
         .registers 6
 
         sget-object v0, $SKIP_ENGINE_CLASS->ACTIVE:$SKIP_STATE_CLASS;
-        if-eqz v0, :return
+        # A live state means nothing to revive; the rebuild runs exactly when the app STOP
+        # has already dropped it (onRelease -> clear nulls ACTIVE) (#89).
+        if-nez v0, :return
         sget-object v1, $SKIP_ENGINE_CLASS->VIDEOS:Ljava/util/WeakHashMap;
         monitor-enter v1
         const/4 v2, 0x0
@@ -941,7 +943,7 @@ private fun skipEngineSmali(): String = """
         :loop
         invoke-interface {v4}, Ljava/util/Iterator;->hasNext()Z
         move-result v5
-        if-nez v5, :scan
+        if-eqz v5, :scan
         invoke-interface {v4}, Ljava/util/Iterator;->next()Ljava/lang/Object;
         move-result-object v0
         check-cast v0, Ljava/util/Map${'$'}Entry;
@@ -1638,13 +1640,15 @@ private fun skipEngineSmali(): String = """
         move-result v1
 
         :alive
-        if-nez v1, :unattached
+        # Attached = alive: only a probe that found NO attached view counts a dead tick;
+        # an attached surface is the resume trigger (#89).
+        if-eqz v1, :unattached
         # Coming back from a dead/unattached window is a resume: re-attach the band layer
         # from the remembered sections, the same as an attach event would (#89).
         iget v2, v14, $SKIP_STATE_CLASS->deadTicks:I
         const/4 v3, 0x0
         iput v3, v14, $SKIP_STATE_CLASS->deadTicks:I
-        if-gtz v2, :probed
+        if-lez v2, :probed
         iget-object v3, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
         invoke-static {v3}, $SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V
         goto :probed
@@ -2419,12 +2423,9 @@ private fun playedSectionsSmali(): String = """
         invoke-virtual {v3, v0}, Landroid/graphics/drawable/Drawable;->setLevel(I)Z
         iget-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->broken:Z
         if-nez v0, :source
-        # Remembered sections are the fallback: an app STOP clears the engine state but the
-        # layer keeps the last known sections and must still paint them on return (#89).
-        iget-object v4, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
-        if-eqz v4, :source
-        array-length v5, v4
-        if-eqz v5, :source
+        # The live state is probed BEFORE the cache check: a re-created layer starts with a
+        # null cache, and branching to :source on that null never consults the engine, so
+        # the bands never come back for a bar the app re-made after a STOP (#89).
         invoke-static {}, $SKIP_ENGINE_CLASS;->active()$SKIP_STATE_CLASS;
         move-result-object v2
         if-eqz v2, :cached
@@ -2443,6 +2444,12 @@ private fun playedSectionsSmali(): String = """
         iput-wide v6, p0, $PLAYED_SECTIONS_CLASS;->duration:J
 
         :cached
+        # Remembered sections are the fallback: an app STOP clears the engine state but the
+        # layer keeps the last known sections and must still paint them on return (#89).
+        iget-object v4, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
+        if-eqz v4, :source
+        array-length v5, v4
+        if-eqz v5, :source
         iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;
         move-object v11, v0
         invoke-virtual {v11, v3}, Ljava/lang/reflect/Field;->get(Ljava/lang/Object;)Ljava/lang/Object;
@@ -2814,7 +2821,7 @@ private fun seekbarSectionsSmali(): String = """
         .registers 3
         .param p0, "view"
 
-        if-eqz p0, :have
+        if-nez p0, :have
         sget-object v0, $SEEK_SECTIONS_CLASS;->WATCHED:Ljava/lang/ref/WeakReference;
         if-eqz v0, :return
         invoke-virtual {v0}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
@@ -2846,7 +2853,9 @@ private fun seekbarSectionsSmali(): String = """
         :bar
         invoke-virtual {p0}, Landroid/view/View;->isAttachedToWindow()Z
         move-result v0
-        if-nez v0, :return
+        # Only an attached bar can take the layer: a detached one would install the overlay
+        # on a drawable nobody is drawing (#89).
+        if-eqz v0, :return
         invoke-virtual {p0}, Landroid/widget/ProgressBar;->getProgressDrawable()Landroid/graphics/drawable/Drawable;
         move-result-object v1
         invoke-static {p0, v1}, $SEEK_SECTIONS_CLASS;->apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V
