@@ -32,7 +32,7 @@ class SeekbarPatchTest {
             assertTrue(apply.contains("instance-of v5, v8, $it"), "the inner type check for $it is missing")
         }
         assertTrue(apply.contains("addLayer(Landroid/graphics/drawable/Drawable;)V"), "the no-clip fallback adds no layer")
-        val add = apply.substringAfter(":add\n")
+        val add = apply.substringAfter("\n    :add\n")
         assertTrue(add.contains("if-ltz v5, :add_new"), "the fallback re-adds on every call")
         assertTrue(add.contains("instance-of v7, v6, $PLAYED_SECTIONS_CLASS"), "the last layer is not checked for an existing wrapper")
         assertTrue(add.contains("move-object v9, v6"), "an existing wrapper is not reused")
@@ -372,6 +372,126 @@ class SeekbarPatchTest {
         assertTrue(requiredFields.getValue(PLAYED_SECTIONS_CLASS).containsAll(listOf("strength", "track")), "the new fields are not pinned")
     }
 
+
+    @Test
+    fun `a resume re-attaches the layer and never assumes the caller has a bar`() {
+        val sections = sources[SEEK_SECTIONS_CLASS]!!
+        val resume = sections.substringAfter(".method public static resume").substringBefore(".end method")
+        assertTrue(resume.contains("if-nez p0, :have"), "a supplied view is not used before the remembered-bar fallback")
+        assertTrue(resume.contains(smali("$SEEK_SECTIONS_CLASS;->WATCHED")), "the remembered bar is not the fallback")
+        assertTrue(resume.contains("if-eqz v0, :return"), "a cleared reference is not tolerated")
+        assertTrue(resume.contains(smali("$SEEK_SECTIONS_CLASS;->rebind(Landroid/view/View;)V")), "resume does not rebind")
+
+        val rebind = sections.substringAfter(".method public static rebind").substringBefore(".end method")
+        assertTrue(rebind.contains("instance-of v0, p0, Landroid/widget/ProgressBar;"), "a bar is not recognised")
+        assertTrue(rebind.contains(smali("$SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;")), "a surface is not walked down to its bar")
+        assertTrue(rebind.contains("isAttachedToWindow()Z"), "a detached bar is not skipped")
+        assertTrue(rebind.contains("if-eqz v0, :return"), "an attached bar is rejected instead of the detached one")
+        assertTrue(rebind.contains("getProgressDrawable()Landroid/graphics/drawable/Drawable;"), "the live drawable is not read")
+        assertTrue(rebind.contains(smali("$SEEK_SECTIONS_CLASS;->apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V")), "the layer is not re-applied")
+        assertTrue(sections.contains(".method public static findBar") || sources[SKIP_ENGINE_CLASS]!!.contains(".method public static findBar"), "findBar is not reachable from the layer")
+    }
+
+    @Test
+    fun `every bar (re)creation path re-derives the colouring`() {
+        // Trigger matrix: rotation, colour refresh, app STOP -> RESTART and surface hand-off
+        // all have to end in the same idempotent re-attach (#89).
+        val engine = sources[SKIP_ENGINE_CLASS]!!
+        val attached = engine.substringAfter(".method public static onViewAttached").substringBefore(".end method")
+        val inline = attached.substringAfter(":inline").substringBefore(":rebuild")
+        assertTrue(inline.contains(smali("$SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V")), "the main attach path does not resume the bands")
+        val rebuild = attached.substringAfter("\n    :rebuild")
+        // The resume rides on the posted attach op (op4), so a rebuilt state must post it.
+        assertTrue(rebuild.contains("const/4 v2, 0x4"), "a rebuilt state does not post the attach op")
+        val posts = rebuild.substringBefore(".end method")
+        assertTrue(posts.contains("postMain(Ljava/lang/Runnable;)V"), "the post-rebuild resume is not posted")
+        assertTrue(
+            posts.indexOf("onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V") < posts.indexOf("postMain"),
+            "the resume is posted before the state rebuild",
+        )
+
+        val main = sources[SKIP_MAIN_CLASS]!!
+        val op4 = main.substringAfter("\n    :op4").substringBefore(".end method")
+        assertTrue(op4.contains(smali("$SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V")), "the attach op does not resume the bands")
+        assertTrue(op4.contains(smali("$SKIP_MAIN_CLASS->target:Landroid/view/View;")), "the attach op drops its surface")
+
+        val relayout = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static relayout").substringBefore(".end method")
+        assertTrue(relayout.contains(smali("$SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V")), "rotation does not resume")
+
+        val tick = engine.substringAfter(".method public static tick")
+        val alive = tick.substringAfter(":alive").substringBefore("\n    :probed")
+        assertTrue(alive.contains(smali("$SKIP_STATE_CLASS->deadTicks:I")), "the dead->alive transition is not read")
+        assertTrue(alive.contains("if-eqz v1, :unattached"), "an attached probe is routed to the dead-tick counter")
+        assertTrue(alive.contains(smali("$SKIP_STATE_CLASS->detached:Z")), "detachment is not tracked separately from position liveness")
+        assertTrue(alive.contains("or-int/2addr v2, v3"), "the detached flag is not combined with the positive counter")
+        assertTrue(alive.contains("if-lez v2, :probed"), "the resume gate is not the combined-trigger positive guard")
+        assertTrue(alive.contains(smali("$SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V")), "a returning surface does not resume")
+    }
+
+    @Test
+    fun `the layer keeps painting remembered sections without an engine state`() {
+        val draw = sources[PLAYED_SECTIONS_CLASS]!!.substringAfter(".method public draw").substringBefore(".end method")
+        val active = draw.indexOf(smali("$SKIP_ENGINE_CLASS->active()"))
+        val cached = draw.indexOf(smali("$PLAYED_SECTIONS_CLASS;->segments:[L"))
+        assertTrue(active in 0 until cached, "the live state is not probed before the cache check")
+        assertTrue(draw.contains("if-eqz v4, :source"), "an empty cache does not fall back to the source")
+        assertTrue(draw.contains(smali("$PLAYED_SECTIONS_CLASS;->duration:J")), "the remembered duration is not kept")
+        val staleIdx = Regex("\\n +:stale").find(draw)?.range?.first ?: -1
+        val cachedIdx = Regex("\\n +:cached").find(draw)?.range?.first ?: -1
+        assertTrue(staleIdx in 0 until cachedIdx, "the stale-cache clear must precede the cached continuation")
+        val stale = draw.substring(staleIdx, cachedIdx)
+        assertTrue(
+            stale.contains(smali("$PLAYED_SECTIONS_CLASS;->segments:[L")) && stale.contains(smali("$PLAYED_SECTIONS_CLASS;->duration:J")),
+            "the stale branch does not clear the previous video's cache",
+        )
+        val refresh = draw.substringAfter(smali("$SKIP_ENGINE_CLASS->active()"))
+        assertTrue(refresh.contains("if-eqz v2, :cached"), "a missing state does not skip to the cached draw")
+        assertTrue(refresh.contains(":cached"), "the cached draw label is missing")
+        assertTrue(refresh.contains("iput-object v5, p0, $PLAYED_SECTIONS_CLASS->segments:[L"), "a live state does not refresh the cache")
+        assertTrue(
+            refresh.indexOf(":cached") < refresh.indexOf(smali("$PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;")),
+            "the cached draw is not the shared continuation",
+        )
+    }
+
+    @Test
+    fun `apply revives a state dropped by the app stop`() {
+        val engine = sources[SKIP_ENGINE_CLASS]!!
+        val revive = engine.substringAfter(".method public static revive").substringBefore(".end method")
+        assertTrue(revive.contains(smali("$SKIP_ENGINE_CLASS->ACTIVE")), "a live state is not short-circuited")
+        assertTrue(revive.contains("if-nez v0, :return"), "the short circuit returns on a null state instead of a live one")
+        assertTrue(revive.contains("if-eqz v5, :scan"), "the scan exits while entries remain")
+        assertTrue(revive.contains(smali("$SKIP_ENGINE_CLASS->VIDEOS")), "the remembered videos are not scanned")
+        assertTrue(revive.contains("entrySet()Ljava/util/Set;"), "the scan does not walk the entries")
+        assertTrue(revive.contains("Ljava/util/Map\$Entry;->getValue()Ljava/lang/Object;"), "the remembered video is not read")
+        assertTrue(revive.contains("Ljava/util/Map\$Entry;->getKey()Ljava/lang/Object;"), "the remembered controller is not read")
+        assertTrue(revive.contains(smali("$SKIP_ENGINE_CLASS;->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V")), "the state is not rebuilt")
+        val apply = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
+        assertTrue(apply.contains(smali("$SKIP_ENGINE_CLASS;->revive()V")), "apply does not revive")
+    }
+
+    @Test
+    fun `the re-attach is idempotent on an already wrapped drawable`() {
+        val body = sources[SEEK_SECTIONS_CLASS]!!.substringAfter(".method public static apply")
+        val reuse = body.indexOf("\n    :reuse")
+        assertTrue(reuse > 0, "the reuse path is missing")
+        assertTrue(body.substring(0, reuse).contains("if-nez v5, :reuse"), "a wrapped drawable does not reuse")
+        assertTrue(body.contains("addLayer"), "the add path is gone")
+        // A second apply on the same bar walks the same drawable and lands in :reuse, so the
+        // layer count does not grow (the `:add` branch itself checks the last layer first).
+        val add = body.substringAfter("\n    :add\n")
+        assertTrue(add.contains(smali("instance-of v7, v6, $PLAYED_SECTIONS_CLASS")), "the add path can duplicate the wrapper")
+    }
+
+    @Test
+    fun `findBar walks children while any remain and stops on the count`() {
+        val findBar = sources[SKIP_ENGINE_CLASS]!!.substringAfter(".method public static findBar").substringBefore(".end method")
+        val loop = findBar.substringAfter("\n    :loop").substringBefore("\n    :hit")
+        assertTrue(loop.contains("if-ge v0, v2, :null"), "the child-walk guard exits before the children are visited")
+        assertFalse(loop.contains("if-lt v0, v2, :null"), "the reversed child-walk guard survived")
+        assertTrue(loop.contains("getChildAt(I)Landroid/view/View;"), "the walk does not visit children")
+    }
+
     /** The injected sources collapse a doubled `;` (descriptor + delimiter) into one. */
     private fun smali(text: String) = text.replace(";;", ";")
 
@@ -465,7 +585,10 @@ class SeekbarPatchTest {
             "a cleared reference is not treated as a fresh registration",
         )
         val relayout = sections.substringAfter(".method public static relayout").substringBefore(".end method")
-        assertTrue(relayout.contains(smali("$SEEK_SECTIONS_CLASS;->invalidate()V")), "a layout change does not invalidate")
+        assertTrue(
+            relayout.contains(smali("$SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V")),
+            "a layout change does not re-attach the layer",
+        )
         val listener = sources[SEEK_RELAYOUT_CLASS]!!
         assertTrue(listener.contains(".implements Landroid/view/View\$OnLayoutChangeListener;"), "the listener does not implement the interface")
         assertTrue(

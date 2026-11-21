@@ -118,14 +118,14 @@ internal val requiredMethods = mapOf(
     SKIP_ENGINE_CLASS to listOf(
         "onVideoChanged:2", "onViewAttached:2", "onRelease:1", "tick:1", "onSeek:2", "skip:3",
         "rememberView:2", "viewOf:1", "redraw:1", "stateOf:1", "put:2", "clear:1", "stop:1", "active:0", "rearm:2",
-        "reload:1", "rememberVideo:2", "videoOf:1", "postVideo:2", "rememberBar:1", "findBar:2", "onMain:0", "mainHandler:0", "postMain:1", "trace:2", "log:1", "logInt:2",
+        "reload:1", "rememberVideo:2", "videoOf:1", "postVideo:2", "rememberBar:1", "findBar:2", "revive:0", "onMain:0", "mainHandler:0", "postMain:1", "trace:2", "log:1", "logInt:2",
     ),
     SKIP_MAIN_CLASS to listOf("<init>:5", "run:0"),
     SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1", "textColor:0", "anchorOf:1", "follow:1", "dbg:4"),
     SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
     SKIP_LAYOUT_CLASS to listOf("<init>:1", "onLayoutChange:9", "watch:4"),
     PLAYED_SECTIONS_CLASS to listOf("<init>:4", "draw:1", "num:2", "setAlpha:1", "setColorFilter:1", "getOpacity:0", "onBoundsChange:1"),
-    SEEK_SECTIONS_CLASS to listOf("apply:2", "invalidate:0", "relayout:9"),
+    SEEK_SECTIONS_CLASS to listOf("apply:2", "invalidate:0", "relayout:9", "resume:1", "rebind:1"),
     SEEK_RELAYOUT_CLASS to listOf("<init>:0", "onLayoutChange:9"),
 )
 
@@ -137,7 +137,7 @@ internal val requiredFields = mapOf(
         "view", "attachView", "button", "listener", "listenerView", "buttonView", "listenerContainer",
         "anchor", "bar", "anchorX", "anchorY", "lastIndex",
         "lastToastMs", "lastPosMs", "stallTicks", "frozen",
-        "lastChangeMs", "emptyUntil", "deadTicks", "seenPos", "video",
+        "lastChangeMs", "emptyUntil", "deadTicks", "detached", "seenPos", "video",
     ),
     PLAYED_SECTIONS_CLASS to listOf("strength", "track", "fractionEnd"),
 )
@@ -736,6 +736,7 @@ private fun skipStateSmali(): String = """
     .field public emptyUntil:J
     .field public stallTicks:I
     .field public deadTicks:I
+    .field public detached:Z
     .field public frozen:Z
     .field public seenPos:Z
     .field public video:Lcom/vk/dto/common/VideoFile;
@@ -757,6 +758,7 @@ private fun skipStateSmali(): String = """
         const/4 p1, 0x0
         iput p1, p0, $SKIP_STATE_CLASS->stallTicks:I
         iput p1, p0, $SKIP_STATE_CLASS->deadTicks:I
+        iput-boolean p1, p0, $SKIP_STATE_CLASS->detached:Z
         iput-boolean p1, p0, $SKIP_STATE_CLASS->frozen:Z
         iput-boolean p1, p0, $SKIP_STATE_CLASS->seenPos:Z
         return-void
@@ -868,6 +870,8 @@ private fun skipMainSmali(): String = """
         :op4
         iget-object v1, p0, $SKIP_MAIN_CLASS->state:$SKIP_STATE_CLASS;
         invoke-static {v1}, $SKIP_ENGINE_CLASS;->redraw($SKIP_STATE_CLASS;)V
+        iget-object v1, p0, $SKIP_MAIN_CLASS->target:Landroid/view/View;
+        invoke-static {v1}, $SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V
         return-void
     .end method
 """.trimIndent()
@@ -917,6 +921,52 @@ private fun skipEngineSmali(): String = """
 
         sget-object v0, $SKIP_ENGINE_CLASS->ACTIVE:$SKIP_STATE_CLASS;
         return-object v0
+    .end method
+
+    # Resume path: an app STOP drops the state (onRelease -> clear), but the video file and
+    # its episodes are still remembered. Rebuilding from that remembered video is what makes
+    # the band layer refill on return instead of staying empty (#89).
+    .method public static revive()V
+        .registers 6
+
+        sget-object v0, $SKIP_ENGINE_CLASS->ACTIVE:$SKIP_STATE_CLASS;
+        # A live state means nothing to revive; the rebuild runs exactly when the app STOP
+        # has already dropped it (onRelease -> clear nulls ACTIVE) (#89).
+        if-nez v0, :return
+        sget-object v1, $SKIP_ENGINE_CLASS->VIDEOS:Ljava/util/WeakHashMap;
+        monitor-enter v1
+        const/4 v2, 0x0
+        const/4 v3, 0x0
+        invoke-virtual {v1}, Ljava/util/WeakHashMap;->entrySet()Ljava/util/Set;
+        move-result-object v0
+        invoke-interface {v0}, Ljava/util/Set;->iterator()Ljava/util/Iterator;
+        move-result-object v4
+
+        :loop
+        invoke-interface {v4}, Ljava/util/Iterator;->hasNext()Z
+        move-result v5
+        if-eqz v5, :scan
+        invoke-interface {v4}, Ljava/util/Iterator;->next()Ljava/lang/Object;
+        move-result-object v0
+        check-cast v0, Ljava/util/Map${'$'}Entry;
+        invoke-interface {v0}, Ljava/util/Map${'$'}Entry;->getKey()Ljava/lang/Object;
+        move-result-object v2
+        check-cast v2, Lp73/a;
+        invoke-interface {v0}, Ljava/util/Map${'$'}Entry;->getValue()Ljava/lang/Object;
+        move-result-object v3
+        check-cast v3, Lcom/vk/dto/common/VideoFile;
+        goto :loop
+
+        :scan
+        monitor-exit v1
+        if-eqz v2, :return
+        if-eqz v3, :return
+        const-string v0, "revive"
+        invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
+        invoke-static {v2, v3}, $SKIP_ENGINE_CLASS;->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
+
+        :return
+        return-void
     .end method
 
     .method public static log(Ljava/lang/String;)V
@@ -1214,13 +1264,17 @@ private fun skipEngineSmali(): String = """
         move-object v3, v0
         const/4 v4, 0x0
         const/4 v5, 0x0
-        const/4 v6, 0x0
+        move-object v6, p1
         invoke-direct/range {v1 .. v6}, $SKIP_MAIN_CLASS;-><init>(I$SKIP_STATE_CLASS;Lp73/a;Lcom/vk/dto/common/VideoFile;Landroid/view/View;)V
         invoke-static {v1}, $SKIP_ENGINE_CLASS;->postMain(Ljava/lang/Runnable;)V
         return-void
 
         :inline
         invoke-static {v0}, $SKIP_ENGINE_CLASS;->redraw($SKIP_STATE_CLASS;)V
+        # The attach event is also the band trigger: the bar the app just handed over may
+        # never see a section event, so the colouring is re-derived from the remembered
+        # sections here (#89).
+        invoke-static {p1}, $SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V
         return-void
 
         # A resume re-attaches the view without announcing the video again; rebuild
@@ -1230,6 +1284,14 @@ private fun skipEngineSmali(): String = """
         move-result-object v0
         if-eqz v0, :return
         invoke-static {p0, v0}, $SKIP_ENGINE_CLASS;->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
+        new-instance v1, $SKIP_MAIN_CLASS;
+        const/4 v2, 0x4
+        const/4 v3, 0x0
+        const/4 v4, 0x0
+        const/4 v5, 0x0
+        move-object v6, p1
+        invoke-direct/range {v1 .. v6}, $SKIP_MAIN_CLASS;-><init>(I$SKIP_STATE_CLASS;Lp73/a;Lcom/vk/dto/common/VideoFile;Landroid/view/View;)V
+        invoke-static {v1}, $SKIP_ENGINE_CLASS;->postMain(Ljava/lang/Runnable;)V
 
         :return
         return-void
@@ -1287,7 +1349,7 @@ private fun skipEngineSmali(): String = """
     .end method
 
     # The composite seek view wraps the real bar; walk down to the ProgressBar.
-    .method private static findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
+    .method public static findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
         .registers 6
 
         if-eqz p0, :null
@@ -1303,7 +1365,9 @@ private fun skipEngineSmali(): String = """
         :loop
         invoke-virtual {p0}, Landroid/view/ViewGroup;->getChildCount()I
         move-result v2
-        if-lt v0, v2, :null
+        # Exit only when the index is exhausted; `if-lt` bailed out on the first child
+        # (0 < count -> :null) and never visited anything (#89, CR round 2).
+        if-ge v0, v2, :null
         invoke-virtual {p0, v0}, Landroid/view/ViewGroup;->getChildAt(I)Landroid/view/View;
         move-result-object v2
         invoke-static {v2, v1}, $SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
@@ -1580,12 +1644,29 @@ private fun skipEngineSmali(): String = """
         move-result v1
 
         :alive
-        if-nez v1, :unattached
-        const/4 v2, 0x0
-        iput v2, v14, $SKIP_STATE_CLASS->deadTicks:I
+        # Attached = alive: only a probe that found NO attached view counts a dead tick;
+        # an attached surface is the resume trigger (#89).
+        if-eqz v1, :unattached
+        # Coming back from a dead/unattached window is a resume: re-attach the band layer
+        # from the remembered sections, the same as an attach event would (#89). The trigger
+        # is the detached flag OR the saved deadTicks counter: a usable position resets the
+        # counter (button liveness outranks the probe) but must not consume the resume
+        # trigger, so detachment is tracked in state the position handling never touches
+        # (#89, CR round 2).
+        iget-boolean v2, v14, $SKIP_STATE_CLASS->detached:Z
+        iget v3, v14, $SKIP_STATE_CLASS->deadTicks:I
+        or-int/2addr v2, v3
+        const/4 v3, 0x0
+        iput-boolean v3, v14, $SKIP_STATE_CLASS->detached:Z
+        iput v3, v14, $SKIP_STATE_CLASS->deadTicks:I
+        if-lez v2, :probed
+        iget-object v3, v14, $SKIP_STATE_CLASS->view:Landroid/view/View;
+        invoke-static {v3}, $SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V
         goto :probed
 
         :unattached
+        const/4 v2, 0x1
+        iput-boolean v2, v14, $SKIP_STATE_CLASS->detached:Z
         iget v2, v14, $SKIP_STATE_CLASS->deadTicks:I
         add-int/lit8 v2, v2, 0x1
         iput v2, v14, $SKIP_STATE_CLASS->deadTicks:I
@@ -2355,22 +2436,44 @@ private fun playedSectionsSmali(): String = """
         invoke-virtual {v3, v0}, Landroid/graphics/drawable/Drawable;->setLevel(I)Z
         iget-boolean v0, p0, $PLAYED_SECTIONS_CLASS;->broken:Z
         if-nez v0, :source
+        # The live state is probed BEFORE the cache check: a re-created layer starts with a
+        # null cache, and branching to :source on that null never consults the engine, so
+        # the bands never come back for a bar the app re-made after a STOP (#89).
         invoke-static {}, $SKIP_ENGINE_CLASS;->active()$SKIP_STATE_CLASS;
         move-result-object v2
-        if-eqz v2, :source
-        iget-object v4, v2, $SKIP_STATE_CLASS;->segments:$SEGMENT_ARRAY
-        if-eqz v4, :source
-        array-length v5, v4
-        if-eqz v5, :source
+        if-eqz v2, :cached
         iget-object v5, v2, $SKIP_STATE_CLASS;->controller:Lp73/a;
-        if-eqz v5, :source
+        if-eqz v5, :cached
         invoke-interface {v5}, Lp73/a;->getDuration()J
         move-result-wide v6
         const-wide/16 v8, 0x0
         cmp-long v10, v6, v8
-        if-lez v10, :source
-        iput-object v4, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
+        if-lez v10, :cached
+        iget-object v5, v2, $SKIP_STATE_CLASS;->segments:$SEGMENT_ARRAY
+        if-eqz v5, :cached
+        array-length v10, v5
+        if-eqz v10, :cached
+        iput-object v5, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
         iput-wide v6, p0, $PLAYED_SECTIONS_CLASS;->duration:J
+        goto :cached
+
+        :stale
+        # The live state exists but has nothing to draw yet: it belongs to a video switch,
+        # so the previous video's cached bands must not repaint over the new video's native
+        # intervals. A missing state keeps the cache: that is the STOP recovery path (#89,
+        # CR round 2).
+        const/4 v10, 0x0
+        iput-object v10, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
+        const-wide/16 v10, 0x0
+        iput-wide v10, p0, $PLAYED_SECTIONS_CLASS;->duration:J
+
+        :cached
+        # Remembered sections are the fallback: an app STOP clears the engine state but the
+        # layer keeps the last known sections and must still paint them on return (#89).
+        iget-object v4, p0, $PLAYED_SECTIONS_CLASS;->segments:$SEGMENT_ARRAY
+        if-eqz v4, :source
+        array-length v5, v4
+        if-eqz v5, :source
         iget-object v0, p0, $PLAYED_SECTIONS_CLASS;->list:Ljava/lang/reflect/Field;
         move-object v11, v0
         invoke-virtual {v11, v3}, Ljava/lang/reflect/Field;->get(Ljava/lang/Object;)Ljava/lang/Object;
@@ -2735,6 +2838,56 @@ private fun seekbarSectionsSmali(): String = """
         return-void
     .end method
 
+    # Idempotent re-attach of the band layer after an app STOP -> RESTART: the bar drawable
+    # and the state both died with the old surface, so the colouring is re-derived from the
+    # remembered sections instead of waiting for a section event that may never come (#89).
+    .method public static resume(Landroid/view/View;)V
+        .registers 3
+        .param p0, "view"
+
+        if-nez p0, :have
+        sget-object v0, $SEEK_SECTIONS_CLASS;->WATCHED:Ljava/lang/ref/WeakReference;
+        if-eqz v0, :return
+        invoke-virtual {v0}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
+        move-result-object p0
+        check-cast p0, Landroid/view/View;
+        if-eqz p0, :return
+
+        :have
+        invoke-static {p0}, $SEEK_SECTIONS_CLASS;->rebind(Landroid/view/View;)V
+
+        :return
+        return-void
+    .end method
+
+    .method public static rebind(Landroid/view/View;)V
+        .registers 4
+        .param p0, "view"
+
+        if-eqz p0, :return
+        instance-of v0, p0, Landroid/widget/ProgressBar;
+        if-nez v0, :bar
+        # Attach events carry the player surface, not the bar: walk down to the bar.
+        const/16 v0, 0x8
+        invoke-static {p0, v0}, $SKIP_ENGINE_CLASS;->findBar(Landroid/view/View;I)Landroid/widget/ProgressBar;
+        move-result-object v1
+        if-eqz v1, :return
+        move-object p0, v1
+
+        :bar
+        invoke-virtual {p0}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v0
+        # Only an attached bar can take the layer: a detached one would install the overlay
+        # on a drawable nobody is drawing (#89).
+        if-eqz v0, :return
+        invoke-virtual {p0}, Landroid/widget/ProgressBar;->getProgressDrawable()Landroid/graphics/drawable/Drawable;
+        move-result-object v1
+        invoke-static {p0, v1}, $SEEK_SECTIONS_CLASS;->apply(Landroid/view/View;Landroid/graphics/drawable/Drawable;)V
+
+        :return
+        return-void
+    .end method
+
     .method public static watch(Landroid/view/View;)V
         .registers 4
         .param p0, "view"
@@ -2783,7 +2936,9 @@ private fun seekbarSectionsSmali(): String = """
         .registers 10
         .param p0, "view"
 
-        invoke-static {}, $SEEK_SECTIONS_CLASS;->invalidate()V
+        # A re-laid bar may be a brand-new drawable: re-attach the layer, not just repaint
+        # the one that happened to be current before the layout pass (#89).
+        invoke-static {p0}, $SEEK_SECTIONS_CLASS;->resume(Landroid/view/View;)V
         return-void
     .end method
 
@@ -2793,6 +2948,10 @@ private fun seekbarSectionsSmali(): String = """
         invoke-static {p0}, $SKIP_ENGINE_CLASS;->rememberBar(Landroid/view/View;)V
         .param p0, "view"
         .param p1, "drawable"
+
+        # Layer work after a resume starts with no engine state (onRelease dropped it); the
+        # remembered video is enough to rebuild the sections the layer draws from (#89).
+        invoke-static {}, $SKIP_ENGINE_CLASS;->revive()V
 
         if-eqz p1, :return
         invoke-static {p0}, $SEEK_SECTIONS_CLASS;->watch(Landroid/view/View;)V
