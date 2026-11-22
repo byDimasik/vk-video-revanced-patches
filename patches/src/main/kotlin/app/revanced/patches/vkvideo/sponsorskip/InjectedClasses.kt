@@ -945,6 +945,10 @@ private fun skipEngineSmali(): String = """
         new-instance v2, Ljava/util/ArrayList;
         invoke-direct {v2, v0}, Ljava/util/ArrayList;-><init>(Ljava/util/Collection;)V
         monitor-exit v1
+        # Seed both candidates: on an empty snapshot :scan is reached without the
+        # loop ever running, and ART fails verification on read-before-write.
+        const/4 v4, 0x0
+        const/4 v6, 0x0
 
         invoke-virtual {v2}, Ljava/util/ArrayList;->iterator()Ljava/util/Iterator;
         move-result-object v3
