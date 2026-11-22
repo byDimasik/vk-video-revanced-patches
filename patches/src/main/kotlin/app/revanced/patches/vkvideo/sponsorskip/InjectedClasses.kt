@@ -927,43 +927,53 @@ private fun skipEngineSmali(): String = """
     # its episodes are still remembered. Rebuilding from that remembered video is what makes
     # the band layer refill on return instead of staying empty (#89).
     .method public static revive()V
-        .registers 6
+        .registers 7
 
         sget-object v0, $SKIP_ENGINE_CLASS->ACTIVE:$SKIP_STATE_CLASS;
         # A live state means nothing to revive; the rebuild runs exactly when the app STOP
         # has already dropped it (onRelease -> clear nulls ACTIVE) (#89).
         if-nez v0, :return
+        # Snapshot the entries under the lock and iterate the SNAPSHOT outside it:
+        # a live WeakHashMap iterator can observe a GC-expunged entry between hasNext()
+        # and next() and throw NoSuchElementException from nextEntry — which crashed
+        # every fresh video open (#95). The on_main values() loop uses the same
+        # snapshot pattern.
         sget-object v1, $SKIP_ENGINE_CLASS->VIDEOS:Ljava/util/WeakHashMap;
         monitor-enter v1
-        const/4 v2, 0x0
-        const/4 v3, 0x0
         invoke-virtual {v1}, Ljava/util/WeakHashMap;->entrySet()Ljava/util/Set;
         move-result-object v0
-        invoke-interface {v0}, Ljava/util/Set;->iterator()Ljava/util/Iterator;
-        move-result-object v4
+        new-instance v2, Ljava/util/ArrayList;
+        invoke-direct {v2, v0}, Ljava/util/ArrayList;-><init>(Ljava/util/Collection;)V
+        monitor-exit v1
+        # Seed both candidates: on an empty snapshot :scan is reached without the
+        # loop ever running, and ART fails verification on read-before-write.
+        const/4 v4, 0x0
+        const/4 v6, 0x0
+
+        invoke-virtual {v2}, Ljava/util/ArrayList;->iterator()Ljava/util/Iterator;
+        move-result-object v3
 
         :loop
-        invoke-interface {v4}, Ljava/util/Iterator;->hasNext()Z
+        invoke-interface {v3}, Ljava/util/Iterator;->hasNext()Z
         move-result v5
         if-eqz v5, :scan
-        invoke-interface {v4}, Ljava/util/Iterator;->next()Ljava/lang/Object;
+        invoke-interface {v3}, Ljava/util/Iterator;->next()Ljava/lang/Object;
         move-result-object v0
         check-cast v0, Ljava/util/Map${'$'}Entry;
         invoke-interface {v0}, Ljava/util/Map${'$'}Entry;->getKey()Ljava/lang/Object;
-        move-result-object v2
-        check-cast v2, Lp73/a;
+        move-result-object v4
+        check-cast v4, Lp73/a;
         invoke-interface {v0}, Ljava/util/Map${'$'}Entry;->getValue()Ljava/lang/Object;
-        move-result-object v3
-        check-cast v3, Lcom/vk/dto/common/VideoFile;
+        move-result-object v6
+        check-cast v6, Lcom/vk/dto/common/VideoFile;
         goto :loop
 
         :scan
-        monitor-exit v1
-        if-eqz v2, :return
-        if-eqz v3, :return
+        if-eqz v4, :return
+        if-eqz v6, :return
         const-string v0, "revive"
         invoke-static {v0}, $SKIP_ENGINE_CLASS;->log(Ljava/lang/String;)V
-        invoke-static {v2, v3}, $SKIP_ENGINE_CLASS;->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
+        invoke-static {v4, v6}, $SKIP_ENGINE_CLASS;->onVideoChanged(Lp73/a;Lcom/vk/dto/common/VideoFile;)V
 
         :return
         return-void
