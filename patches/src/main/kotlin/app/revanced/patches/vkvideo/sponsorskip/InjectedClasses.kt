@@ -1894,7 +1894,7 @@ private fun skipEngineSmali(): String = """
         # shows nor auto-skips (#97).
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->onPage($SKIP_STATE_CLASS;)Z
         move-result v3
-        if-nez v3, :hidden
+        if-eqz v3, :hidden
         invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
         move-result v3
         if-eqz v3, :hidden
@@ -2044,7 +2044,7 @@ private fun skipEngineSmali(): String = """
         # never seek the page player it does not belong to (#97).
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->onPage($SKIP_STATE_CLASS;)Z
         move-result v1
-        if-eqz v1, :return
+        if-nez v1, :return
         aget-object v0, v0, p1
         iget-wide v2, v0, $SEGMENT_CLASS->endMs:J
         iget-object v0, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
@@ -3262,7 +3262,7 @@ private fun skipButtonSmali(): String = """
         :loop
         if-eqz v0, :decide
         const/16 v3, 0xc
-        if-lt v2, v3, :decide
+        if-ge v2, v3, :decide
         invoke-virtual {v0}, Landroid/view/View;->getId()I
         move-result v3
 
@@ -3326,7 +3326,7 @@ private fun skipButtonSmali(): String = """
         # be rendered: park it and let the next tick re-evaluate (#97).
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->onPage($SKIP_STATE_CLASS;)Z
         move-result v1
-        if-nez v1, :off_page
+        if-eqz v1, :off_page
         iput-object v0, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
         iget-object v1, p0, $SKIP_STATE_CLASS->segments:$SEGMENT_ARRAY
         array-length v2, v1

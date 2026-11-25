@@ -79,14 +79,18 @@ class PageGateTest {
     @Test
     fun `show() gates before it stores the surface and lands on a hide label`() {
         val source = sponsorSkipSources()[SKIP_BUTTON_CLASS]!!
-        val gate = source.indexOf("onPage(")
+        // Bind to the CALL inside show()'s body, not the onPage declaration that
+        // precedes it in the emitted source (CR minor).
+        val show = source.substringAfter(".method public static show").substringBefore(".end method")
+        val gate = show.indexOf("->onPage(")
         assertTrue(gate > 0, "show does not call the page gate")
-        val store = source.indexOf("->view:Landroid/view/View;")
+        val store = show.indexOf("->view:Landroid/view/View;")
+        assertTrue(store > 0, "show does not store the surface")
         assertTrue(gate < store, "the gate runs after the surface is already stored")
-        assertTrue(source.contains(":off_page"), "no off-page landing pad")
+        assertTrue(show.contains(":off_page"), "no off-page landing pad")
         assertTrue(
-            Regex(""":off_page\s+invoke-static \{p0\}, \$?Ljava?.*hide""").containsMatchIn(source) ||
-                source.substringAfter(":off_page").contains("->hide("),
+            Regex(""":off_page\s+invoke-static \{p0\}, \$?Ljava?.*hide""").containsMatchIn(show) ||
+                show.substringAfter(":off_page").contains("->hide("),
             "the off-page pad does not hide the chip",
         )
     }
