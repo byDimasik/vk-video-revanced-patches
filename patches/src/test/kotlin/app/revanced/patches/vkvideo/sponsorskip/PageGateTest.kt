@@ -75,19 +75,22 @@ class PageGateTest {
     fun `a recycler veto beyond the old 12-ancestor depth is honored`() {
         // Regression for the dropped depth cap: the old walk inspected only the first
         // 12 nodes, so a list ancestor at depth >= 12 let a feed card pass as the page.
+        // The container sits BEFORE the deep veto, so a truncated walk would return
+        // true here and fail this test; only a full walk sees the recycler.
         val deep = List(14) { PageGate.Node(0x100 + it) }
-        val chain = listOf(surface) + deep + listOf(PageGate.Node(LIST_RECYCLER_ID), decor)
-        assertTrue(chain.size >= 12)
+        val chain = listOf(surface, container) + deep + listOf(PageGate.Node(LIST_RECYCLER_ID), decor)
         assertTrue(chain.indexOfFirst { it.id == LIST_RECYCLER_ID } >= 12)
+        assertTrue(chain.indexOfFirst { it.id == PLAYER_CONTAINER_ID } < 12)
         assertFalse(PageGate.onPage(attached = true, chain = chain))
     }
 
     @Test
     fun `a mini veto beyond the old 12-ancestor depth is honored`() {
         val deep = List(14) { PageGate.Node(0x100 + it) }
-        val chain = listOf(surface) + deep +
+        val chain = listOf(surface, container) + deep +
             listOf(PageGate.Node(MINIMIZABLE_ID, visibleMini = true), decor)
         assertTrue(chain.indexOfFirst { it.visibleMini } >= 12)
+        assertTrue(chain.indexOfFirst { it.id == PLAYER_CONTAINER_ID } < 12)
         assertFalse(PageGate.onPage(attached = true, chain = chain))
     }
 
