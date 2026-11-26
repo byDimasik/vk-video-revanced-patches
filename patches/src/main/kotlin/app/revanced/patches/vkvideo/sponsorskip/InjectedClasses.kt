@@ -32,6 +32,23 @@ internal const val SEEK_BAR_VIEW_ID = 0x7f0b223d
 /** The plain `AppCompatSeekBar` inside `VideoSeekViewOld`, used by the page player. */
 internal const val SEEK_BAR_ID = 0x7f0b2236
 
+/* Issue #97 page gate. The full player and the mini chip share ONE container tree, so the
+ * page is told apart from the mini by the mini's own overlay view (absent when expanded), and
+ * from feed previews by the list (`recycler`) the card sits in. Ids from the 1.171 resource
+ * table (`minimizableMotionLayout`, `playerContainer`, `miniPlayerView`, `recycler`). */
+
+/** `minimizableMotionLayout` — the player/mini motion host. */
+internal const val MINIMIZABLE_ID = 0x7f0b1805
+
+/** `playerContainer` — the player surface container inside that host. */
+internal const val PLAYER_CONTAINER_ID = 0x7f0b1d19
+
+/** `miniPlayerView` — the collapsed chip overlay; only present while the player is minimized. */
+internal const val MINI_PLAYER_ID = 0x7f0b17fc
+
+/** `recycler` — any vertical video list (feed cards, similar videos, clips). */
+internal const val LIST_RECYCLER_ID = 0x7f0b207d
+
 private const val PREF_FILE = "sponsorskip_settings"
 private const val KEY_ENABLED = "sponsorskip_enabled"
 
@@ -121,7 +138,7 @@ internal val requiredMethods = mapOf(
         "reload:1", "rememberVideo:2", "videoOf:1", "postVideo:2", "rememberBar:1", "findBar:2", "revive:0", "onMain:0", "mainHandler:0", "postMain:1", "trace:2", "log:1", "logInt:2",
     ),
     SKIP_MAIN_CLASS to listOf("<init>:5", "run:0"),
-    SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1", "textColor:0", "anchorOf:1", "follow:1", "dbg:4"),
+    SKIP_BUTTON_CLASS to listOf("show:2", "hide:1", "dp:2", "minWidth:2", "place:1", "textColor:0", "anchorOf:1", "follow:1", "onPage:1", "dbg:4"),
     SKIP_CLICK_CLASS to listOf("<init>:2", "onClick:1"),
     SKIP_LAYOUT_CLASS to listOf("<init>:1", "onLayoutChange:9", "watch:4"),
     PLAYED_SECTIONS_CLASS to listOf("<init>:4", "draw:1", "num:2", "setAlpha:1", "setColorFilter:1", "getOpacity:0", "onBoundsChange:1"),
@@ -1873,6 +1890,11 @@ private fun skipEngineSmali(): String = """
         if-eqz p0, :hidden
         iget-object v0, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
         if-eqz v0, :hidden
+        # Off the page nothing may be armed: a feed card or the minimized chip neither
+        # shows nor auto-skips (#97).
+        invoke-static {p0}, $SKIP_BUTTON_CLASS;->onPage($SKIP_STATE_CLASS;)Z
+        move-result v3
+        if-eqz v3, :hidden
         invoke-static {}, $BEHAVIOR_STORE_CLASS;->isEnabled()Z
         move-result v3
         if-eqz v3, :hidden
@@ -2018,6 +2040,13 @@ private fun skipEngineSmali(): String = """
         array-length v1, v0
         if-ge p1, v1, :return
         if-ltz p1, :return
+        # The tap/auto path obeys the same page gate as the render, so a card tap can
+        # never seek the page player it does not belong to (#97). Same polarity as the
+        # render callers: onPage()==1 means on-page and proceeds to the position and
+        # consumption guards below; only an off-page call returns here.
+        invoke-static {p0}, $SKIP_BUTTON_CLASS;->onPage($SKIP_STATE_CLASS;)Z
+        move-result v1
+        if-eqz v1, :return
         aget-object v0, v0, p1
         iget-wide v2, v0, $SEGMENT_CLASS->endMs:J
         iget-object v0, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
@@ -3213,6 +3242,81 @@ private fun skipButtonSmali(): String = """
         return v0
     .end method
 
+    # Issue #97 page gate. True only for a live FULL-PAGE player: the surface sits inside
+    # `playerContainer`, no `recycler` ancestor (feed card, clip strip, related list) and no
+    # visible `miniPlayerView` overlay (the chip). The mini and the page share one container
+    # tree, so the overlay presence -- not the container -- is what separates them.
+    .method public static onPage($SKIP_STATE_CLASS;)Z
+        .registers 8
+        .param p0, "state"
+
+        if-eqz p0, :false
+        invoke-static {p0}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
+        move-result-object v0
+        if-eqz v0, :false
+        invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v1
+        if-eqz v1, :false
+
+        const/4 v1, 0x0
+        const/4 v2, 0x0
+
+        # The walk goes to the root: no depth cap, so a recycler or visible mini veto at
+        # any ancestor depth is still honored -- a feed/mini surface can never pass just
+        # because its veto sits deep in the chain (#97). Termination is the null parent
+        # at the top of the loop and the getParent checks at the bottom.
+        :loop
+        if-eqz v0, :decide
+        invoke-virtual {v0}, Landroid/view/View;->getId()I
+        move-result v3
+
+        const v4, 0x${PLAYER_CONTAINER_ID.toString(16)}
+        if-ne v3, v4, :c_no
+        const/4 v1, 0x1
+
+        :c_no
+        # Any list in the chain means a card/clip surface, never the page.
+        const v4, 0x${LIST_RECYCLER_ID.toString(16)}
+        if-ne v3, v4, :l_no
+        const/4 v3, 0x0
+        return v3
+
+        :l_no
+        # A visible mini overlay anywhere in the player host means the player is minimized.
+        const v4, 0x${MINIMIZABLE_ID.toString(16)}
+        if-ne v3, v4, :m_no
+        const v4, 0x${MINI_PLAYER_ID.toString(16)}
+        invoke-virtual {v0, v4}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+        move-result-object v5
+        if-eqz v5, :m_no
+        invoke-virtual {v5}, Landroid/view/View;->getVisibility()I
+        move-result v6
+        if-nez v6, :m_no
+        invoke-virtual {v5}, Landroid/view/View;->isAttachedToWindow()Z
+        move-result v6
+        if-eqz v6, :m_no
+        const/4 v3, 0x0
+        return v3
+
+        :m_no
+        invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+        move-result-object v5
+        if-eqz v5, :decide
+        instance-of v6, v5, Landroid/view/View;
+        if-eqz v6, :decide
+        check-cast v5, Landroid/view/View;
+        move-object v0, v5
+        add-int/lit8 v2, v2, 0x1
+        goto :loop
+
+        :decide
+        return v1
+
+        :false
+        const/4 v3, 0x0
+        return v3
+    .end method
+
     .method public static show($SKIP_STATE_CLASS;I)V
         .registers 14
         .param p0, "state"
@@ -3222,6 +3326,11 @@ private fun skipButtonSmali(): String = """
         invoke-static {p0}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
         move-result-object v0
         if-eqz v0, :return
+        # Off the page (feed/clip card, minimized chip, no player at all) the chip must not
+        # be rendered: park it and let the next tick re-evaluate (#97).
+        invoke-static {p0}, $SKIP_BUTTON_CLASS;->onPage($SKIP_STATE_CLASS;)Z
+        move-result v1
+        if-eqz v1, :off_page
         iput-object v0, p0, $SKIP_STATE_CLASS->view:Landroid/view/View;
         iget-object v1, p0, $SKIP_STATE_CLASS->segments:$SEGMENT_ARRAY
         array-length v2, v1
@@ -3329,26 +3438,10 @@ private fun skipButtonSmali(): String = """
         :visible
         invoke-static {p0}, $SKIP_ENGINE_CLASS;->viewOf($SKIP_STATE_CLASS;)Landroid/view/View;
         move-result-object v4
-        invoke-static {v4}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
-        move-result-object v4
-        if-eqz v4, :m_k
-        invoke-virtual {v4}, Landroid/view/View;->getWidth()I
-        move-result v9
-        invoke-virtual {v4}, Landroid/view/View;->getHeight()I
-        move-result v10
-        goto :m_surface
-
-        :m_k
-        iget-object v4, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
-        if-eqz v4, :m_decor
-        instance-of v5, v4, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
-        if-eqz v5, :m_decor
-        check-cast v4, Lcom/vk/libvideo/autoplay/VideoAutoPlay;
-        iget-object v4, v4, Lcom/vk/libvideo/autoplay/VideoAutoPlay;->K:Ljava/lang/ref/WeakReference;
-        if-eqz v4, :m_decor
-        invoke-virtual {v4}, Ljava/lang/ref/Reference;->get()Ljava/lang/Object;
-        move-result-object v4
-        check-cast v4, Landroid/view/View;
+        # The gate already resolved a live page surface, so `sized()` finds the laid-out
+        # frame in that same subtree. The old controller-weakref branch existed to chase the
+        # MINI surface; the mini is gated out now, so the decor measurement is the only
+        # fallback left (#97).
         invoke-static {v4}, $SKIP_BUTTON_CLASS;->sized(Landroid/view/View;)Landroid/view/View;
         move-result-object v4
         if-eqz v4, :m_decor
@@ -3432,6 +3525,10 @@ private fun skipButtonSmali(): String = """
         if-eqz v4, :return
         const/4 v4, 0x0
         invoke-virtual {v2, v4}, Landroid/view/View;->setVisibility(I)V
+        return-void
+
+        :off_page
+        invoke-static {p0}, $SKIP_BUTTON_CLASS;->hide($SKIP_STATE_CLASS;)V
 
         :return
         return-void
@@ -3634,7 +3731,7 @@ private fun skipButtonSmali(): String = """
 
         # Button size: the requested size when show just measured a new one, else the
         # laid-out size. A laid-out size that still differs from the request is a stale
-        # pre-handoff measure and would leave the button bigger than the mini surface.
+        # pre-handoff measure and would leave the button bigger than the player surface.
         invoke-virtual {v0}, Landroid/view/View;->getWidth()I
         move-result v8
         iget v4, v3, Landroid/view/ViewGroup${'$'}LayoutParams;->width:I
