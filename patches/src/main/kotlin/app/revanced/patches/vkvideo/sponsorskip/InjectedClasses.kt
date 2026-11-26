@@ -2041,10 +2041,12 @@ private fun skipEngineSmali(): String = """
         if-ge p1, v1, :return
         if-ltz p1, :return
         # The tap/auto path obeys the same page gate as the render, so a card tap can
-        # never seek the page player it does not belong to (#97).
+        # never seek the page player it does not belong to (#97). Same polarity as the
+        # render callers: onPage()==1 means on-page and proceeds to the position and
+        # consumption guards below; only an off-page call returns here.
         invoke-static {p0}, $SKIP_BUTTON_CLASS;->onPage($SKIP_STATE_CLASS;)Z
         move-result v1
-        if-nez v1, :return
+        if-eqz v1, :return
         aget-object v0, v0, p1
         iget-wide v2, v0, $SEGMENT_CLASS->endMs:J
         iget-object v0, p0, $SKIP_STATE_CLASS->controller:Lp73/a;
@@ -3259,10 +3261,12 @@ private fun skipButtonSmali(): String = """
         const/4 v1, 0x0
         const/4 v2, 0x0
 
+        # The walk goes to the root: no depth cap, so a recycler or visible mini veto at
+        # any ancestor depth is still honored -- a feed/mini surface can never pass just
+        # because its veto sits deep in the chain (#97). Termination is the null parent
+        # at the top of the loop and the getParent checks at the bottom.
         :loop
         if-eqz v0, :decide
-        const/16 v3, 0xc
-        if-ge v2, v3, :decide
         invoke-virtual {v0}, Landroid/view/View;->getId()I
         move-result v3
 
